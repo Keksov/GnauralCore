@@ -1,0 +1,161 @@
+object Form1: TForm1
+  Left = 477
+  Height = 258
+  Top = 265
+  Width = 268
+  Caption = 'Filter Spectrum'
+  ClientHeight = 258
+  ClientWidth = 268
+  OnActivate = FormActivate
+  OnDestroy = FormDestroy
+  LCLVersion = '3.0.0.3'
+  object ProgressBar2: TProgressBar
+    Left = 44
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 0
+  end
+  object ProgressBar3: TProgressBar
+    Left = 67
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 1
+  end
+  object ProgressBar4: TProgressBar
+    Left = 90
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 2
+  end
+  object ProgressBar5: TProgressBar
+    Left = 113
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 3
+  end
+  object ProgressBar6: TProgressBar
+    Left = 136
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 4
+  end
+  object ProgressBar7: TProgressBar
+    Left = 158
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 5
+  end
+  object ProgressBar8: TProgressBar
+    Left = 181
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 6
+  end
+  object ProgressBar9: TProgressBar
+    Left = 204
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 7
+  end
+  object ProgressBar10: TProgressBar
+    Left = 227
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 8
+  end
+  object Button1: TButton
+    Left = 164
+    Height = 17
+    Top = 7
+    Width = 45
+    Caption = 'Start'
+    TabOrder = 9
+    OnClick = Button1Click
+  end
+  object Label1: TLabel
+    Left = 262
+    Height = 1
+    Top = 76
+    Width = 1
+    ParentColor = False
+  end
+  object FileNameEdit1: TFileNameEdit
+    Left = 7
+    Height = 27
+    Top = 0
+    Width = 156
+    FileName = 'FileNameEdit1'
+    FilterIndex = 0
+    HideDirectories = False
+    ButtonWidth = 23
+    NumGlyphs = 1
+    MaxLength = 0
+    TabOrder = 10
+    Text = 'FileNameEdit1'
+  end
+  object Button2: TButton
+    Left = 213
+    Height = 17
+    Top = 7
+    Width = 45
+    Caption = 'Stop'
+    TabOrder = 11
+    OnClick = Button2Click
+  end
+  object ProgressBar1: TProgressBar
+    Left = 21
+    Height = 228
+    Top = 28
+    Width = 19
+    Orientation = pbVertical
+    ParentShowHint = False
+    ShowHint = True
+    Smooth = True
+    TabOrder = 12
+  end
+end

@@ -1,0 +1,6 @@
+cli/gnaural/build/
+**/*.o
+**/*.ppu
+**/node_modules/
+**/.quasar/
+**/dist/
