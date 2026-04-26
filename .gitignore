@@ -1,4 +1,4 @@
-cli/gnaural/build/
+**/build/
 **/*.o
 **/*.ppu
 **/node_modules/
