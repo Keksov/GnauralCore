@@ -79,6 +79,12 @@
         <q-banner v-else-if="currentError !== null" dense rounded class="bg-red-1 text-red-10">
           {{ currentError }}
         </q-banner>
+        <q-banner v-else-if="editorRuntimeLoading" dense rounded class="bg-grey-2 text-grey-9">
+          {{ t('audio.editorLoading') }}
+        </q-banner>
+        <q-banner v-else-if="editorRuntimeError !== null" dense rounded class="bg-red-1 text-red-10">
+          {{ editorRuntimeError }}
+        </q-banner>
         <template v-else-if="currentFilePath !== null">
           <div class="gnaural-editor-panel__status-row">
             <span class="gnaural-editor-panel__path">{{ currentFilePath }}</span>
@@ -192,19 +198,15 @@
 </template>
 
 <script setup lang="ts">
-import { EditorState } from '@codemirror/state'
-import { Decoration, EditorView, MatchDecorator, ViewPlugin, type ViewUpdate } from '@codemirror/view'
-import { xml } from '@codemirror/lang-xml'
-import { oneDark } from '@codemirror/theme-one-dark'
-import { basicSetup } from 'codemirror'
 import type { AudioEditorHistoryEntry, AudioFileKind, AudioRenderState, AudioTransportState } from '@protocol'
 import { useQuasar } from 'quasar'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { audioApi } from 'src/services/audio-api'
-import { wsService } from 'src/services/ws'
-import { useAudioStore } from 'stores/audio'
+import { audioApi } from '../audio-api'
+import { useWsService } from '../composables/use-ws'
+import { useAudioStore } from '../stores/audio'
+import type { GnauralEditorRuntime } from './gnaural-editor-runtime'
 
 type LeaveDecision = 'cancel' | 'discard' | 'save'
 type PlaybackAction = 'continue' | 'pause' | 'restart'
@@ -229,28 +231,10 @@ interface EditorPanelExposed {
   reloadCurrentDocumentFromDisk: (aFilePath: string) => Promise<void>
 }
 
+type EditorViewInstance = InstanceType<GnauralEditorRuntime['EditorView']>
+
 const STORAGE_PLAYBACK_ACTION = 'mindwave-audio-editor-playback-action'
 const AUTOSAVE_INTERVAL_MS = 30_000
-const DESCRIPTION_TAG_REGEXP = /<description(?:\s[^>]*)?>|<\/description>/g
-
-const descriptionTagDecorator = new MatchDecorator({
-  regexp: DESCRIPTION_TAG_REGEXP,
-  decoration: () => Decoration.mark({ class: 'gnaural-editor-panel__description-tag' }),
-})
-
-const descriptionTagHighlight = ViewPlugin.fromClass(class {
-  public decorations
-
-  public constructor(view: EditorView) {
-    this.decorations = descriptionTagDecorator.createDeco(view)
-  }
-
-  public update(update: ViewUpdate): void {
-    this.decorations = descriptionTagDecorator.updateDeco(update, this.decorations)
-  }
-}, {
-  decorations: (value) => value.decorations,
-})
 
 const props = defineProps<{
   readonly selectedPath: string | null
@@ -262,6 +246,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const wsService = useWsService()
 const $q = useQuasar()
 const audio = useAudioStore()
 
@@ -274,6 +259,8 @@ const currentModifiedAtMs = ref<number | null>(null)
 const currentDirty = ref(false)
 const currentLoading = ref(false)
 const currentError = ref<string | null>(null)
+const editorRuntimeLoading = ref(false)
+const editorRuntimeError = ref<string | null>(null)
 const historyEntries = ref<readonly AudioEditorHistoryEntry[]>([])
 const historyLoading = ref(false)
 const historyLoadingName = ref<string | null>(null)
@@ -303,9 +290,11 @@ const playbackDialog = reactive({
   selectedAction: 'continue' as PlaybackAction,
 })
 
-let editorView: EditorView | null = null
+let editorRuntimePromise: Promise<GnauralEditorRuntime> | null = null
+let editorView: EditorViewInstance | null = null
 let loadRequestId = 0
 let historyRequestId = 0
+let renderRequestId = 0
 let autosaveInterval: ReturnType<typeof setInterval> | null = null
 let playbackCountdownTimer: ReturnType<typeof setInterval> | null = null
 let editorViewCleanup: (() => void) | null = null
@@ -390,8 +379,21 @@ function clearEditorViewCleanup(): void {
   editorViewCleanup = null
 }
 
+async function loadEditorRuntime(): Promise<GnauralEditorRuntime> {
+  if (editorRuntimePromise === null) {
+    editorRuntimePromise = import('./gnaural-editor-runtime').then((module) => module.createGnauralEditorRuntime())
+  }
+
+  try {
+    return await editorRuntimePromise
+  } catch (error) {
+    editorRuntimePromise = null
+    throw error
+  }
+}
+
 function captureEditorScrollPosition(
-  aView: EditorView | null = editorView,
+  aView: EditorViewInstance | null = editorView,
   aScrollKey: string | null = getActiveEditorScrollKey(),
 ): void {
   if (aView === null || aScrollKey === null) {
@@ -405,7 +407,7 @@ function captureEditorScrollPosition(
 }
 
 function restoreEditorScrollPosition(
-  aView: EditorView,
+  aView: EditorViewInstance,
   aScrollKey: string | null = getActiveEditorScrollKey(),
 ): void {
   if (aScrollKey === null) {
@@ -429,7 +431,7 @@ function restoreEditorScrollPosition(
   })
 }
 
-function bindEditorViewEvents(aView: EditorView, aScrollKey: string): void {
+function bindEditorViewEvents(aView: EditorViewInstance, aScrollKey: string): void {
   clearEditorViewCleanup()
 
   const handleScroll = (): void => {
@@ -461,33 +463,72 @@ function destroyEditorView(): void {
   editorView = null
 }
 
-async function renderActiveDocument(): Promise<void> {
-  await nextTick()
+function invalidatePendingRender(): void {
+  renderRequestId += 1
+}
 
-  if (editorHostEl.value === null || currentFilePath.value === null || currentLoading.value || currentError.value !== null) {
+function getEditorRenderState(): {
+  hostEl: HTMLDivElement
+  documentText: string
+  readOnly: boolean
+  scrollKey: string | null
+} | null {
+  const hostEl = editorHostEl.value
+  if (hostEl === null || currentFilePath.value === null || currentLoading.value || currentError.value !== null) {
+    return null
+  }
+
+  const activePreview = activePreviewTab.value
+  return {
+    hostEl,
+    documentText: activePreview?.content ?? currentContent.value,
+    readOnly: activePreview !== null,
+    scrollKey: getActiveEditorScrollKey(),
+  }
+}
+
+async function renderActiveDocument(): Promise<void> {
+  const requestId = ++renderRequestId
+
+  await nextTick()
+  if (requestId !== renderRequestId) {
+    return
+  }
+
+  if (getEditorRenderState() === null) {
     destroyEditorView()
     return
   }
 
-  const activePreview = activePreviewTab.value
-  const documentText = activePreview?.content ?? currentContent.value
-  const readOnly = activePreview !== null
-  const scrollKey = getActiveEditorScrollKey()
-
   captureEditorScrollPosition()
   destroyEditorView()
 
-  editorView = new EditorView({
-    state: EditorState.create({
-      doc: documentText,
+  editorRuntimeLoading.value = true
+  editorRuntimeError.value = null
+
+  try {
+    const { EditorState, EditorView, basicSetup, xml, oneDark, descriptionTagHighlight } = await loadEditorRuntime()
+    if (requestId !== renderRequestId) {
+      return
+    }
+
+    const renderState = getEditorRenderState()
+    if (renderState === null) {
+      destroyEditorView()
+      return
+    }
+
+    editorView = new EditorView({
+      state: EditorState.create({
+      doc: renderState.documentText,
       extensions: [
         basicSetup,
         xml(),
         oneDark,
         descriptionTagHighlight,
         EditorView.lineWrapping,
-        EditorState.readOnly.of(readOnly),
-        EditorView.editable.of(!readOnly),
+        EditorState.readOnly.of(renderState.readOnly),
+        EditorView.editable.of(!renderState.readOnly),
         EditorView.theme({
           '&': {
             backgroundColor: '#0f172a',
@@ -526,19 +567,30 @@ async function renderActiveDocument(): Promise<void> {
           currentDirty.value = currentContent.value !== lastSavedContent.value
         })
       ],
-    }),
-    parent: editorHostEl.value,
-  })
+      }),
+      parent: renderState.hostEl,
+    })
 
-  if (scrollKey !== null) {
-    bindEditorViewEvents(editorView, scrollKey)
-    restoreEditorScrollPosition(editorView, scrollKey)
+    if (renderState.scrollKey !== null) {
+      bindEditorViewEvents(editorView, renderState.scrollKey)
+      restoreEditorScrollPosition(editorView, renderState.scrollKey)
+    }
+  } catch (error) {
+    if (requestId === renderRequestId) {
+      editorRuntimeError.value = error instanceof Error ? error.message : t('audio.editorLoading')
+      destroyEditorView()
+    }
+  } finally {
+    if (requestId === renderRequestId) {
+      editorRuntimeLoading.value = false
+    }
   }
 }
 
 function resetEditorState(): void {
   loadRequestId += 1
   historyRequestId += 1
+  invalidatePendingRender()
   captureEditorScrollPosition()
   destroyEditorView()
   activeDocumentId.value = 'current'
@@ -549,6 +601,8 @@ function resetEditorState(): void {
   currentDirty.value = false
   currentLoading.value = false
   currentError.value = null
+  editorRuntimeLoading.value = false
+  editorRuntimeError.value = null
   historyEntries.value = []
   historyError.value = null
   previewTabs.value = []
@@ -590,10 +644,12 @@ async function reloadHistory(): Promise<void> {
 async function loadCurrentDocument(aFilePath: string): Promise<void> {
   const requestId = loadRequestId + 1
   loadRequestId = requestId
+  invalidatePendingRender()
   captureEditorScrollPosition()
   destroyEditorView()
   currentLoading.value = true
   currentError.value = null
+  editorRuntimeError.value = null
   activeDocumentId.value = 'current'
   previewTabs.value = []
   currentFilePath.value = aFilePath

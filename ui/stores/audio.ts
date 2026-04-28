@@ -15,7 +15,7 @@ import type {
   GnauralScheduleData,
   PresetTreeNode,
 } from '@protocol'
-import { audioApi } from 'src/services/audio-api'
+import { audioApi } from '../audio-api'
 
 const STORAGE_AUDIO_SELECTED_PATH = 'mindwave-audio-selected-path'
 

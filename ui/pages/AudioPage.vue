@@ -316,17 +316,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useQuasar, type QTreeNode } from 'quasar'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { QSpinnerHourglass, useQuasar, type QTreeNode } from 'quasar'
 import type { AudioFileKind, PresetTreeNode } from '@protocol'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import GnauralEditorPanel from 'components/GnauralEditorPanel.vue'
-import GnauralScheduleView from 'components/GnauralScheduleView.vue'
-import SpectrogramView from 'components/SpectrogramView.vue'
-import { audioApi } from 'src/services/audio-api'
-import { wsService } from 'src/services/ws'
-import { useAudioStore } from 'stores/audio'
+import { audioApi } from '../audio-api'
+import { useWsService } from '../composables/use-ws'
+import { useAudioStore } from '../stores/audio'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
@@ -348,6 +345,27 @@ interface ScheduleVoiceStatePatch {
   readonly color?: string
 }
 
+const AsyncAudioPanelLoading = defineComponent({
+  name: 'AsyncAudioPanelLoading',
+  setup() {
+    return () => h('div', { class: 'audio-page__async-placeholder' }, [
+      h(QSpinnerHourglass, { color: 'primary', size: '28px' }),
+    ])
+  },
+})
+
+function createAsyncAudioPanel(loader: AsyncComponentLoader<Component>) {
+  return defineAsyncComponent({
+    loader,
+    delay: 120,
+    loadingComponent: AsyncAudioPanelLoading,
+  })
+}
+
+const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/GnauralEditorPanel.vue'))
+const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
+const SpectrogramView = createAsyncAudioPanel(() => import('../components/SpectrogramView.vue'))
+
 const loadStoredExpandedPaths = (): string[] => {
   try {
     const raw = localStorage.getItem(STORAGE_AUDIO_EXPANDED_PATHS)
@@ -367,6 +385,7 @@ const loadStoredExpandedPaths = (): string[] => {
 }
 
 const { t } = useI18n()
+const wsService = useWsService()
 const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
@@ -1196,6 +1215,14 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
   justify-content: center;
   min-height: 120px;
   text-align: center;
+}
+
+.audio-page__async-placeholder {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  min-height: 160px;
 }
 
 .audio-page__output {

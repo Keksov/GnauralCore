@@ -5,7 +5,7 @@ export interface GnauralExecutablePathInfo {
   readonly gnauralExePath: string
 }
 
-const DEFAULT_GNAURAL_EXE_PATH = resolve(import.meta.dir, '..', 'cli', 'gnaural', 'build', 'x64', 'Gnaural.exe')
+const DEFAULT_GNAURAL_EXE_PATH = resolve(import.meta.dir, '..', 'cli', 'build', 'x64', 'Gnaural.exe')
 
 const normalizeOverridePath = (aValue: string | undefined): string | null => {
   if (aValue === undefined) {
