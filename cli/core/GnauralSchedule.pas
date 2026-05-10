@@ -355,11 +355,22 @@ begin
     // Resolve WAV file path for PCM voices from description field
     if (voice.VoiceType = vtPCM) and (voice.Description <> '') then
     begin
-        resolvedAudioPath := ExpandFileName(FbaseDir + voice.Description);
-        voice.AudioFilePath := resolvedAudioPath;
-        if (CompareText(Copy(resolvedAudioPath, 1, Length(FbaseDir)), FbaseDir) <> 0) or
-            (not FileExists(resolvedAudioPath)) then
-            voice.AudioFilePath := '';
+        if ExtractFileDrive(voice.Description) <> '' then
+        begin
+            // Absolute path (drive-rooted) — use directly without base dir validation
+            if FileExists(voice.Description) then
+                voice.AudioFilePath := voice.Description
+            else
+                voice.AudioFilePath := '';
+        end
+        else
+        begin
+            resolvedAudioPath := ExpandFileName(FbaseDir + voice.Description);
+            voice.AudioFilePath := resolvedAudioPath;
+            if (CompareText(Copy(resolvedAudioPath, 1, Length(FbaseDir)), FbaseDir) <> 0) or
+                (not FileExists(resolvedAudioPath)) then
+                voice.AudioFilePath := '';
+        end;
     end;
 
     SetLength(Fvoices, FvoiceCount + 1);

@@ -230,12 +230,15 @@ const parseLoadedEvent = (value: unknown): {
     return null
   }
 
-  const schedule = value.schedule === undefined ? undefined : parseSchedule(value.schedule)
+  const parsedSchedule = value.schedule === undefined ? null : parseSchedule(value.schedule)
+  const scheduleDurationSec = parsedSchedule === null
+    ? undefined
+    : parsedSchedule.totalTimeSec * Math.max(1, parsedSchedule.loopCount)
 
   return {
-    durationSec: isNumber(value.duration) ? value.duration : undefined,
+    durationSec: scheduleDurationSec ?? (isNumber(value.duration) ? value.duration : undefined),
     filePath: isString(value.file) ? value.file : undefined,
-    schedule: schedule ?? undefined,
+    schedule: parsedSchedule ?? undefined,
   }
 }
 
@@ -249,8 +252,10 @@ const isServerReadyEvent = (value: unknown): boolean => {
 
 export interface GnauralSession {
   getStatus(): AudioStatusEvent
+  getLoadedSchedule(): GnauralScheduleData | null
+  getLoadedScheduleStartedAtMs(): number | null
   getServableRoots(): readonly string[]
-  start(aFilePath: string, aSettings: AudioSettings): Promise<void>
+  start(aFilePath: string, aSettings: AudioSettings, aExtraRoots?: readonly string[]): Promise<void>
   stop(): void
   pause(): void
   resume(): void
@@ -277,6 +282,8 @@ class GnauralPlaybackSession implements GnauralSession {
   private activeFileKind: AudioFileKind | undefined
   private loadedFilePath: string | undefined
   private loadedFileKind: AudioFileKind | undefined
+  private loadedSchedule: GnauralScheduleData | null = null
+  private loadedScheduleStartedAtMs: number | null = null
   private durationSec: number | undefined
   private positionSec: number | undefined
   private pendingStartAfterLoad = false
@@ -312,13 +319,21 @@ class GnauralPlaybackSession implements GnauralSession {
     }
   }
 
+  public getLoadedSchedule(): GnauralScheduleData | null {
+    return this.loadedSchedule
+  }
+
+  public getLoadedScheduleStartedAtMs(): number | null {
+    return this.loadedScheduleStartedAtMs
+  }
+
   public getServableRoots(): readonly string[] {
     return this.tempDirPath === null ? [] : [this.tempDirPath]
   }
 
-  public start(aFilePath: string, aSettings: AudioSettings): Promise<void> {
+  public start(aFilePath: string, aSettings: AudioSettings, aExtraRoots: readonly string[] = []): Promise<void> {
     const runStart = async (): Promise<void> => {
-      const resolvedFile = resolveAllowedAudioFilePath(aFilePath, aSettings)
+      const resolvedFile = resolveAllowedAudioFilePath(aFilePath, aSettings, aExtraRoots)
       if (resolvedFile === null) {
         this.emitError("Requested audio file is outside the configured presets root or has an unsupported type", aFilePath)
         return
@@ -357,6 +372,8 @@ class GnauralPlaybackSession implements GnauralSession {
         return
       }
 
+      this.loadedSchedule = null
+      this.loadedScheduleStartedAtMs = null
       this.transitionToLoading(resolvedFile.filePath, resolvedFile.fileKind)
     }
 
@@ -758,6 +775,8 @@ class GnauralPlaybackSession implements GnauralSession {
 
         this.durationSec = loadedEvent.durationSec
         this.positionSec = 0
+        this.loadedSchedule = loadedEvent.schedule ?? null
+        this.loadedScheduleStartedAtMs = loadedEvent.schedule === undefined ? null : Date.now()
         this.publishStatus()
 
         if (loadedEvent.schedule !== undefined) {
@@ -765,6 +784,7 @@ class GnauralPlaybackSession implements GnauralSession {
             type: "audio_schedule_loaded",
             filePath: loadedEvent.filePath ?? this.activeFilePath ?? this.loadedFilePath ?? "",
             schedule: loadedEvent.schedule,
+            loadedAtMs: this.loadedScheduleStartedAtMs ?? undefined,
           })
         }
         return
@@ -866,12 +886,16 @@ class GnauralPlaybackSession implements GnauralSession {
         }
         this.transportState = "idle"
         this.positionSec = 0
+        this.loadedSchedule = null
+        this.loadedScheduleStartedAtMs = null
         this.publishStatus()
         return
       case "quit":
         this.transportState = "idle"
         this.positionSec = 0
         this.pendingSeekPositionSec = null
+        this.loadedSchedule = null
+        this.loadedScheduleStartedAtMs = null
         this.publishStatus()
         return
     }

@@ -1,5 +1,11 @@
 <template>
-  <div class="gnaural-schedule-view" :class="{ 'gnaural-schedule-view--tracks-layout': layoutMode === 'tracks' }">
+  <div
+    class="gnaural-schedule-view"
+    :class="{
+      'gnaural-schedule-view--overlay-layout': layoutMode === 'overlay',
+      'gnaural-schedule-view--tracks-layout': layoutMode === 'tracks',
+    }"
+  >
     <div class="gnaural-schedule-view__toolbar">
       <div class="gnaural-schedule-view__toolbar-leading">
         <q-btn
@@ -357,53 +363,57 @@ const TRACK_MODE_MIN_FREQUENCY_PANEL_HEIGHT = 60
 const TRACK_MODE_MIN_VOLUME_PANEL_HEIGHT = 36
 const TRACK_MODE_MIN_FREQUENCY_TICK_SPACING_PX = 2
 const TIME_TICK_STEP_CANDIDATES = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200] as const
-const STORAGE_SCHEDULE_LAYOUT_MODE = 'mindwave-audio-schedule-layout-mode'
-const STORAGE_SCHEDULE_SCALE_MODE = 'mindwave-audio-schedule-scale-mode'
-const STORAGE_SCHEDULE_TRACK_PANEL_OPEN = 'mindwave-audio-schedule-track-panel-open'
+const STORAGE_SCHEDULE_LAYOUT_MODE = 'schedule-layout-mode'
+const STORAGE_SCHEDULE_SCALE_MODE = 'schedule-scale-mode'
+const STORAGE_SCHEDULE_TRACK_PANEL_OPEN = 'schedule-track-panel-open'
 
-function loadStoredLayoutMode(): LayoutMode {
+function buildStorageKey(scope: string, key: string): string {
+  return `mindwave-audio-${scope}-${key}`
+}
+
+function loadStoredLayoutMode(scope: string): LayoutMode {
   try {
-    return localStorage.getItem(STORAGE_SCHEDULE_LAYOUT_MODE) === 'tracks' ? 'tracks' : 'overlay'
+    return localStorage.getItem(buildStorageKey(scope, STORAGE_SCHEDULE_LAYOUT_MODE)) === 'tracks' ? 'tracks' : 'overlay'
   } catch {
     return 'overlay'
   }
 }
 
-function loadStoredScaleMode(): ScaleMode {
+function loadStoredScaleMode(scope: string): ScaleMode {
   try {
-    return localStorage.getItem(STORAGE_SCHEDULE_SCALE_MODE) === 'linear' ? 'linear' : 'log'
+    return localStorage.getItem(buildStorageKey(scope, STORAGE_SCHEDULE_SCALE_MODE)) === 'linear' ? 'linear' : 'log'
   } catch {
     return 'log'
   }
 }
 
-function saveStoredLayoutMode(value: LayoutMode): void {
+function saveStoredLayoutMode(scope: string, value: LayoutMode): void {
   try {
-    localStorage.setItem(STORAGE_SCHEDULE_LAYOUT_MODE, value)
+    localStorage.setItem(buildStorageKey(scope, STORAGE_SCHEDULE_LAYOUT_MODE), value)
   } catch {
     // Ignore localStorage failures.
   }
 }
 
-function saveStoredScaleMode(value: ScaleMode): void {
+function saveStoredScaleMode(scope: string, value: ScaleMode): void {
   try {
-    localStorage.setItem(STORAGE_SCHEDULE_SCALE_MODE, value)
+    localStorage.setItem(buildStorageKey(scope, STORAGE_SCHEDULE_SCALE_MODE), value)
   } catch {
     // Ignore localStorage failures.
   }
 }
 
-function loadStoredTrackPanelOpen(): boolean {
+function loadStoredTrackPanelOpen(scope: string): boolean {
   try {
-    return localStorage.getItem(STORAGE_SCHEDULE_TRACK_PANEL_OPEN) !== '0'
+    return localStorage.getItem(buildStorageKey(scope, STORAGE_SCHEDULE_TRACK_PANEL_OPEN)) !== '0'
   } catch {
     return true
   }
 }
 
-function saveStoredTrackPanelOpen(value: boolean): void {
+function saveStoredTrackPanelOpen(scope: string, value: boolean): void {
   try {
-    localStorage.setItem(STORAGE_SCHEDULE_TRACK_PANEL_OPEN, value ? '1' : '0')
+    localStorage.setItem(buildStorageKey(scope, STORAGE_SCHEDULE_TRACK_PANEL_OPEN), value ? '1' : '0')
   } catch {
     // Ignore localStorage failures.
   }
@@ -416,6 +426,7 @@ const props = defineProps<{
   readonly transportState: AudioTransportState
   readonly trackStateBusy: boolean
   readonly canSeek: boolean
+  readonly uiStateScope?: string
 }>()
 
 const emit = defineEmits<{
@@ -425,15 +436,19 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const uiStateScope = computed(() => {
+  const rawScope = props.uiStateScope?.trim()
+  return rawScope && rawScope.length > 0 ? rawScope : 'default'
+})
 const canvasHostEl = ref<HTMLDivElement | null>(null)
 const mainCanvasEl = ref<HTMLCanvasElement | null>(null)
 const minimapCanvasEl = ref<HTMLCanvasElement | null>(null)
 
-const layoutMode = ref<LayoutMode>(loadStoredLayoutMode())
-const scaleMode = ref<ScaleMode>(loadStoredScaleMode())
+const layoutMode = ref<LayoutMode>(loadStoredLayoutMode(uiStateScope.value))
+const scaleMode = ref<ScaleMode>(loadStoredScaleMode(uiStateScope.value))
 const settingsPanelOpen = ref(false)
 const frequencyZoom = ref(1)
-const trackPanelOpen = ref(loadStoredTrackPanelOpen())
+const trackPanelOpen = ref(loadStoredTrackPanelOpen(uiStateScope.value))
 const timeViewport = reactive({ startSec: 0, endSec: 1 })
 const ctrlKeyPressed = ref(false)
 const minimapPointerInside = ref(false)
@@ -2450,16 +2465,22 @@ watch(() => props.schedule, () => {
 }, { immediate: true })
 
 watch(layoutMode, (nextLayoutMode: LayoutMode) => {
-  saveStoredLayoutMode(nextLayoutMode)
+  saveStoredLayoutMode(uiStateScope.value, nextLayoutMode)
 })
 
 watch(scaleMode, (nextScaleMode: ScaleMode) => {
-  saveStoredScaleMode(nextScaleMode)
+  saveStoredScaleMode(uiStateScope.value, nextScaleMode)
 })
 
 watch(trackPanelOpen, (nextTrackPanelOpen: boolean) => {
-  saveStoredTrackPanelOpen(nextTrackPanelOpen)
+  saveStoredTrackPanelOpen(uiStateScope.value, nextTrackPanelOpen)
   scheduleRender()
+})
+
+watch(uiStateScope, (nextScope: string) => {
+  layoutMode.value = loadStoredLayoutMode(nextScope)
+  scaleMode.value = loadStoredScaleMode(nextScope)
+  trackPanelOpen.value = loadStoredTrackPanelOpen(nextScope)
 })
 
 watch([layoutMode, scaleMode, frequencyZoom], () => {
@@ -2781,13 +2802,18 @@ onBeforeUnmount(() => {
   display: grid;
   flex: 1 1 auto;
   gap: 10px;
-  grid-template-rows: minmax(360px, 1fr) 68px;
-  min-height: 436px;
+  grid-template-rows: minmax(0, 1fr) 68px;
+  min-height: 0;
   min-width: 0;
   outline: none;
   overflow: hidden;
   padding: 0;
   position: relative;
+}
+
+.gnaural-schedule-view--tracks-layout .gnaural-schedule-view__canvas-column {
+  grid-template-rows: minmax(360px, 1fr) 68px;
+  min-height: 436px;
 }
 
 .gnaural-schedule-view__canvas-host {
@@ -2976,6 +3002,10 @@ onBeforeUnmount(() => {
 
 .gnaural-schedule-view__main-canvas {
   cursor: crosshair;
+  min-height: 0;
+}
+
+.gnaural-schedule-view--tracks-layout .gnaural-schedule-view__main-canvas {
   min-height: var(--gnaural-main-canvas-min-height, 360px);
 }
 

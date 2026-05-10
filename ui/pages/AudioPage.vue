@@ -128,42 +128,23 @@
                       :class="{ 'audio-page__output-section--schedule': showEmbeddedScheduleView }"
                     >
                       <div v-if="showStandalonePlayerControls" class="audio-page__player-toolbar">
-                        <div class="audio-page__player-controls">
-                          <q-btn
-                            :color="startStopButtonColor"
-                            :flat="startStopButtonFlat"
-                            :icon="startStopButtonIcon"
-                            :label="startStopButtonLabel"
-                            :disable="startStopDisabled"
-                            @click="handleStartStop"
-                          />
-                          <q-btn
-                            color="primary"
-                            flat
-                            :icon="pauseResumeButtonIcon"
-                            :label="pauseResumeButtonLabel"
-                            :disable="pauseResumeDisabled"
-                            @click="handlePauseResume"
-                          />
-                          <q-btn-dropdown
-                            v-if="canExportCurrentFile"
-                            color="primary"
-                            flat
-                            icon="download"
-                            :label="t('audio.export')"
-                            :disable="exportingFormat !== null"
-                            :loading="exportingFormat !== null"
-                          >
-                            <q-list dense>
-                              <q-item clickable v-close-popup @click="downloadSelectedAudio('wav')">
-                                <q-item-section>{{ t('audio.exportWav') }}</q-item-section>
-                              </q-item>
-                              <q-item clickable v-close-popup @click="downloadSelectedAudio('flac')">
-                                <q-item-section>{{ t('audio.exportFlac') }}</q-item-section>
-                              </q-item>
-                            </q-list>
-                          </q-btn-dropdown>
-                        </div>
+                        <gnaural-transport-controls
+                          class="audio-page__player-controls"
+                          :start-stop-icon="startStopButtonIcon"
+                          :start-stop-label="startStopButtonLabel"
+                          :start-stop-color="startStopButtonColor"
+                          :start-stop-flat="startStopButtonFlat"
+                          :start-stop-disabled="startStopDisabled"
+                          :pause-resume-icon="pauseResumeButtonIcon"
+                          :pause-resume-label="pauseResumeButtonLabel"
+                          :pause-resume-disabled="pauseResumeDisabled"
+                          :show-export="canExportCurrentFile"
+                          :export-disabled="exportingFormat !== null"
+                          :export-loading="exportingFormat !== null"
+                          @start-stop="handleStartStop"
+                          @pause-resume="handlePauseResume"
+                          @export="downloadSelectedAudio"
+                        />
                       </div>
 
                       <template v-if="audio.displayMode !== 'gnaural'">
@@ -191,47 +172,29 @@
                           :transport-state="audio.transportState"
                           :track-state-busy="trackStateBusy"
                           :can-seek="canSeek"
+                          ui-state-scope="audio-page"
                           @seek="handleSeek"
                           @patch-voice-state="handleScheduleVoiceStatePatch"
                           @patch-voice-state-batch="handleScheduleVoiceStateBatch"
                         >
                           <template #transportControls>
-                            <div class="audio-page__player-controls">
-                              <q-btn
-                                :color="startStopButtonColor"
-                                :flat="startStopButtonFlat"
-                                :icon="startStopButtonIcon"
-                                :label="startStopButtonLabel"
-                                :disable="startStopDisabled"
-                                @click="handleStartStop"
-                              />
-                              <q-btn
-                                color="primary"
-                                flat
-                                :icon="pauseResumeButtonIcon"
-                                :label="pauseResumeButtonLabel"
-                                :disable="pauseResumeDisabled"
-                                @click="handlePauseResume"
-                              />
-                              <q-btn-dropdown
-                                v-if="canExportCurrentFile"
-                                color="primary"
-                                flat
-                                icon="download"
-                                :label="t('audio.export')"
-                                :disable="exportingFormat !== null"
-                                :loading="exportingFormat !== null"
-                              >
-                                <q-list dense>
-                                  <q-item clickable v-close-popup @click="downloadSelectedAudio('wav')">
-                                    <q-item-section>{{ t('audio.exportWav') }}</q-item-section>
-                                  </q-item>
-                                  <q-item clickable v-close-popup @click="downloadSelectedAudio('flac')">
-                                    <q-item-section>{{ t('audio.exportFlac') }}</q-item-section>
-                                  </q-item>
-                                </q-list>
-                              </q-btn-dropdown>
-                            </div>
+                            <gnaural-transport-controls
+                              class="audio-page__player-controls"
+                              :start-stop-icon="startStopButtonIcon"
+                              :start-stop-label="startStopButtonLabel"
+                              :start-stop-color="startStopButtonColor"
+                              :start-stop-flat="startStopButtonFlat"
+                              :start-stop-disabled="startStopDisabled"
+                              :pause-resume-icon="pauseResumeButtonIcon"
+                              :pause-resume-label="pauseResumeButtonLabel"
+                              :pause-resume-disabled="pauseResumeDisabled"
+                              :show-export="canExportCurrentFile"
+                              :export-disabled="exportingFormat !== null"
+                              :export-loading="exportingFormat !== null"
+                              @start-stop="handleStartStop"
+                              @pause-resume="handlePauseResume"
+                              @export="downloadSelectedAudio"
+                            />
                           </template>
                         </gnaural-schedule-view>
                       </template>
@@ -241,42 +204,23 @@
                   <q-tab-panel name="spectrogram" class="audio-page__panel audio-page__player-view-panel q-pa-none">
                     <div class="audio-page__output-section audio-page__output-section--spectrogram">
                       <div class="audio-page__player-toolbar">
-                        <div class="audio-page__player-controls">
-                          <q-btn
-                            :color="startStopButtonColor"
-                            :flat="startStopButtonFlat"
-                            :icon="startStopButtonIcon"
-                            :label="startStopButtonLabel"
-                            :disable="startStopDisabled"
-                            @click="handleStartStop"
-                          />
-                          <q-btn
-                            color="primary"
-                            flat
-                            :icon="pauseResumeButtonIcon"
-                            :label="pauseResumeButtonLabel"
-                            :disable="pauseResumeDisabled"
-                            @click="handlePauseResume"
-                          />
-                          <q-btn-dropdown
-                            v-if="canExportCurrentFile"
-                            color="primary"
-                            flat
-                            icon="download"
-                            :label="t('audio.export')"
-                            :disable="exportingFormat !== null"
-                            :loading="exportingFormat !== null"
-                          >
-                            <q-list dense>
-                              <q-item clickable v-close-popup @click="downloadSelectedAudio('wav')">
-                                <q-item-section>{{ t('audio.exportWav') }}</q-item-section>
-                              </q-item>
-                              <q-item clickable v-close-popup @click="downloadSelectedAudio('flac')">
-                                <q-item-section>{{ t('audio.exportFlac') }}</q-item-section>
-                              </q-item>
-                            </q-list>
-                          </q-btn-dropdown>
-                        </div>
+                        <gnaural-transport-controls
+                          class="audio-page__player-controls"
+                          :start-stop-icon="startStopButtonIcon"
+                          :start-stop-label="startStopButtonLabel"
+                          :start-stop-color="startStopButtonColor"
+                          :start-stop-flat="startStopButtonFlat"
+                          :start-stop-disabled="startStopDisabled"
+                          :pause-resume-icon="pauseResumeButtonIcon"
+                          :pause-resume-label="pauseResumeButtonLabel"
+                          :pause-resume-disabled="pauseResumeDisabled"
+                          :show-export="canExportCurrentFile"
+                          :export-disabled="exportingFormat !== null"
+                          :export-loading="exportingFormat !== null"
+                          @start-stop="handleStartStop"
+                          @pause-resume="handlePauseResume"
+                          @export="downloadSelectedAudio"
+                        />
                       </div>
 
                       <div class="text-subtitle2 q-mb-sm">{{ t('audio.spectrogramTitle') }}</div>
@@ -322,7 +266,8 @@ import type { AudioFileKind, PresetTreeNode } from '@protocol'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
-import { useWsService } from '../composables/use-ws'
+import { useAudioTransport } from '../composables/use-audio-transport'
+import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import { useAudioStore } from '../stores/audio'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -385,7 +330,6 @@ const loadStoredExpandedPaths = (): string[] => {
 }
 
 const { t } = useI18n()
-const wsService = useWsService()
 const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
@@ -396,39 +340,34 @@ const treeSelectionAutoPlayRequested = ref(false)
 const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
 const scheduleViewRef = ref<GnauralScheduleViewHandle | null>(null)
 const trackStateBusy = ref(false)
-const optimisticSeekPositionSec = ref<number | null>(null)
 const exportingFormat = ref<ExportAudioFileKind | null>(null)
+const {
+  canStart,
+  canSeek,
+  startStopButtonLabel,
+  startStopButtonIcon,
+  startStopButtonColor,
+  startStopButtonFlat,
+  startStopDisabled,
+  pauseResumeButtonLabel,
+  pauseResumeButtonIcon,
+  pauseResumeDisabled,
+  displayedPositionSec,
+  positionLabel,
+  durationLabel,
+  sendAudioMessage,
+  pausePlayback,
+  resumePlayback,
+  stopPlayback,
+  handlePauseResume,
+  handleSeek,
+} = useAudioTransport()
 
 let selectionChangeToken = 0
-let optimisticSeekResetTimer: ReturnType<typeof setTimeout> | null = null
-
-const canStart = computed(() => {
-  if (!audio.canStart) {
-    return false
-  }
-
-  if (audio.selectedFileKind === 'gnaural') {
-    return wsService.connectionState.value === 'connected'
-  }
-
-  return true
-})
 
 function isLocalAudioFileKind(fileKind: AudioFileKind | null): fileKind is Exclude<AudioFileKind, 'gnaural'> {
   return fileKind === 'wav' || fileKind === 'flac'
 }
-
-const canSeek = computed(() => {
-  if (!audio.canSeek) {
-    return false
-  }
-
-  if (audio.activePlaybackMode === 'gnaural' || (audio.activePlaybackMode === null && audio.displayMode === 'gnaural')) {
-    return wsService.connectionState.value === 'connected'
-  }
-
-  return true
-})
 
 function getTreeNodeIcon(node: PresetTreeNode): string {
   if (node.isDir) {
@@ -547,67 +486,14 @@ const sessionFilePath = computed(() => {
   return audio.selectedPath ?? audio.displayFilePath ?? t('audio.noFileSelected')
 })
 
-const startStopButtonLabel = computed(() => {
-  return audio.canStop ? t('audio.stop') : t('audio.start')
-})
-
-const startStopButtonIcon = computed(() => {
-  return audio.canStop ? 'stop' : 'play_arrow'
-})
-
-const startStopButtonColor = computed(() => {
-  return audio.canStop ? 'negative' : 'primary'
-})
-
-const startStopButtonFlat = computed(() => {
-  return audio.canStop
-})
-
-const startStopDisabled = computed(() => {
-  return audio.canStop === false && canStart.value === false
-})
-
-const pauseResumeButtonLabel = computed(() => {
-  return audio.canResume ? t('audio.resume') : t('audio.pause')
-})
-
-const pauseResumeButtonIcon = computed(() => {
-  return audio.canResume ? 'play_circle' : 'pause'
-})
-
-const pauseResumeDisabled = computed(() => {
-  return audio.canPause === false && audio.canResume === false
-})
-
-function formatTime(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return '00:00'
-  }
-
-  const totalSeconds = Math.floor(value)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
-
 function buildExportFileName(filePath: string, format: ExportAudioFileKind): string {
   const sourceName = filePath.split(/[\\/]/).pop() ?? filePath
   const sourceExt = sourceName.match(/\.[^.]+$/u)?.[0] ?? ''
   return `${sourceName.slice(0, Math.max(0, sourceName.length - sourceExt.length))}.${format}`
 }
 
-const displayedPositionSec = computed(() => optimisticSeekPositionSec.value ?? audio.positionSec)
-
-const positionLabel = computed(() => formatTime(displayedPositionSec.value))
-
-const durationLabel = computed(() => formatTime(audio.durationSec))
-
 const canExportCurrentFile = computed(() => {
   return audio.selectedPath !== null && audio.selectedFileKind === 'gnaural'
-})
-
-const sliderMax = computed(() => {
-  return audio.durationSec > 0 ? audio.durationSec : 1
 })
 
 const showStandalonePlayerControls = computed(() => {
@@ -640,31 +526,6 @@ const showEmbeddedScheduleView = computed(() => {
     && audio.gnauralScheduleError === null
     && audio.gnauralSchedule !== null
 })
-
-function clearOptimisticSeekResetTimer(): void {
-  if (optimisticSeekResetTimer !== null) {
-    clearTimeout(optimisticSeekResetTimer)
-    optimisticSeekResetTimer = null
-  }
-}
-
-function clearOptimisticSeekPosition(): void {
-  clearOptimisticSeekResetTimer()
-  optimisticSeekPositionSec.value = null
-}
-
-function clampSeekValue(value: number): number {
-  return Math.max(0, Math.min(value, sliderMax.value))
-}
-
-function setOptimisticSeekPosition(value: number): void {
-  clearOptimisticSeekResetTimer()
-  optimisticSeekPositionSec.value = clampSeekValue(value)
-  optimisticSeekResetTimer = setTimeout(() => {
-    optimisticSeekPositionSec.value = null
-    optimisticSeekResetTimer = null
-  }, 1500)
-}
 
 function pageStyle(offset: number, height: number) {
   const pageHeight = Math.max(0, height - offset)
@@ -725,15 +586,6 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   }
 
   startPlayback()
-}
-
-function sendAudioMessage(message: Parameters<typeof wsService.send>[0], fallbackMessage: string) {
-  if (!wsService.send(message)) {
-    audio.setClientError(fallbackMessage)
-    return false
-  }
-
-  return true
 }
 
 function shouldIgnorePlayerHotkey(event: KeyboardEvent): boolean {
@@ -884,15 +736,6 @@ function handleStartStop() {
   startPlayback()
 }
 
-function handlePauseResume() {
-  if (audio.canResume) {
-    resumePlayback()
-    return
-  }
-
-  pausePlayback()
-}
-
 function startPlayback() {
   if (audio.selectedPath === null) {
     return
@@ -914,51 +757,6 @@ function startPlayback() {
   sendAudioMessage({ type: 'audio_start', filePath: audio.selectedPath }, t('audio.wsSendFailed'))
 }
 
-function pausePlayback() {
-  if (isLocalAudioFileKind(audio.activePlaybackMode)) {
-    audio.pauseLocalPlayback()
-    return
-  }
-
-  sendAudioMessage({ type: 'audio_pause' }, t('audio.wsSendFailed'))
-}
-
-function resumePlayback() {
-  if (isLocalAudioFileKind(audio.activePlaybackMode)) {
-    void audio.resumeLocalPlayback()
-    return
-  }
-
-  sendAudioMessage({ type: 'audio_resume' }, t('audio.wsSendFailed'))
-}
-
-function stopPlayback() {
-  if (isLocalAudioFileKind(audio.activePlaybackMode)) {
-    audio.stopLocalPlayback()
-    return
-  }
-
-  sendAudioMessage({ type: 'audio_stop' }, t('audio.wsSendFailed'))
-}
-
-function handleSeek(value: number | null) {
-  if (value === null) {
-    return
-  }
-
-  const nextPositionSec = clampSeekValue(value)
-  setOptimisticSeekPosition(nextPositionSec)
-
-  if (isLocalAudioFileKind(audio.activePlaybackMode) || isLocalAudioFileKind(audio.displayMode)) {
-    audio.seekLocalPlayback(nextPositionSec)
-    return
-  }
-
-  if (!sendAudioMessage({ type: 'audio_seek', positionSec: nextPositionSec }, t('audio.wsSendFailed'))) {
-    clearOptimisticSeekPosition()
-  }
-}
-
 function goToSettings() {
   void router.push('/settings')
 }
@@ -974,24 +772,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  clearOptimisticSeekPosition()
   window.removeEventListener('keydown', handlePlayerKeyDown)
-})
-
-watch(() => audio.positionSec, (positionSec) => {
-  if (optimisticSeekPositionSec.value === null) {
-    return
-  }
-
-  if (Math.abs(positionSec - optimisticSeekPositionSec.value) <= 0.25) {
-    clearOptimisticSeekPosition()
-  }
-})
-
-watch(() => [audio.displayFilePath, audio.transportState] as const, ([filePath, transportState]) => {
-  if (filePath === null || transportState === 'idle') {
-    clearOptimisticSeekPosition()
-  }
 })
 
 watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {

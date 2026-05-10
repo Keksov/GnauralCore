@@ -294,7 +294,6 @@ let editorRuntimePromise: Promise<GnauralEditorRuntime> | null = null
 let editorView: EditorViewInstance | null = null
 let loadRequestId = 0
 let historyRequestId = 0
-let renderRequestId = 0
 let autosaveInterval: ReturnType<typeof setInterval> | null = null
 let playbackCountdownTimer: ReturnType<typeof setInterval> | null = null
 let editorViewCleanup: (() => void) | null = null
@@ -463,42 +462,18 @@ function destroyEditorView(): void {
   editorView = null
 }
 
-function invalidatePendingRender(): void {
-  renderRequestId += 1
-}
-
-function getEditorRenderState(): {
-  hostEl: HTMLDivElement
-  documentText: string
-  readOnly: boolean
-  scrollKey: string | null
-} | null {
-  const hostEl = editorHostEl.value
-  if (hostEl === null || currentFilePath.value === null || currentLoading.value || currentError.value !== null) {
-    return null
-  }
-
-  const activePreview = activePreviewTab.value
-  return {
-    hostEl,
-    documentText: activePreview?.content ?? currentContent.value,
-    readOnly: activePreview !== null,
-    scrollKey: getActiveEditorScrollKey(),
-  }
-}
-
 async function renderActiveDocument(): Promise<void> {
-  const requestId = ++renderRequestId
-
   await nextTick()
-  if (requestId !== renderRequestId) {
-    return
-  }
 
-  if (getEditorRenderState() === null) {
+  if (editorHostEl.value === null || currentFilePath.value === null || currentLoading.value || currentError.value !== null) {
     destroyEditorView()
     return
   }
+
+  const activePreview = activePreviewTab.value
+  const documentText = activePreview?.content ?? currentContent.value
+  const readOnly = activePreview !== null
+  const scrollKey = getActiveEditorScrollKey()
 
   captureEditorScrollPosition()
   destroyEditorView()
@@ -508,27 +483,23 @@ async function renderActiveDocument(): Promise<void> {
 
   try {
     const { EditorState, EditorView, basicSetup, xml, oneDark, descriptionTagHighlight } = await loadEditorRuntime()
-    if (requestId !== renderRequestId) {
-      return
-    }
 
-    const renderState = getEditorRenderState()
-    if (renderState === null) {
+    if (editorHostEl.value === null || currentFilePath.value === null || currentLoading.value || currentError.value !== null) {
       destroyEditorView()
       return
     }
 
     editorView = new EditorView({
       state: EditorState.create({
-      doc: renderState.documentText,
+      doc: documentText,
       extensions: [
         basicSetup,
         xml(),
         oneDark,
         descriptionTagHighlight,
         EditorView.lineWrapping,
-        EditorState.readOnly.of(renderState.readOnly),
-        EditorView.editable.of(!renderState.readOnly),
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         EditorView.theme({
           '&': {
             backgroundColor: '#0f172a',
@@ -568,29 +539,24 @@ async function renderActiveDocument(): Promise<void> {
         })
       ],
       }),
-      parent: renderState.hostEl,
+      parent: editorHostEl.value,
     })
 
-    if (renderState.scrollKey !== null) {
-      bindEditorViewEvents(editorView, renderState.scrollKey)
-      restoreEditorScrollPosition(editorView, renderState.scrollKey)
+    if (scrollKey !== null) {
+      bindEditorViewEvents(editorView, scrollKey)
+      restoreEditorScrollPosition(editorView, scrollKey)
     }
   } catch (error) {
-    if (requestId === renderRequestId) {
-      editorRuntimeError.value = error instanceof Error ? error.message : t('audio.editorLoading')
-      destroyEditorView()
-    }
+    editorRuntimeError.value = error instanceof Error ? error.message : t('audio.editorLoading')
+    destroyEditorView()
   } finally {
-    if (requestId === renderRequestId) {
-      editorRuntimeLoading.value = false
-    }
+    editorRuntimeLoading.value = false
   }
 }
 
 function resetEditorState(): void {
   loadRequestId += 1
   historyRequestId += 1
-  invalidatePendingRender()
   captureEditorScrollPosition()
   destroyEditorView()
   activeDocumentId.value = 'current'
@@ -644,7 +610,6 @@ async function reloadHistory(): Promise<void> {
 async function loadCurrentDocument(aFilePath: string): Promise<void> {
   const requestId = loadRequestId + 1
   loadRequestId = requestId
-  invalidatePendingRender()
   captureEditorScrollPosition()
   destroyEditorView()
   currentLoading.value = true
