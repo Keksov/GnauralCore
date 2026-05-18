@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gnaural>
+    <title>Circle</title>
+    <author>example</author>
+    <schedule_description>Binaural circle: base_freq sweeps 80-200 Hz sinusoidally (1 cycle/min); beat_freq oscillates 0.5-5 Hz independently (3 cycles/min).</schedule_description>
+    <loops>1</loops>
+    <overallvolume_left>1.0</overallvolume_left>
+    <overallvolume_right>1.0</overallvolume_right>
+    <stereoswap>0</stereoswap>
+    <voice>
+        <id>0</id>
+        <type>0</type>
+        <description>Circle binaural</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <entries>
+            <entry type="preparse" generator="circle.exe"
+                   steps="60"
+                   base_min="80" base_max="200"
+                   beat_min="0.5" beat_max="5"
+                   beat_cycles="3"
+                   duration="60"
+                   volume_left="0.9" volume_right="0.9"/>
+        </entries>
+    </voice>
+</gnaural>
