@@ -41,7 +41,7 @@ Inside any `<voice><entries>` block, a preparse entry takes this form:
 Two parameters are always prepended by the CLI regardless of what the XML contains:
 
 - `--gnaural_file <absolute path>` — absolute path to the `.gnaural` file being loaded.
-- `--line <N>` — 0-based ordinal of this preparse entry within the containing voice's `<entries>` list (the DOM parser does not track source line numbers; the ordinal is the deterministic substitute).
+- `--line_no <N>` — 0-based ordinal of this preparse entry within the containing voice's `<entries>` list (the DOM parser does not track source line numbers; the ordinal is the deterministic substitute).
 
 `type` and `generator` are NOT forwarded to the generator.
 
@@ -50,7 +50,7 @@ Two parameters are always prepended by the CLI regardless of what the XML contai
 For the XML above the CLI calls:
 
 ```
-mygen.exe --gnaural_file C:\schedules\alpha.gnaural --line 2 --parent 0 --duration 0.01 --volume_left 0 --volume_right 0 --beatfreq 492.8 --basefreq 36 --state 0
+mygen.exe --gnaural_file C:\schedules\alpha.gnaural --line_no 2 --parent 0 --duration 0.01 --volume_left 0 --volume_right 0 --beatfreq 492.8 --basefreq 36 --state 0
 ```
 
 ---
@@ -89,7 +89,7 @@ The generator may write diagnostic text to stderr. The CLI reads stderr in paral
    - Drive-rooted absolute path → used directly, no base-dir restriction.
    - Raise if the resolved path does not exist.
 4. Collect all entry attributes except `type` and `generator` → build arg list as alternating `--name` / `value` strings.
-5. Prepend `--gnaural_file <ExpandFileName(aFileName)>` and `--line <ordinal>`.
+5. Prepend `--gnaural_file <ExpandFileName(aFileName)>` and `--line_no <ordinal>`.
 6. Spawn generator via FPC `TProcess` (blocking, capture stdout + stderr).
 7. Wait for exit; collect both streams.
 8. If exit code ≠ 0 → raise `Exception` with stderr text (or a generic message if stderr is empty).

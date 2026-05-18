@@ -39,6 +39,8 @@ type
         beatfreqHalfSpread    : Double;
     end;
 
+    TStringArray = array of string;
+
     {***************************************************************************
      * TVoice
      ***************************************************************************}
@@ -95,8 +97,21 @@ private
 private
     function    getChildText(aParent: TDOMNode; const aName: string): string;
     function    parseFloat(const aStr: string): Double;
+    procedure   appendArgument(var aArguments: TStringArray; const aValue: string);
+    procedure   parseAndAddEntryNode(aVoice: TVoice; aEntryNode: TDOMElement);
+    function    resolvePreparseGeneratorPath(const aGeneratorPath: string): string;
+    function    runExternalCommand(
+                    const aExecutable: string;
+                    const aArguments: TStringArray;
+                    out aStdoutText: string;
+                    out aStderrText: string): Integer;
+    procedure   runPreparseEntryGenerator(
+                    aVoice: TVoice;
+                    aEntryNode: TDOMElement;
+                    aLineNo: Integer;
+                    const aSourceFilePath: string);
     procedure   calibrateVoice(aVoice: TVoice);
-    procedure   parseVoiceNode(aVoiceNode: TDOMNode);
+    procedure   parseVoiceNode(aVoiceNode: TDOMNode; const aSourceFilePath: string);
 
 public
     constructor Create;
@@ -121,6 +136,7 @@ public
 implementation
 
 uses
+    Windows,
     JsonLogWriter,
     LogCore;
 
@@ -255,6 +271,378 @@ begin
         Result := 0.0;
 end;
 
+{*******************************************************************************
+* appendArgument
+*******************************************************************************}
+procedure TGnauralSchedule.appendArgument(var aArguments: TStringArray; const aValue: string);
+var
+    argCount: Integer;
+begin
+    argCount := Length(aArguments);
+    SetLength(aArguments, argCount + 1);
+    aArguments[argCount] := aValue;
+end;
+
+{*******************************************************************************
+* parseAndAddEntryNode
+*******************************************************************************}
+procedure TGnauralSchedule.parseAndAddEntryNode(aVoice: TVoice; aEntryNode: TDOMElement);
+var
+    entry: TScheduleEntry;
+begin
+    FillChar(entry, SizeOf(entry), 0);
+    entry.duration          := parseFloat(string(aEntryNode.GetAttribute('duration')));
+    entry.volLstart         := parseFloat(string(aEntryNode.GetAttribute('volume_left')));
+    entry.volRstart         := parseFloat(string(aEntryNode.GetAttribute('volume_right')));
+    entry.beatfreqHalfStart := parseFloat(string(aEntryNode.GetAttribute('beatfreq'))) / 2;
+    entry.basefreqStart     := parseFloat(string(aEntryNode.GetAttribute('basefreq')));
+    aVoice.addEntry(entry);
+end;
+
+{*******************************************************************************
+* resolvePreparseGeneratorPath
+*******************************************************************************}
+function TGnauralSchedule.resolvePreparseGeneratorPath(const aGeneratorPath: string): string;
+var
+    normalizedPath: string;
+begin
+    normalizedPath := Trim(aGeneratorPath);
+    if normalizedPath = '' then
+        raise Exception.Create('Preparse entry requires a non-empty generator path.');
+
+    if ExtractFileDrive(normalizedPath) <> '' then
+    begin
+        Result := ExpandFileName(normalizedPath);
+        Exit;
+    end;
+
+    Result := ExpandFileName(FbaseDir + normalizedPath);
+    if CompareText(Copy(Result, 1, Length(FbaseDir)), FbaseDir) <> 0 then
+        raise Exception.CreateFmt('Preparse generator path is outside schedule directory: %s', [normalizedPath]);
+end;
+
+{*******************************************************************************
+* runExternalCommand
+*******************************************************************************}
+function TGnauralSchedule.runExternalCommand(
+    const aExecutable: string;
+    const aArguments: TStringArray;
+    out aStdoutText: string;
+    out aStderrText: string): Integer;
+const
+    GENERATOR_TIMEOUT_MS: DWORD = 30000;
+var
+    secAttrs: TSecurityAttributes;
+    startupInfo: TStartupInfo;
+    processInfo: TProcessInformation;
+    stdoutReadHandle: THandle;
+    stdoutWriteHandle: THandle;
+    stderrReadHandle: THandle;
+    stderrWriteHandle: THandle;
+    nullInputHandle: THandle;
+    stdoutStream: TStringStream;
+    stderrStream: TStringStream;
+    commandLineText: string;
+    commandWaitResult: DWORD;
+    processExitCode: DWORD;
+    startTick: DWORD;
+    argIndex: Integer;
+    bytesAvailable: DWORD;
+    bytesRead: DWORD;
+    readBuffer: array[0..4095] of AnsiChar;
+    readSize: DWORD;
+
+    function quoteWindowsArgument(const aValue: string): string;
+    var
+        i: Integer;
+        slashCount: Integer;
+        ch: Char;
+    begin
+        if (aValue = '') or (Pos(' ', aValue) > 0) or (Pos(#9, aValue) > 0) or (Pos('"', aValue) > 0) then
+        begin
+            Result := '"';
+            slashCount := 0;
+            for i := 1 to Length(aValue) do
+            begin
+                ch := aValue[i];
+                if ch = '\' then
+                begin
+                    Inc(slashCount);
+                    Continue;
+                end;
+
+                if ch = '"' then
+                begin
+                    Result := Result + StringOfChar('\', slashCount * 2 + 1) + '"';
+                    slashCount := 0;
+                    Continue;
+                end;
+
+                if slashCount > 0 then
+                begin
+                    Result := Result + StringOfChar('\', slashCount);
+                    slashCount := 0;
+                end;
+
+                Result := Result + ch;
+            end;
+
+            if slashCount > 0 then
+                Result := Result + StringOfChar('\', slashCount * 2);
+
+            Result := Result + '"';
+            Exit;
+        end;
+
+        Result := aValue;
+    end;
+
+    procedure drainPipe(aPipeHandle: THandle; var aTarget: TStringStream);
+    begin
+        while PeekNamedPipe(aPipeHandle, nil, 0, nil, @bytesAvailable, nil) and (bytesAvailable > 0) do
+        begin
+            if bytesAvailable > SizeOf(readBuffer) then
+                readSize := SizeOf(readBuffer)
+            else
+                readSize := bytesAvailable;
+
+            if not ReadFile(aPipeHandle, readBuffer[0], readSize, bytesRead, nil) then
+                Break;
+            if bytesRead = 0 then
+                Break;
+
+            aTarget.Write(readBuffer[0], bytesRead);
+        end;
+    end;
+begin
+    aStdoutText := '';
+    aStderrText := '';
+
+    stdoutReadHandle := 0;
+    stdoutWriteHandle := 0;
+    stderrReadHandle := 0;
+    stderrWriteHandle := 0;
+    nullInputHandle := INVALID_HANDLE_VALUE;
+    stdoutStream := nil;
+    stderrStream := nil;
+    FillChar(processInfo, SizeOf(processInfo), 0);
+
+    FillChar(secAttrs, SizeOf(secAttrs), 0);
+    secAttrs.nLength := SizeOf(secAttrs);
+    secAttrs.bInheritHandle := True;
+
+    try
+        if not CreatePipe(stdoutReadHandle, stdoutWriteHandle, @secAttrs, 0) then
+            raise Exception.Create('Failed to create stdout pipe for preparse generator.');
+
+        if not SetHandleInformation(stdoutReadHandle, HANDLE_FLAG_INHERIT, 0) then
+            raise Exception.Create('Failed to configure stdout pipe handle inheritance.');
+
+        if not CreatePipe(stderrReadHandle, stderrWriteHandle, @secAttrs, 0) then
+            raise Exception.Create('Failed to create stderr pipe for preparse generator.');
+
+        if not SetHandleInformation(stderrReadHandle, HANDLE_FLAG_INHERIT, 0) then
+            raise Exception.Create('Failed to configure stderr pipe handle inheritance.');
+
+        nullInputHandle := CreateFile('nul', GENERIC_READ,
+            FILE_SHARE_READ or FILE_SHARE_WRITE, @secAttrs, OPEN_EXISTING, 0, 0);
+        if nullInputHandle = INVALID_HANDLE_VALUE then
+            raise Exception.Create('Failed to open NUL device for preparse generator stdin.');
+
+        stdoutStream := TStringStream.Create('');
+        stderrStream := TStringStream.Create('');
+        commandLineText := quoteWindowsArgument(aExecutable);
+        for argIndex := Low(aArguments) to High(aArguments) do
+            commandLineText := commandLineText + ' ' + quoteWindowsArgument(aArguments[argIndex]);
+
+        FillChar(startupInfo, SizeOf(startupInfo), 0);
+        startupInfo.cb := SizeOf(startupInfo);
+        startupInfo.dwFlags := STARTF_USESHOWWINDOW or STARTF_USESTDHANDLES;
+        startupInfo.wShowWindow := SW_HIDE;
+        startupInfo.hStdInput := nullInputHandle;
+        startupInfo.hStdOutput := stdoutWriteHandle;
+        startupInfo.hStdError := stderrWriteHandle;
+
+        UniqueString(commandLineText);
+        if not CreateProcess(
+            nil,
+            PChar(commandLineText),
+            nil,
+            nil,
+            True,
+            CREATE_NO_WINDOW,
+            nil,
+            nil,
+            startupInfo,
+            processInfo
+        ) then
+            raise Exception.CreateFmt(
+                'Failed to start preparse generator process: %s (error code %d)',
+                [aExecutable, GetLastError]);
+
+        CloseHandle(nullInputHandle);
+        nullInputHandle := INVALID_HANDLE_VALUE;
+
+        if stdoutWriteHandle <> 0 then
+        begin
+            CloseHandle(stdoutWriteHandle);
+            stdoutWriteHandle := 0;
+        end;
+        if stderrWriteHandle <> 0 then
+        begin
+            CloseHandle(stderrWriteHandle);
+            stderrWriteHandle := 0;
+        end;
+
+        startTick := GetTickCount;
+        while True do
+        begin
+            drainPipe(stdoutReadHandle, stdoutStream);
+            drainPipe(stderrReadHandle, stderrStream);
+
+            commandWaitResult := WaitForSingleObject(processInfo.hProcess, 10);
+            if commandWaitResult = WAIT_OBJECT_0 then
+                Break;
+            if commandWaitResult = WAIT_FAILED then
+                raise Exception.CreateFmt(
+                    'WaitForSingleObject failed for preparse generator (error %d)',
+                    [GetLastError]);
+            if GetTickCount - startTick > GENERATOR_TIMEOUT_MS then
+            begin
+                TerminateProcess(processInfo.hProcess, 1);
+                raise Exception.CreateFmt(
+                    'Preparse generator timed out after %d seconds: %s',
+                    [GENERATOR_TIMEOUT_MS div 1000, aExecutable]);
+            end;
+        end;
+
+        drainPipe(stdoutReadHandle, stdoutStream);
+        drainPipe(stderrReadHandle, stderrStream);
+
+        processExitCode := DWORD(-1);
+        if not GetExitCodeProcess(processInfo.hProcess, processExitCode) then
+            raise Exception.Create('Failed to read preparse generator exit code.');
+
+        aStdoutText := stdoutStream.DataString;
+        aStderrText := stderrStream.DataString;
+        Result := Integer(processExitCode);
+    finally
+        FreeAndNil(stdoutStream);
+        FreeAndNil(stderrStream);
+        if processInfo.hThread <> 0 then
+            CloseHandle(processInfo.hThread);
+        if processInfo.hProcess <> 0 then
+            CloseHandle(processInfo.hProcess);
+        if stdoutReadHandle <> 0 then
+            CloseHandle(stdoutReadHandle);
+        if stdoutWriteHandle <> 0 then
+            CloseHandle(stdoutWriteHandle);
+        if stderrReadHandle <> 0 then
+            CloseHandle(stderrReadHandle);
+        if stderrWriteHandle <> 0 then
+            CloseHandle(stderrWriteHandle);
+        if nullInputHandle <> INVALID_HANDLE_VALUE then
+            CloseHandle(nullInputHandle);
+    end;
+end;
+
+{*******************************************************************************
+* runPreparseEntryGenerator
+*******************************************************************************}
+procedure TGnauralSchedule.runPreparseEntryGenerator(
+    aVoice: TVoice;
+    aEntryNode: TDOMElement;
+    aLineNo: Integer;
+    const aSourceFilePath: string);
+var
+    generatorPath: string;
+    generatorArgs: TStringArray;
+    attrIndex: Integer;
+    attrNode: TDOMNode;
+    attrName: string;
+    attrValue: string;
+    stdoutText: string;
+    stderrText: string;
+    exitCode: Integer;
+    wrappedXml: string;
+    generatedStream: TStringStream;
+    generatedDoc: TXMLDocument;
+    generatedNode: TDOMNode;
+begin
+    generatorPath := resolvePreparseGeneratorPath(string(aEntryNode.GetAttribute('generator')));
+    if not FileExists(generatorPath) then
+        raise Exception.CreateFmt('Preparse generator not found: %s', [generatorPath]);
+
+    SetLength(generatorArgs, 0);
+    appendArgument(generatorArgs, '--gnaural_file');
+    appendArgument(generatorArgs, ExpandFileName(aSourceFilePath));
+    appendArgument(generatorArgs, '--line_no');
+    appendArgument(generatorArgs, IntToStr(aLineNo));
+
+    for attrIndex := 0 to aEntryNode.Attributes.Length - 1 do
+    begin
+        attrNode := aEntryNode.Attributes.Item[attrIndex];
+        if attrNode = nil then
+            Continue;
+
+        attrName := string(attrNode.NodeName);
+        if (CompareText(attrName, 'type') = 0) or
+            (CompareText(attrName, 'generator') = 0) then
+            Continue;
+
+        attrValue := string(attrNode.NodeValue);
+        appendArgument(generatorArgs, '--' + attrName);
+        appendArgument(generatorArgs, attrValue);
+    end;
+
+    exitCode := runExternalCommand(generatorPath, generatorArgs, stdoutText, stderrText);
+    if exitCode <> 0 then
+    begin
+        stderrText := Trim(stderrText);
+        if stderrText = '' then
+            stderrText := Trim(stdoutText);
+        if stderrText = '' then
+            stderrText := Format('Preparse generator failed with exit code %d', [exitCode]);
+
+        raise Exception.CreateFmt('Preparse generator error (%s): %s', [generatorPath, stderrText]);
+    end;
+
+    stdoutText := Trim(stdoutText);
+    if stdoutText = '' then
+        Exit;
+
+    wrappedXml := '<preparse_entries>' + stdoutText + '</preparse_entries>';
+    generatedStream := TStringStream.Create(wrappedXml);
+    generatedDoc := nil;
+    try
+        try
+            ReadXMLFile(generatedDoc, generatedStream);
+        except
+            on E: Exception do
+                raise Exception.Create('Preparse generator returned invalid XML: ' + E.Message);
+        end;
+
+        generatedNode := generatedDoc.DocumentElement.FirstChild;
+        while generatedNode <> nil do
+        begin
+            if generatedNode.NodeType = ELEMENT_NODE then
+            begin
+                if string(generatedNode.NodeName) <> 'entry' then
+                    raise Exception.CreateFmt(
+                        'Preparse generator returned unsupported element <%s>',
+                        [string(generatedNode.NodeName)]);
+
+                parseAndAddEntryNode(aVoice, TDOMElement(generatedNode));
+            end;
+
+            generatedNode := generatedNode.NextSibling;
+        end;
+    finally
+        FreeAndNil(generatedDoc);
+        FreeAndNil(generatedStream);
+    end;
+end;
+
 procedure TGnauralSchedule.calibrateVoice(aVoice: TVoice);
 var
     e, j, n: Integer;
@@ -303,13 +691,14 @@ begin
         FtotalTime := totalDur;
 end;
 
-procedure TGnauralSchedule.parseVoiceNode(aVoiceNode: TDOMNode);
+procedure TGnauralSchedule.parseVoiceNode(aVoiceNode: TDOMNode; const aSourceFilePath: string);
 var
     e, en: TDOMNode;
     voice: TVoice;
-    entry: TScheduleEntry;
     typeInt: Integer;
     resolvedAudioPath: string;
+    entryLineNo: Integer;
+    entryType: string;
 begin
     voice := TVoice.Create;
     voice.Description := getChildText(aVoiceNode, 'description');
@@ -331,18 +720,19 @@ begin
     begin
         if (e.NodeType = ELEMENT_NODE) and (string(e.NodeName) = 'entries') then
         begin
+            entryLineNo := 0;
             en := e.FirstChild;
             while en <> nil do
             begin
                 if (en.NodeType = ELEMENT_NODE) and (string(en.NodeName) = 'entry') then
                 begin
-                    FillChar(entry, SizeOf(entry), 0);
-                    entry.duration        := parseFloat(string(TDOMElement(en).GetAttribute('duration')));
-                    entry.volLstart       := parseFloat(string(TDOMElement(en).GetAttribute('volume_left')));
-                    entry.volRstart       := parseFloat(string(TDOMElement(en).GetAttribute('volume_right')));
-                    entry.beatfreqHalfStart := parseFloat(string(TDOMElement(en).GetAttribute('beatfreq'))) / 2;
-                    entry.basefreqStart   := parseFloat(string(TDOMElement(en).GetAttribute('basefreq')));
-                    voice.addEntry(entry);
+                    entryType := string(TDOMElement(en).GetAttribute('type'));
+                    if CompareText(entryType, 'preparse') = 0 then
+                        runPreparseEntryGenerator(voice, TDOMElement(en), entryLineNo, aSourceFilePath)
+                    else
+                        parseAndAddEntryNode(voice, TDOMElement(en));
+
+                    Inc(entryLineNo);
                 end;
                 en := en.NextSibling;
             end;
@@ -384,16 +774,18 @@ var
     doc: TXMLDocument;
     root, node: TDOMNode;
     s: string;
+    sourceFilePath: string;
 begin
     for i := 0 to FvoiceCount - 1 do
         FreeAndNil(Fvoices[i]);
     SetLength(Fvoices, 0);
     FvoiceCount := 0;
     FtotalTime := 0;
-    FbaseDir := IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(aFileName)));
+    sourceFilePath := ExpandFileName(aFileName);
+    FbaseDir := IncludeTrailingPathDelimiter(ExtractFilePath(sourceFilePath));
 
     doc := nil;
-    ReadXMLFile(doc, aFileName);
+    ReadXMLFile(doc, sourceFilePath);
     try
         root := doc.DocumentElement;
         Ftitle := '';
@@ -425,7 +817,7 @@ begin
                 else if s = 'stereoswap' then
                     FstereoSwap := UTF8Encode(node.TextContent) <> '0'
                 else if s = 'voice' then
-                    parseVoiceNode(node);
+                    parseVoiceNode(node, sourceFilePath);
             end;
             node := node.NextSibling;
         end;
