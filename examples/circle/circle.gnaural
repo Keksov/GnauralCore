@@ -2,7 +2,7 @@
 <gnaural>
     <title>Circle</title>
     <author>example</author>
-    <schedule_description>Binaural circle: base_freq sweeps 80-200 Hz sinusoidally (1 cycle/min); beat_freq oscillates 0.5-5 Hz independently (3 cycles/min).</schedule_description>
+    <schedule_description>Binaural circle: two voices trace a closed circle. Upper arc sweeps center→200→140 Hz; lower arc sweeps center→ 80→140 Hz. Beat freq oscillates 0.5–5 Hz independently (3 cycles/min).</schedule_description>
     <loops>1</loops>
     <overallvolume_left>1.0</overallvolume_left>
     <overallvolume_right>1.0</overallvolume_right>
@@ -10,11 +10,31 @@
     <voice>
         <id>0</id>
         <type>0</type>
-        <description>Circle binaural</description>
+        <description>Upper arc (center → 200 Hz → center)</description>
         <voice_mute>0</voice_mute>
         <voice_mono>0</voice_mono>
+        <mindwave_color>#88c0d0</mindwave_color>
         <entries>
             <entry type="preparse" generator="circle.exe"
+                   arc="upper"
+                   steps="60"
+                   base_min="80" base_max="200"
+                   beat_min="0.5" beat_max="5"
+                   beat_cycles="3"
+                   duration="60"
+                   volume_left="0.9" volume_right="0.9"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>1</id>
+        <type>0</type>
+        <description>Lower arc (center → 80 Hz → center)</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#a3be8c</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="circle.exe"
+                   arc="lower"
                    steps="60"
                    base_min="80" base_max="200"
                    beat_min="0.5" beat_max="5"

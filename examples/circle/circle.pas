@@ -8,19 +8,21 @@ program CircleGenerator;
   Receives parameters from the <entry type="preparse"> attributes as
   --name value pairs (plus --gnaural_file and --line_no which are ignored).
 
-  Outputs N <entry .../> lines to stdout; each represents one equal-duration
-  segment of a sinusoidal frequency circle:
+  Outputs N <entry .../> lines to stdout for one semicircular arc.
+  Two instances (arc=upper + arc=lower) together draw a full circle in the
+  time-vs-frequency chart, starting and ending at center = (base_min+base_max)/2.
 
-    base_freq: one full sine sweep from base_min to base_max and back,
-               completing exactly 1 cycle over the total duration.
+    base_freq  upper arc: center + radius * sin(Pi * phase)  (center → max → center)
+               lower arc: center - radius * sin(Pi * phase)  (center → min → center)
 
     beat_freq: independent sine oscillation between beat_min and beat_max,
                completing beat_cycles full cycles over the total duration.
 
   Parameters (all optional, defaults shown):
+    --arc         upper   which semicircle: upper (→ base_max) or lower (→ base_min)
     --steps       60      number of output entries
-    --base_min    80.0    minimum base frequency (Hz)
-    --base_max    200.0   maximum base frequency (Hz)
+    --base_min    80.0    lower arc peak frequency (Hz)
+    --base_max    200.0   upper arc peak frequency (Hz)
     --beat_min    0.5     minimum beat frequency (Hz)
     --beat_max    5.0     maximum beat frequency (Hz)
     --beat_cycles 3.0     independent beat cycles per total duration
@@ -45,6 +47,10 @@ var
     totalDur    : Double;
     volumeLeft  : Double;
     volumeRight : Double;
+    arc         : string;
+    arcSign     : Double;
+    center      : Double;
+    radius      : Double;
     i           : Integer;
     phase       : Double;
     beatPhase   : Double;
@@ -67,6 +73,7 @@ begin
     totalDur    := 60.0;
     volumeLeft  := 0.9;
     volumeRight := 0.9;
+    arc         := 'upper';
 
     { Parse --name value pairs; skip unrecognised names (e.g. --gnaural_file, --line_no) }
     argIndex := 1;
@@ -82,7 +89,8 @@ begin
         else if argName = '--beat_cycles'  then beatCycles := StrToFloatDef(argValue, beatCycles)
         else if argName = '--duration'     then totalDur   := StrToFloatDef(argValue, totalDur)
         else if argName = '--volume_left'  then volumeLeft := StrToFloatDef(argValue, volumeLeft)
-        else if argName = '--volume_right' then volumeRight:= StrToFloatDef(argValue, volumeRight);
+        else if argName = '--volume_right' then volumeRight:= StrToFloatDef(argValue, volumeRight)
+        else if argName = '--arc'           then arc         := argValue;
         Inc(argIndex, 2);
     end;
 
@@ -99,26 +107,40 @@ begin
     end;
 
     segDuration := totalDur / steps;
+    center      := (baseMin + baseMax) / 2.0;
+    radius      := (baseMax - baseMin) / 2.0;
+
+    if arc = 'upper' then
+        arcSign := 1.0
+    else if arc = 'lower' then
+        arcSign := -1.0
+    else
+    begin
+        WriteLn(StdErr, 'circle: --arc must be "upper" or "lower"');
+        Halt(1);
+    end;
 
     {
       For step i (0..steps-1):
         phase     = i / steps  in [0, 1)
-        base_freq = base_min + (base_max - base_min) * (0.5 - 0.5*cos(2*pi*phase))
-                  → starts at base_min, peaks at base_max at midpoint, returns to base_min
+        base_freq = center ± radius * sin(Pi * phase)
+                  upper: starts at center (140), peaks at base_max (200), returns to center
+                  lower: starts at center (140), dips to base_min  (80), returns to center
 
         beatPhase = beat_cycles * i / steps  in [0, beat_cycles)
         beat_freq = beat_min + (beat_max - beat_min) * (0.5 - 0.5*cos(2*pi*beatPhase))
                   → faster independent oscillation
 
-      The gnaural engine interpolates each entry's value toward the next entry's value,
-      and the last entry wraps to the first — so the circle is seamlessly cyclic.
+      The two arcs together form one closed circle in the time-vs-frequency chart.
+      The gnaural engine interpolates each entry toward the next; the last entry
+      wraps to the first — so the circle loops cleanly.
     }
     for i := 0 to steps - 1 do
     begin
         phase     := i / steps;
         beatPhase := beatCycles * i / steps;
 
-        baseFreq := baseMin + (baseMax - baseMin) * (0.5 - 0.5 * Cos(2.0 * Pi * phase));
+        baseFreq := center + arcSign * radius * Sin(Pi * phase);
         beatFreq := beatMin + (beatMax - beatMin) * (0.5 - 0.5 * Cos(2.0 * Pi * beatPhase));
 
         WriteLn(Format(
