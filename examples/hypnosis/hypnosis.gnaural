@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gnaural>
+    <title>Hypnosis Showcase</title>
+    <author>example</author>
+    <schedule_description>Non-clinical preparse demo for calm focus: two binaural wave voices, soft pink noise, and a low breathing anchor drone. Do not use while driving or operating machinery.</schedule_description>
+    <loops>1</loops>
+    <overallvolume_left>0.85</overallvolume_left>
+    <overallvolume_right>0.85</overallvolume_right>
+    <stereoswap>0</stereoswap>
+    <voice>
+        <id>0</id>
+        <type>0</type>
+        <description>Lead induction wave</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#88c0d0</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="hypnosis.exe"
+                   layer="lead"
+                   steps="90"
+                   duration="180"
+                   base_center="185" base_radius="18"
+                   beat_start="10" beat_deep="4.5" beat_exit="8"
+                   breath_cycles="9"
+                   volume_min="0.16" volume_max="0.34"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>1</id>
+        <type>0</type>
+        <description>Counter wave</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#a3be8c</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="hypnosis.exe"
+                   layer="counter"
+                   steps="90"
+                   duration="180"
+                   base_center="185" base_radius="18"
+                   beat_start="10" beat_deep="4.5" beat_exit="8"
+                   breath_cycles="9"
+                   volume_min="0.12" volume_max="0.26"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>2</id>
+        <type>1</type>
+        <description>Soft pink veil</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#d8dee9</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="hypnosis.exe"
+                   layer="noise"
+                   steps="90"
+                   duration="180"
+                   volume_min="0.05" volume_max="0.14"
+                   breath_cycles="6"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>3</id>
+        <type>0</type>
+        <description>Low breathing anchor</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#bf616a</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="hypnosis.exe"
+                   layer="anchor"
+                   steps="90"
+                   duration="180"
+                   base_center="112" base_radius="6"
+                   beat_start="2.2" beat_deep="1.2" beat_exit="2.0"
+                   volume_min="0.04" volume_max="0.15"
+                   breath_cycles="6"/>
+        </entries>
+    </voice>
+</gnaural>

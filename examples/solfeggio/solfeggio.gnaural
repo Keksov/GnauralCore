@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gnaural>
+    <title>Solfeggio Meditation Showcase</title>
+    <author>example</author>
+    <schedule_description>Non-clinical preparse demo inspired by solfeggio frequencies for meditative listening: 174, 285, 396, 417, 528, 639, 741, 852, 963 Hz. This is not medical treatment or a therapeutic claim.</schedule_description>
+    <loops>1</loops>
+    <overallvolume_left>0.78</overallvolume_left>
+    <overallvolume_right>0.78</overallvolume_right>
+    <stereoswap>0</stereoswap>
+    <voice>
+        <id>0</id>
+        <type>0</type>
+        <description>Solfeggio lead arc</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#88c0d0</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="solfeggio.exe"
+                   layer="lead"
+                   steps="180"
+                   duration="180"
+                   freqs="174,285,396,417,528,639,741,852,963"
+                   ascent_portion="0.86"
+                   beat_start="8" beat_deep="4.5" beat_exit="7"
+                   breath_cycles="9"
+                   volume_min="0.12" volume_max="0.30"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>1</id>
+        <type>0</type>
+        <description>Harmonic shimmer</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#ebcb8b</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="solfeggio.exe"
+                   layer="halo"
+                   steps="180"
+                   duration="180"
+                   freqs="174,285,396,417,528,639,741,852,963"
+                   ascent_portion="0.86"
+                   detune_hz="7.5"
+                   beat_start="8" beat_deep="4.5" beat_exit="7"
+                   breath_cycles="12"
+                   volume_min="0.04" volume_max="0.16"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>2</id>
+        <type>0</type>
+        <description>Grounding drone</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#a3be8c</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="solfeggio.exe"
+                   layer="ground"
+                   steps="180"
+                   duration="180"
+                   freqs="174,285,396,417,528,639,741,852,963"
+                   ascent_portion="0.86"
+                   divisor="3"
+                   beat_start="3.2" beat_deep="1.2" beat_exit="2.5"
+                   breath_cycles="6"
+                   volume_min="0.05" volume_max="0.18"/>
+        </entries>
+    </voice>
+    <voice>
+        <id>3</id>
+        <type>1</type>
+        <description>Soft pink veil</description>
+        <voice_mute>0</voice_mute>
+        <voice_mono>0</voice_mono>
+        <mindwave_color>#d8dee9</mindwave_color>
+        <entries>
+            <entry type="preparse" generator="solfeggio.exe"
+                   layer="noise"
+                   steps="180"
+                   duration="180"
+                   breath_cycles="7"
+                   volume_min="0.03" volume_max="0.11"/>
+        </entries>
+    </voice>
+</gnaural>

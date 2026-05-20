@@ -121,11 +121,12 @@ begin
     end;
 
     {
-      For step i (0..steps-1):
-        phase     = i / steps  in [0, 1)
-        base_freq = center ± radius * sin(Pi * phase)
-                  upper: starts at center (140), peaks at base_max (200), returns to center
-                  lower: starts at center (140), dips to base_min  (80), returns to center
+            For step i (0..steps-1):
+                phase     = i / steps  in [0, 1)
+                u         = 2*phase - 1 in [-1, 1)
+                base_freq = center ± radius * sqrt(1 - u*u)
+                                    upper: upper semicircle of x^2 + y^2 = radius^2
+                                    lower: lower semicircle of x^2 + y^2 = radius^2
 
         beatPhase = beat_cycles * i / steps  in [0, beat_cycles)
         beat_freq = beat_min + (beat_max - beat_min) * (0.5 - 0.5*cos(2*pi*beatPhase))
@@ -140,7 +141,8 @@ begin
         phase     := i / steps;
         beatPhase := beatCycles * i / steps;
 
-        baseFreq := center + arcSign * radius * Sin(Pi * phase);
+        phase := 2.0 * phase - 1.0;
+        baseFreq := center + arcSign * radius * Sqrt(1.0 - phase * phase);
         beatFreq := beatMin + (beatMax - beatMin) * (0.5 - 0.5 * Cos(2.0 * Pi * beatPhase));
 
         WriteLn(Format(
