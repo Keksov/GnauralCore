@@ -8,6 +8,7 @@ import type {
   AudioRenderDoneEvent,
   AudioRenderProgressEvent,
   AudioRenderState,
+  AudioScheduleChangedEvent,
   AudioScheduleLoadedEvent,
   AudioSettings,
   AudioStatusEvent,
@@ -937,6 +938,10 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
+  function handleScheduleChanged(event: AudioScheduleChangedEvent): void {
+    void loadGnauralSchedule(event.filePath, true)
+  }
+
   function handleExit(event: AudioExitEvent): void {
     lastExitCode.value = event.exitCode
     if (event.role === 'playback') {
@@ -1019,6 +1024,7 @@ export const useAudioStore = defineStore('audio', () => {
     handleRenderProgress,
     handleRenderDone,
     handleScheduleLoaded,
+    handleScheduleChanged,
     handleExit,
   }
 })

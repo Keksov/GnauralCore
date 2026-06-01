@@ -85,6 +85,8 @@ begin
             Result := 'stop';
         gctQuit:
             Result := 'quit';
+        gctEntry:
+            Result := 'entry';
     else
         Result := 'unknown';
     end;
@@ -524,6 +526,29 @@ begin
                     emitCommandAck(gctStop, True);
                 end;
 
+                gctEntry:
+                begin
+                    if Fschedule = nil then
+                        raise Exception.Create('No schedule loaded.');
+                    if (cmd.VoiceId < 0) or (cmd.VoiceId >= Fschedule.VoiceCount) then
+                        raise Exception.CreateFmt('Voice index out of range: %d', [cmd.VoiceId]);
+                    if not Fschedule.getVoice(cmd.VoiceId).IsExternalStdin then
+                        raise Exception.CreateFmt(
+                            'Voice %d is not an external stdin voice', [cmd.VoiceId]);
+                    if Fsynth = nil then
+                        raise Exception.Create('No synth active.');
+
+                    Fsynth.pushExternalEntry(
+                        cmd.VoiceId,
+                        cmd.BaseFreq,
+                        cmd.BeatFreq,
+                        cmd.VolL,
+                        cmd.VolR,
+                        cmd.TransitionTimeSec,
+                        cmd.DurationSec);
+                    emitCommandAck(gctEntry, True);
+                end;
+
                 gctQuit:
                 begin
                     stopPlayback(False);
@@ -761,7 +786,7 @@ begin
 
         while not Fsynth.isCompleted do
             Sleep(50);
-        
+
         FaudioOutput.stop;
 
         WriteLn;

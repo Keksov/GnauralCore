@@ -5,7 +5,7 @@ unit GnauralSynth;
 interface
 
 uses
-    SysUtils, Math,
+    SysUtils, Math, SyncObjs,
     GnauralSchedule,
     GnauralVoiceSynth,
     GnauralAudioFileReader;
@@ -54,6 +54,10 @@ public
     procedure   setVoiceBeatFreq(aVoiceIndex: Integer; aBeatFreq: Double);
     procedure   setVoiceBaseFreq(aVoiceIndex: Integer; aBaseFreq: Double);
     procedure   setVoiceVolume(aVoiceIndex: Integer; aVolL, aVolR: Double);
+    // External stdin entry push - safe to call from any thread
+    procedure   pushExternalEntry(aVoiceIndex: Integer;
+                    aBaseFreq, aBeatFreq, aVolL, aVolR: Double;
+                    aTransitionTimeSec, aDurationSec: Double);
     function    getPlaybackPosition: Double;
     function    isCompleted: Boolean;
     function    getVoiceCount: Integer;
@@ -103,6 +107,7 @@ var
     voice: TVoice;
     e0: TScheduleEntry;
     pcmBuf: TIntegerDynArray;
+    beatfreqHalf: Double;
 begin
     for v := 0 to FvoiceCount - 1 do
     begin
@@ -148,6 +153,47 @@ begin
                             voice.AudioFilePath, '": ', E.Message);
             end;
         end;
+
+        // External stdin voice: seed state from XML initial values
+        if voice.IsExternalStdin then
+        begin
+            FvoiceStates[v].FextFromBase   := voice.ExtInitBase;
+            FvoiceStates[v].FextToBase     := voice.ExtInitBase;
+            FvoiceStates[v].FextFromBeat   := voice.ExtInitBeat;
+            FvoiceStates[v].FextToBeat     := voice.ExtInitBeat;
+            FvoiceStates[v].FextFromVolL   := voice.ExtInitVolL;
+            FvoiceStates[v].FextToVolL     := voice.ExtInitVolL;
+            FvoiceStates[v].FextFromVolR   := voice.ExtInitVolR;
+            FvoiceStates[v].FextToVolR     := voice.ExtInitVolR;
+            FvoiceStates[v].FextGlide      := 0;
+            FvoiceStates[v].FextGlideTotal := 0;
+            FvoiceStates[v].FextDurLeft    := 0;
+            FvoiceStates[v].FextDurFinite  := False;
+            FvoiceStates[v].FextSeqSeen    := 0;
+            FvoiceStates[v].FextPendSeq    := 0;
+            FvoiceStates[v].FcurVolL       := voice.ExtInitVolL;
+            FvoiceStates[v].FcurVolR       := voice.ExtInitVolR;
+            if voice.VoiceType = vtBinaural then
+            begin
+                beatfreqHalf := voice.ExtInitBeat / 2;
+                FvoiceStates[v].FcurBasefreq        := voice.ExtInitBase;
+                FvoiceStates[v].FcurBeatfreq        := voice.ExtInitBeat;
+                FvoiceStates[v].FcurBeatfreqLfactor := (voice.ExtInitBase + beatfreqHalf) * BB_SAMPLE_FACTOR;
+                FvoiceStates[v].FcurBeatfreqRfactor := (voice.ExtInitBase - beatfreqHalf) * BB_SAMPLE_FACTOR;
+            end
+            else if (voice.VoiceType = vtIsoPulse) or (voice.VoiceType = vtIsoPulseAlt) then
+            begin
+                // Seed phase counter so the pulse generator starts at the correct
+                // period; without this it defaults to 1 sample (full-rate distortion).
+                if voice.ExtInitBeat > 0.0001 then
+                begin
+                    FvoiceStates[v].FphaseSampleCountStart :=
+                        Round(BB_AUDIOSAMPLERATE / 2 / voice.ExtInitBeat);
+                    FvoiceStates[v].FphaseSampleCount :=
+                        FvoiceStates[v].FphaseSampleCountStart;
+                end;
+            end;
+        end;
     end;
 end;
 
@@ -173,6 +219,10 @@ var
     dropMother, rainMother: PSmallInt;
     factor, basefreq, beatfreqHalf: Double;
     oldBeatfreq, newBeatfreq, phaseFactor: Double;
+    glideFactor: Double;
+    extSeq: LongInt;
+    extPendBase, extPendBeat, extPendVolL, extPendVolR: Double;
+    extPendGlide, extPendDur: Cardinal;
 begin
     dropMother := nil;
     rainMother := nil;
@@ -201,6 +251,159 @@ begin
                 // ===== PERIODIC UPDATE (every BB_UPDATE_PERIOD samples) =====
                 if FupdatePeriod = 0 then
                 begin
+                    if voice.IsExternalStdin then
+                    begin
+                        // External stdin voice: consume pending entry (seqlock)
+                        extSeq := TInterlocked.CompareExchange(FvoiceStates[v].FextPendSeq, 0, 0);
+                        if (extSeq and 1 = 0) and (extSeq <> FvoiceStates[v].FextSeqSeen) then
+                        begin
+                            // Snapshot pending fields to locals before verifying seq
+                            ReadWriteBarrier;
+                            extPendBase  := FvoiceStates[v].FextPendBase;
+                            extPendBeat  := FvoiceStates[v].FextPendBeat;
+                            extPendVolL  := FvoiceStates[v].FextPendVolL;
+                            extPendVolR  := FvoiceStates[v].FextPendVolR;
+                            extPendGlide := FvoiceStates[v].FextPendGlide;
+                            extPendDur   := FvoiceStates[v].FextPendDur;
+                            ReadWriteBarrier;
+                            // Verify seq unchanged - no torn write during snapshot
+                            if TInterlocked.CompareExchange(FvoiceStates[v].FextPendSeq, 0, 0) = extSeq then
+                            begin
+                                FvoiceStates[v].FextSeqSeen := extSeq;
+                                // Capture current interpolated position as new "from"
+                                if (FvoiceStates[v].FextGlideTotal > 0) and
+                                   (FvoiceStates[v].FextGlide > 0) then
+                                begin
+                                    glideFactor := 1.0 - FvoiceStates[v].FextGlide /
+                                        FvoiceStates[v].FextGlideTotal;
+                                    FvoiceStates[v].FextFromBase :=
+                                        FvoiceStates[v].FextFromBase +
+                                        (FvoiceStates[v].FextToBase -
+                                         FvoiceStates[v].FextFromBase) * glideFactor;
+                                    FvoiceStates[v].FextFromBeat :=
+                                        FvoiceStates[v].FextFromBeat +
+                                        (FvoiceStates[v].FextToBeat -
+                                         FvoiceStates[v].FextFromBeat) * glideFactor;
+                                    FvoiceStates[v].FextFromVolL :=
+                                        FvoiceStates[v].FextFromVolL +
+                                        (FvoiceStates[v].FextToVolL -
+                                         FvoiceStates[v].FextFromVolL) * glideFactor;
+                                    FvoiceStates[v].FextFromVolR :=
+                                        FvoiceStates[v].FextFromVolR +
+                                        (FvoiceStates[v].FextToVolR -
+                                         FvoiceStates[v].FextFromVolR) * glideFactor;
+                                end
+                                else
+                                begin
+                                    // Holding at target — from = current target
+                                    FvoiceStates[v].FextFromBase := FvoiceStates[v].FextToBase;
+                                    FvoiceStates[v].FextFromBeat := FvoiceStates[v].FextToBeat;
+                                    FvoiceStates[v].FextFromVolL := FvoiceStates[v].FextToVolL;
+                                    FvoiceStates[v].FextFromVolR := FvoiceStates[v].FextToVolR;
+                                end;
+                                FvoiceStates[v].FextToBase    := extPendBase;
+                                FvoiceStates[v].FextToBeat    := extPendBeat;
+                                FvoiceStates[v].FextToVolL    := extPendVolL;
+                                FvoiceStates[v].FextToVolR    := extPendVolR;
+                                FvoiceStates[v].FextGlideTotal := extPendGlide;
+                                FvoiceStates[v].FextGlide     := extPendGlide;
+                                FvoiceStates[v].FextDurLeft   := extPendDur;
+                                FvoiceStates[v].FextDurFinite := extPendDur > 0;
+                            end;
+                            // If seq changed, snapshot was torn - skip this cycle, retry next
+                        end;
+
+                        if not FvoiceStates[v].Fmuted then
+                        begin
+                            if (FvoiceStates[v].FextGlideTotal > 0) and
+                               (FvoiceStates[v].FextGlide > 0) then
+                                glideFactor := 1.0 - FvoiceStates[v].FextGlide /
+                                    FvoiceStates[v].FextGlideTotal
+                            else
+                                glideFactor := 1.0;
+
+                            basefreq := FvoiceStates[v].FextFromBase +
+                                (FvoiceStates[v].FextToBase -
+                                 FvoiceStates[v].FextFromBase) * glideFactor;
+                            beatfreqHalf := (FvoiceStates[v].FextFromBeat +
+                                (FvoiceStates[v].FextToBeat -
+                                 FvoiceStates[v].FextFromBeat) * glideFactor) / 2;
+                            volL := FvoiceStates[v].FextFromVolL +
+                                (FvoiceStates[v].FextToVolL -
+                                 FvoiceStates[v].FextFromVolL) * glideFactor;
+                            volR := FvoiceStates[v].FextFromVolR +
+                                (FvoiceStates[v].FextToVolR -
+                                 FvoiceStates[v].FextFromVolR) * glideFactor;
+
+                            FvoiceStates[v].FcurVolL := volL;
+                            FvoiceStates[v].FcurVolR := volR;
+
+                            case voice.VoiceType of
+                                vtBinaural:
+                                begin
+                                    FvoiceStates[v].FcurBasefreq := basefreq;
+                                    FvoiceStates[v].FcurBeatfreq := beatfreqHalf * 2;
+                                    FvoiceStates[v].FcurBeatfreqLfactor :=
+                                        (basefreq + beatfreqHalf) * BB_SAMPLE_FACTOR;
+                                    FvoiceStates[v].FcurBeatfreqRfactor :=
+                                        (basefreq - beatfreqHalf) * BB_SAMPLE_FACTOR;
+                                end;
+                                vtIsoPulse, vtIsoPulseAlt:
+                                begin
+                                    FvoiceStates[v].FcurBasefreq := basefreq;
+                                    oldBeatfreq := FvoiceStates[v].FcurBeatfreq;
+                                    newBeatfreq := beatfreqHalf * 2;
+                                    if newBeatfreq < 0.0001 then newBeatfreq := 0.0001;
+                                    FvoiceStates[v].FcurBeatfreq := newBeatfreq;
+                                    if Abs(oldBeatfreq - newBeatfreq) > 1e-9 then
+                                    begin
+                                        if FvoiceStates[v].FphaseSampleCountStart > 0 then
+                                            phaseFactor := FvoiceStates[v].FphaseSampleCount /
+                                                FvoiceStates[v].FphaseSampleCountStart
+                                        else
+                                            phaseFactor := 0;
+                                        FvoiceStates[v].FphaseSampleCountStart :=
+                                            Round(BB_AUDIOSAMPLERATE / 2.0 / newBeatfreq);
+                                        FvoiceStates[v].FphaseSampleCount :=
+                                            Round(FvoiceStates[v].FphaseSampleCountStart * phaseFactor);
+                                    end;
+                                    FvoiceStates[v].FcurBeatfreqLfactor := basefreq * BB_SAMPLE_FACTOR;
+                                    FvoiceStates[v].FcurBeatfreqRfactor := basefreq * BB_SAMPLE_FACTOR;
+                                end;
+                            end; // case voice type (external)
+                        end; // if not muted (external)
+
+                        // Advance finite hold: check glide BEFORE decrement so countdown
+                        // starts only on ticks where glide was already 0 at entry.
+                        if (FvoiceStates[v].FextGlide = 0) and FvoiceStates[v].FextDurFinite then
+                        begin
+                            if FvoiceStates[v].FextDurLeft > Cardinal(BB_UPDATE_PERIOD) then
+                                Dec(FvoiceStates[v].FextDurLeft, BB_UPDATE_PERIOD)
+                            else
+                            begin
+                                FvoiceStates[v].FextDurLeft := 0;
+                                FvoiceStates[v].FextDurFinite := False;
+                                FvoiceStates[v].FextFromBase := voice.ExtInitBase;
+                                FvoiceStates[v].FextToBase := voice.ExtInitBase;
+                                FvoiceStates[v].FextFromBeat := voice.ExtInitBeat;
+                                FvoiceStates[v].FextToBeat := voice.ExtInitBeat;
+                                FvoiceStates[v].FextFromVolL := voice.ExtInitVolL;
+                                FvoiceStates[v].FextToVolL := voice.ExtInitVolL;
+                                FvoiceStates[v].FextFromVolR := voice.ExtInitVolR;
+                                FvoiceStates[v].FextToVolR := voice.ExtInitVolR;
+                            end;
+                        end;
+                        // Advance glide countdown
+                        if FvoiceStates[v].FextGlide > 0 then
+                        begin
+                            if FvoiceStates[v].FextGlide >= Cardinal(BB_UPDATE_PERIOD) then
+                                Dec(FvoiceStates[v].FextGlide, BB_UPDATE_PERIOD)
+                            else
+                                FvoiceStates[v].FextGlide := 0;
+                        end;
+                    end
+                    else
+                    begin
                     ce := FvoiceStates[v].FcurEntry;
 
                     // Clamp out-of-bounds entry
@@ -329,6 +532,7 @@ begin
                             end;
                         end; // case
                     end; // if not muted (periodic)
+                    end; // else normal voice
                 end; // if updateperiod = 0
 
                 // ===== PER-SAMPLE SYNTHESIS =====
@@ -528,6 +732,39 @@ end;
 function TGnauralSynth.getVoiceCount: Integer;
 begin
     Result := FvoiceCount;
+end;
+
+procedure TGnauralSynth.pushExternalEntry(aVoiceIndex: Integer;
+    aBaseFreq, aBeatFreq, aVolL, aVolR: Double;
+    aTransitionTimeSec, aDurationSec: Double);
+var
+    glideSamples, durSamples: Cardinal;
+begin
+    if (aVoiceIndex < 0) or (aVoiceIndex >= FvoiceCount) then
+        Exit;
+    if not Fschedule.getVoice(aVoiceIndex).IsExternalStdin then
+        Exit;
+
+    if aTransitionTimeSec > 0 then
+        glideSamples := Round(aTransitionTimeSec * BB_AUDIOSAMPLERATE)
+    else
+        glideSamples := 0;
+    if aDurationSec > 0 then
+        durSamples := Round(aDurationSec * BB_AUDIOSAMPLERATE)
+    else
+        durSamples := 0;
+
+    // Seqlock write: odd seq = write in progress, even seq = ready
+    TInterlocked.Increment(FvoiceStates[aVoiceIndex].FextPendSeq);
+    ReadWriteBarrier;                              // prevent data writes reordering before the odd-seq store
+    FvoiceStates[aVoiceIndex].FextPendBase  := aBaseFreq;
+    FvoiceStates[aVoiceIndex].FextPendBeat  := aBeatFreq;
+    FvoiceStates[aVoiceIndex].FextPendVolL  := aVolL;
+    FvoiceStates[aVoiceIndex].FextPendVolR  := aVolR;
+    FvoiceStates[aVoiceIndex].FextPendGlide := glideSamples;
+    FvoiceStates[aVoiceIndex].FextPendDur   := durSamples;
+    ReadWriteBarrier;
+    TInterlocked.Increment(FvoiceStates[aVoiceIndex].FextPendSeq);
 end;
 
 end.

@@ -21,7 +21,8 @@ type
         gctSetVolume,
         gctMuteVoice,
         gctStop,
-        gctQuit
+        gctQuit,
+        gctEntry
     );
 
     TGnauralCommand = record
@@ -32,6 +33,13 @@ type
         RightVolume          : Double;
         VoiceId              : Integer;
         Muted                : Boolean;
+        // cmd=entry fields:
+        BaseFreq             : Double;
+        BeatFreq             : Double;
+        VolL                 : Double;
+        VolR                 : Double;
+        TransitionTimeSec    : Double;
+        DurationSec          : Double;
     end;
 
 function    parseGnauralCommand(const aLine: string;
@@ -167,6 +175,12 @@ begin
     aCmd.RightVolume := 1.0;
     aCmd.VoiceId := -1;
     aCmd.Muted := False;
+    aCmd.BaseFreq := 0.0;
+    aCmd.BeatFreq := 0.0;
+    aCmd.VolL := 0.0;
+    aCmd.VolR := 0.0;
+    aCmd.TransitionTimeSec := 0.0;
+    aCmd.DurationSec := 0.0;
 
     if Trim(aLine) = '' then
         Exit;
@@ -267,6 +281,37 @@ begin
         if cmdText = 'quit' then
         begin
             aCmd.CmdType := gctQuit;
+            Result := True;
+            Exit;
+        end;
+
+        if cmdText = 'entry' then
+        begin
+            if not tryGetJsonInteger(obj, 'voice_id', aCmd.VoiceId) then
+                Exit;
+            if aCmd.VoiceId < 0 then
+                Exit;
+            if not tryGetJsonFloat(obj, 'basefreq', aCmd.BaseFreq) then
+                Exit;
+            if not tryGetJsonFloat(obj, 'beatfreq', aCmd.BeatFreq) then
+                Exit;
+            if not tryGetJsonFloat(obj, 'volume_left', aCmd.VolL) then
+                Exit;
+            if not tryGetJsonFloat(obj, 'volume_right', aCmd.VolR) then
+                Exit;
+            // Optional fields with default 0; present-but-invalid must fail.
+            if (obj.IndexOfName('transition_time') >= 0) and
+               (not tryGetJsonFloat(obj, 'transition_time', aCmd.TransitionTimeSec)) then
+                Exit;
+            if (obj.IndexOfName('duration') >= 0) and
+               (not tryGetJsonFloat(obj, 'duration', aCmd.DurationSec)) then
+                Exit;
+            // Range validation
+            if (aCmd.BaseFreq < 0) or (aCmd.BeatFreq < 0) then Exit;
+            if (aCmd.VolL < 0) or (aCmd.VolL > 1) then Exit;
+            if (aCmd.VolR < 0) or (aCmd.VolR > 1) then Exit;
+            if (aCmd.TransitionTimeSec < 0) or (aCmd.DurationSec < 0) then Exit;
+            aCmd.CmdType := gctEntry;
             Result := True;
             Exit;
         end;

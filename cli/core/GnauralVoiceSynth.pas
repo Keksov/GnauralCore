@@ -52,6 +52,28 @@ type
         FpcmData            : array of Integer;
         FpcmPos             : Cardinal;
         Fdrops              : array of TWaterdrop;
+        // External stdin voice runtime state (audio thread only):
+        FextFromBase        : Double;
+        FextToBase          : Double;
+        FextFromBeat        : Double;
+        FextToBeat          : Double;
+        FextFromVolL        : Double;
+        FextToVolL          : Double;
+        FextFromVolR        : Double;
+        FextToVolR          : Double;
+        FextGlide           : Cardinal;   // samples remaining in current glide
+        FextGlideTotal      : Cardinal;   // total samples for current glide
+        FextDurLeft         : Cardinal;   // samples remaining in hold after glide
+        FextDurFinite       : LongBool;   // false means infinite/no active finite hold
+        FextSeqSeen         : LongInt;    // last seqlock seq the audio thread processed
+        // Pending slot - stdin thread writes, audio thread reads (seqlock on x86-64):
+        FextPendBase        : Double;
+        FextPendBeat        : Double;
+        FextPendVolL        : Double;
+        FextPendVolR        : Double;
+        FextPendGlide       : Cardinal;
+        FextPendDur         : Cardinal;
+        FextPendSeq         : LongInt;    // even=ready, odd=write-in-progress, 0=none
     end;
 
 // Initialize voice state to defaults
@@ -234,6 +256,26 @@ begin
     SetLength(aState.FpcmData, 0);
     aState.FpcmPos := 0;
     SetLength(aState.Fdrops, 0);
+    aState.FextFromBase    := 0;
+    aState.FextToBase      := 0;
+    aState.FextFromBeat    := 0;
+    aState.FextToBeat      := 0;
+    aState.FextFromVolL    := 0;
+    aState.FextToVolL      := 0;
+    aState.FextFromVolR    := 0;
+    aState.FextToVolR      := 0;
+    aState.FextGlide       := 0;
+    aState.FextGlideTotal  := 0;
+    aState.FextDurLeft     := 0;
+    aState.FextDurFinite   := False;
+    aState.FextSeqSeen     := 0;
+    aState.FextPendBase    := 0;
+    aState.FextPendBeat    := 0;
+    aState.FextPendVolL    := 0;
+    aState.FextPendVolR    := 0;
+    aState.FextPendGlide   := 0;
+    aState.FextPendDur     := 0;
+    aState.FextPendSeq     := 0;
 end;
 
 end.

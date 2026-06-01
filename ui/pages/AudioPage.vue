@@ -267,6 +267,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
 import { useAudioTransport } from '../composables/use-audio-transport'
+import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import { useAudioStore } from '../stores/audio'
 
@@ -362,6 +363,8 @@ const {
   handlePauseResume,
   handleSeek,
 } = useAudioTransport()
+
+const wsService = useWsService()
 
 let selectionChangeToken = 0
 
@@ -773,7 +776,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handlePlayerKeyDown)
+  wsService.send({ type: 'audio_subscribe_schedule', filePath: null })
 })
+
+watch(() => audio.selectedFileKind === 'gnaural' ? audio.selectedPath : null, (gnauralPath, previousGnauralPath) => {
+  if (gnauralPath === previousGnauralPath) return
+  wsService.send({ type: 'audio_subscribe_schedule', filePath: gnauralPath })
+})
+
+watch(() => wsService.connectionState.value, (state) => {
+  if (state !== 'connected') return
+  wsService.send({ type: 'audio_subscribe_schedule', filePath: audio.selectedFileKind === 'gnaural' ? audio.selectedPath : null })
+}, { immediate: true })
 
 watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
   if (displayMode === previousDisplayMode) {

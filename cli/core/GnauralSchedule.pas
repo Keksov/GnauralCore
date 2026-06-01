@@ -57,6 +57,11 @@ private
     FtotalDuration          : Double;
     FentryCount             : Integer;
     Fentries                : array of TScheduleEntry;
+    FisExternalStdin        : Boolean;
+    FextInitBase            : Double;
+    FextInitBeat            : Double;
+    FextInitVolL            : Double;
+    FextInitVolR            : Double;
 
 public
     constructor Create;
@@ -65,16 +70,21 @@ public
     procedure   addEntry(const aEntry: TScheduleEntry);
     function    getEntry(aIndex: Integer): TScheduleEntry;
 
-    property Id             : Integer   read Fid           write Fid;
-    property VoiceType      : TVoiceType read FvoiceType   write FvoiceType;
-    property Hidden         : Boolean   read Fhidden       write Fhidden;
-    property Mute           : Boolean   read Fmute         write Fmute;
-    property Mono           : Boolean   read Fmono         write Fmono;
-    property Color          : string    read Fcolor        write Fcolor;
-    property Description    : string    read Fdescription  write Fdescription;
-    property AudioFilePath  : string    read FaudioFilePath write FaudioFilePath;
+    property Id             : Integer   read Fid              write Fid;
+    property VoiceType      : TVoiceType read FvoiceType      write FvoiceType;
+    property Hidden         : Boolean   read Fhidden          write Fhidden;
+    property Mute           : Boolean   read Fmute            write Fmute;
+    property Mono           : Boolean   read Fmono            write Fmono;
+    property Color          : string    read Fcolor           write Fcolor;
+    property Description    : string    read Fdescription     write Fdescription;
+    property AudioFilePath  : string    read FaudioFilePath   write FaudioFilePath;
     property TotalDuration  : Double    read FtotalDuration;
     property EntryCount     : Integer   read FentryCount;
+    property IsExternalStdin: Boolean   read FisExternalStdin write FisExternalStdin;
+    property ExtInitBase    : Double    read FextInitBase     write FextInitBase;
+    property ExtInitBeat    : Double    read FextInitBeat     write FextInitBeat;
+    property ExtInitVolL    : Double    read FextInitVolL     write FextInitVolL;
+    property ExtInitVolR    : Double    read FextInitVolR     write FextInitVolR;
     end;
 
     {***************************************************************************
@@ -195,6 +205,11 @@ begin
     FtotalDuration := 0;
     FentryCount := 0;
     SetLength(Fentries, 0);
+    FisExternalStdin := False;
+    FextInitBase := 0;
+    FextInitBeat := 0;
+    FextInitVolL := 0;
+    FextInitVolR := 0;
 end;
 
 destructor TVoice.Destroy;
@@ -729,7 +744,17 @@ begin
                     entryType := string(TDOMElement(en).GetAttribute('type'));
                     if CompareText(entryType, 'preparse') = 0 then
                         runPreparseEntryGenerator(voice, TDOMElement(en), entryLineNo, aSourceFilePath)
-                    else
+                    else if (CompareText(entryType, 'external') = 0) and
+                        (CompareText(string(TDOMElement(en).GetAttribute('input')), 'stdin') = 0) then
+                    begin
+                        voice.IsExternalStdin := True;
+                        voice.ExtInitBase := parseFloat(string(TDOMElement(en).GetAttribute('basefreq')));
+                        voice.ExtInitBeat := parseFloat(string(TDOMElement(en).GetAttribute('beatfreq')));
+                        voice.ExtInitVolL := parseFloat(string(TDOMElement(en).GetAttribute('volume_left')));
+                        voice.ExtInitVolR := parseFloat(string(TDOMElement(en).GetAttribute('volume_right')));
+                    end
+                    // Once a voice is marked external, subsequent normal entries are ignored
+                    else if not voice.IsExternalStdin then
                         parseAndAddEntryNode(voice, TDOMElement(en));
 
                     Inc(entryLineNo);
@@ -882,6 +907,14 @@ begin
             jsonStream.WriteString(',"audioFilePath":"' + jsonEscape(voice.AudioFilePath) + '"');
             jsonStream.WriteString(',"totalDurationSec":' + jsonLogFloat3(voice.TotalDuration));
             jsonStream.WriteString(',"entryCount":' + IntToStr(voice.EntryCount));
+            jsonStream.WriteString(',"isExternalStdin":' + jsonBool(voice.IsExternalStdin));
+            if voice.IsExternalStdin then
+            begin
+                jsonStream.WriteString(',"extInitBase":' + jsonLogFloat3(voice.ExtInitBase));
+                jsonStream.WriteString(',"extInitBeat":' + jsonLogFloat3(voice.ExtInitBeat));
+                jsonStream.WriteString(',"extInitVolL":' + jsonLogFloat3(voice.ExtInitVolL));
+                jsonStream.WriteString(',"extInitVolR":' + jsonLogFloat3(voice.ExtInitVolR));
+            end;
             jsonStream.WriteString(',"entries":[');
 
             for j := 0 to voice.EntryCount - 1 do
