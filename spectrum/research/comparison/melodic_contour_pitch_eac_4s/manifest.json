@@ -1,0 +1,1586 @@
+{
+  "fixtureName": "melodic_contour_pitch_eac_4s",
+  "fixturePath": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\melodic_contour_pitch_eac_4s.wav",
+  "fixtureHashSha256": "D087F9E7AA582F7871DADE0776DCBE59DB0E3616DBFD1834AEE1BE814BEF544A",
+  "workerExe": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\SpectrumCoreFftwWorkerProbe.exe",
+  "workerHashSha256": "138389703ECE09DAA5992339518CF639A2445F5378E6D03A2F4029E1D96219A7",
+  "analysisConfigBase": {
+    "FScale": "log",
+    "Channel": 0,
+    "WinFunc": "hann",
+    "StartHz": 80.0,
+    "Window": 2048,
+    "Overlap": 0.75,
+    "StopHz": 4000.0,
+    "Hop": 512,
+    "Limit": 0.0,
+    "Gain": 1.0,
+    "DRange": 120.0
+  },
+  "queryProfile": {
+    "ExpectedSummary": "four one-second melodic plateaus at 440, 523.251, 659.255, and 880 Hz",
+    "PrimaryPointName": "noteE5",
+    "RequirePhaseUphaseTileDelta": true,
+    "PointProbes": [
+      {
+        "Name": "noteA4",
+        "Label": "A4 plateau",
+        "Time": 0.5,
+        "Freq": 440.0,
+        "ExpectedFreq": 440.0,
+        "FreqToleranceHz": 15.0,
+        "MinMagnitude": 0.05
+      },
+      {
+        "Name": "noteC5",
+        "Label": "C5 plateau",
+        "Time": 1.5,
+        "Freq": 523.251,
+        "ExpectedFreq": 523.251,
+        "FreqToleranceHz": 20.0,
+        "MinMagnitude": 0.05
+      },
+      {
+        "Name": "noteE5",
+        "Label": "E5 plateau",
+        "Time": 2.5,
+        "Freq": 659.255,
+        "ExpectedFreq": 659.255,
+        "FreqToleranceHz": 20.0,
+        "MinMagnitude": 0.05
+      },
+      {
+        "Name": "noteA5",
+        "Label": "A5 plateau",
+        "Time": 3.5,
+        "Freq": 880.0,
+        "ExpectedFreq": 880.0,
+        "FreqToleranceHz": 30.0,
+        "MinMagnitude": 0.05
+      }
+    ],
+    "AreaProbe": {
+      "TimeStart": 2.4,
+      "TimeEnd": 2.6,
+      "FreqStart": 600.0,
+      "FreqEnd": 720.0,
+      "ExpectedPeakTime": 2.5,
+      "PeakTimeTolerance": 0.06,
+      "AllowedPeakFrequencies": [
+        659.255
+      ],
+      "PeakFreqToleranceHz": 25.0,
+      "MinMaxMagnitude": 0.05
+    }
+  },
+  "referenceCoverage": {
+    "ffmpegModes": [
+      "magnitude",
+      "phase",
+      "uphase"
+    ],
+    "audacityModes": [
+      "magnitude"
+    ],
+    "ffmpegPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\ffmpeg\\melodic_contour_pitch_eac_4s",
+    "audacityPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\audacity\\melodic_contour_pitch_eac_4s"
+  },
+  "phaseUphaseTileMaxAbsDelta": 31.415926,
+  "classification": "match",
+  "classificationReason": "All strict magnitude, phase, and unwrapped-phase checks passed.",
+  "modes": {
+    "magnitude": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "magnitude",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "All fixture-specific magnitude checks passed against the stricter profile.",
+      "checks": [
+        {
+          "Name": "noteA4-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=430.664063; expected=440.000000; tolerance=15.000000."
+        },
+        {
+          "Name": "noteA4-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.055270; minimum=0.050000."
+        },
+        {
+          "Name": "noteC5-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=516.796875; expected=523.251000; tolerance=20.000000."
+        },
+        {
+          "Name": "noteC5-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.058949; minimum=0.050000."
+        },
+        {
+          "Name": "noteE5-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=667.529297; expected=659.255000; tolerance=20.000000."
+        },
+        {
+          "Name": "noteE5-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.056758; minimum=0.050000."
+        },
+        {
+          "Name": "noteA5-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=882.861328; expected=880.000000; tolerance=30.000000."
+        },
+        {
+          "Name": "noteA5-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.061778; minimum=0.050000."
+        },
+        {
+          "Name": "melodic-monotonic-contour",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "A4=430.664063; C5=516.796875; E5=667.529297; A5=882.861328."
+        },
+        {
+          "Name": "melodic-area-peak-time",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakTimeSec=2.542585; expected=2.500000."
+        },
+        {
+          "Name": "melodic-area-peak-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakFreqHz=667.529297; expected=659.255000 +/- 25.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "noteE5",
+        "pointObservations": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.05527,
+            "magnitude": 0.05527,
+            "db": -25.15027,
+            "phase": 2.580853,
+            "unwrappedPhase": 2.580853
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 523.251,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 24,
+            "binHz": 516.796875,
+            "value": 0.058949,
+            "magnitude": 0.058949,
+            "db": -24.59046,
+            "phase": 1.038263,
+            "unwrappedPhase": 1.038263
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "requestedTimeSec": 2.5,
+            "requestedFreqHz": 659.255,
+            "frameIndex": 213,
+            "frameTimeSec": 2.496145,
+            "binIndex": 31,
+            "binHz": 667.529297,
+            "value": 0.056758,
+            "magnitude": 0.056758,
+            "db": -24.919394,
+            "phase": 2.112026,
+            "unwrappedPhase": -4.171159
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "requestedTimeSec": 3.5,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 299,
+            "frameTimeSec": 3.494603,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": 0.061778,
+            "magnitude": 0.061778,
+            "db": -24.1833,
+            "phase": -3.136699,
+            "unwrappedPhase": 9.429671
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 213,
+          "frameTimeSec": 2.496145,
+          "binIndex": 31,
+          "binHz": 667.529297,
+          "value": 0.056758,
+          "magnitude": 0.056758,
+          "db": -24.919394,
+          "phase": 2.112026,
+          "unwrappedPhase": -4.171159
+        },
+        "areaPeak": {
+          "frameIndex": 217,
+          "binIndex": 31,
+          "timeSec": 2.542585,
+          "freqHz": 667.529297,
+          "peakValue": 0.056759,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338
+        },
+        "representativeTile": {
+          "frameStart": 212,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.0457
+        }
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "magnitude",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 341,
+          "binCount": 1025,
+          "durationS": 4.0
+        },
+        "pointQueries": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "query": {
+              "Name": "noteA4",
+              "Label": "A4 plateau",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 15.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 0.05527,
+              "magnitude": 0.05527,
+              "db": -25.15027,
+              "displayDb": -25.15027,
+              "normalized": 0.790414,
+              "phase": 2.580853,
+              "unwrappedPhase": 2.580853
+            }
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "query": {
+              "Name": "noteC5",
+              "Label": "C5 plateau",
+              "Time": 1.5,
+              "Freq": 523.251,
+              "ExpectedFreq": 523.251,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+              "frameIndex": 127,
+              "binIndex": 24,
+              "frameTimeSec": 1.497687,
+              "binHz": 516.796875,
+              "value": 0.058949,
+              "magnitude": 0.058949,
+              "db": -24.59046,
+              "displayDb": -24.59046,
+              "normalized": 0.795079,
+              "phase": 1.038263,
+              "unwrappedPhase": 1.038263
+            }
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "query": {
+              "Name": "noteE5",
+              "Label": "E5 plateau",
+              "Time": 2.5,
+              "Freq": 659.255,
+              "ExpectedFreq": 659.255,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+              "frameIndex": 213,
+              "binIndex": 31,
+              "frameTimeSec": 2.496145,
+              "binHz": 667.529297,
+              "value": 0.056758,
+              "magnitude": 0.056758,
+              "db": -24.919394,
+              "displayDb": -24.919394,
+              "normalized": 0.792338,
+              "phase": 2.112026,
+              "unwrappedPhase": -4.171159
+            }
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "query": {
+              "Name": "noteA5",
+              "Label": "A5 plateau",
+              "Time": 3.5,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+              "frameIndex": 299,
+              "binIndex": 41,
+              "frameTimeSec": 3.494603,
+              "binHz": 882.861328,
+              "value": 0.061778,
+              "magnitude": 0.061778,
+              "db": -24.1833,
+              "displayDb": -24.1833,
+              "normalized": 0.798472,
+              "phase": -3.136699,
+              "unwrappedPhase": 9.429671
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+          "frameStart": 212,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "magnitude",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 212,
+              "timeSec": 2.484535,
+              "bins": [
+                1E-06,
+                1E-06,
+                1E-06,
+                1E-06,
+                2E-06,
+                4E-06,
+                9E-06,
+                4.4E-05,
+                0.0457,
+                3.4E-05,
+                2E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 213,
+              "timeSec": 2.496145,
+              "bins": [
+                1E-06,
+                1E-06,
+                1E-06,
+                2E-06,
+                2E-06,
+                4E-06,
+                9E-06,
+                4.4E-05,
+                0.0457,
+                3.4E-05,
+                2E-06,
+                1E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 214,
+              "timeSec": 2.507755,
+              "bins": [
+                2E-06,
+                1E-06,
+                2E-06,
+                2E-06,
+                3E-06,
+                4E-06,
+                9E-06,
+                4.4E-05,
+                0.0457,
+                3.4E-05,
+                2E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "melodic_contour_pitch_eac_4s_magnitude",
+          "frameStart": 205,
+          "frameEnd": 222,
+          "binStart": 28,
+          "binEnd": 33,
+          "cellCount": 108,
+          "meanValue": 0.021678,
+          "meanMagnitude": 0.021678,
+          "peakValue": 0.056759,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakDisplayDb": -24.919367,
+          "peakNormalized": 0.792339,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338,
+          "peakFrameIndex": 217,
+          "peakBinIndex": 31,
+          "peakTimeSec": 2.542585,
+          "peakFreqHz": 667.529297
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_magnitude"
+        }
+      }
+    },
+    "phase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "phase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Wrapped-phase queries stay on the same canonical magnitude binding and value echoes the wrapped phase field.",
+      "checks": [
+        {
+          "Name": "phase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=phase."
+        },
+        {
+          "Name": "phase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "phase-noteA4-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,20); magnitude=(41,20)."
+        },
+        {
+          "Name": "phase-noteA4-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.055270; magnitudeMode=0.055270."
+        },
+        {
+          "Name": "phase-noteA4-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.580853; phase=2.580853."
+        },
+        {
+          "Name": "phase-noteA4-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.580853."
+        },
+        {
+          "Name": "phase-noteC5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(127,24); magnitude=(127,24)."
+        },
+        {
+          "Name": "phase-noteC5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.058949; magnitudeMode=0.058949."
+        },
+        {
+          "Name": "phase-noteC5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.038263; phase=1.038263."
+        },
+        {
+          "Name": "phase-noteC5-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.038263."
+        },
+        {
+          "Name": "phase-noteE5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(213,31); magnitude=(213,31)."
+        },
+        {
+          "Name": "phase-noteE5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.056758; magnitudeMode=0.056758."
+        },
+        {
+          "Name": "phase-noteE5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.112026; phase=2.112026."
+        },
+        {
+          "Name": "phase-noteE5-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.112026."
+        },
+        {
+          "Name": "phase-noteA5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(299,41); magnitude=(299,41)."
+        },
+        {
+          "Name": "phase-noteA5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.061778; magnitudeMode=0.061778."
+        },
+        {
+          "Name": "phase-noteA5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-3.136699; phase=-3.136699."
+        },
+        {
+          "Name": "phase-noteA5-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-3.136699."
+        },
+        {
+          "Name": "phase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(217,31); magnitudePeak=(217,31)."
+        },
+        {
+          "Name": "phase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.056759; magnitudeMode=0.056759."
+        },
+        {
+          "Name": "phase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-0.302338; peakPhase=-0.302338."
+        },
+        {
+          "Name": "phase-area-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-0.302338."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "noteE5",
+        "pointObservations": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 2.580853,
+            "magnitude": 0.05527,
+            "db": -25.15027,
+            "phase": 2.580853,
+            "unwrappedPhase": 2.580853
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 523.251,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 24,
+            "binHz": 516.796875,
+            "value": 1.038263,
+            "magnitude": 0.058949,
+            "db": -24.59046,
+            "phase": 1.038263,
+            "unwrappedPhase": 1.038263
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "requestedTimeSec": 2.5,
+            "requestedFreqHz": 659.255,
+            "frameIndex": 213,
+            "frameTimeSec": 2.496145,
+            "binIndex": 31,
+            "binHz": 667.529297,
+            "value": 2.112026,
+            "magnitude": 0.056758,
+            "db": -24.919394,
+            "phase": 2.112026,
+            "unwrappedPhase": -4.171159
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "requestedTimeSec": 3.5,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 299,
+            "frameTimeSec": 3.494603,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": -3.136699,
+            "magnitude": 0.061778,
+            "db": -24.1833,
+            "phase": -3.136699,
+            "unwrappedPhase": 9.429671
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 213,
+          "frameTimeSec": 2.496145,
+          "binIndex": 31,
+          "binHz": 667.529297,
+          "value": 2.112026,
+          "magnitude": 0.056758,
+          "db": -24.919394,
+          "phase": 2.112026,
+          "unwrappedPhase": -4.171159
+        },
+        "areaPeak": {
+          "frameIndex": 217,
+          "binIndex": 31,
+          "timeSec": 2.542585,
+          "freqHz": 667.529297,
+          "peakValue": -0.302338,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338
+        },
+        "representativeTile": {
+          "frameStart": 212,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 3.125098
+        },
+        "phaseUphaseTileMaxAbsDelta": 31.415926
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_phase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "phase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 341,
+          "binCount": 1025,
+          "durationS": 4.0
+        },
+        "pointQueries": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "query": {
+              "Name": "noteA4",
+              "Label": "A4 plateau",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 15.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_phase",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 2.580853,
+              "magnitude": 0.05527,
+              "db": -25.15027,
+              "displayDb": -25.15027,
+              "normalized": 0.790414,
+              "phase": 2.580853,
+              "unwrappedPhase": 2.580853
+            }
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "query": {
+              "Name": "noteC5",
+              "Label": "C5 plateau",
+              "Time": 1.5,
+              "Freq": 523.251,
+              "ExpectedFreq": 523.251,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_phase",
+              "frameIndex": 127,
+              "binIndex": 24,
+              "frameTimeSec": 1.497687,
+              "binHz": 516.796875,
+              "value": 1.038263,
+              "magnitude": 0.058949,
+              "db": -24.59046,
+              "displayDb": -24.59046,
+              "normalized": 0.795079,
+              "phase": 1.038263,
+              "unwrappedPhase": 1.038263
+            }
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "query": {
+              "Name": "noteE5",
+              "Label": "E5 plateau",
+              "Time": 2.5,
+              "Freq": 659.255,
+              "ExpectedFreq": 659.255,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_phase",
+              "frameIndex": 213,
+              "binIndex": 31,
+              "frameTimeSec": 2.496145,
+              "binHz": 667.529297,
+              "value": 2.112026,
+              "magnitude": 0.056758,
+              "db": -24.919394,
+              "displayDb": -24.919394,
+              "normalized": 0.792338,
+              "phase": 2.112026,
+              "unwrappedPhase": -4.171159
+            }
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "query": {
+              "Name": "noteA5",
+              "Label": "A5 plateau",
+              "Time": 3.5,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_phase",
+              "frameIndex": 299,
+              "binIndex": 41,
+              "frameTimeSec": 3.494603,
+              "binHz": 882.861328,
+              "value": -3.136699,
+              "magnitude": 0.061778,
+              "db": -24.1833,
+              "displayDb": -24.1833,
+              "normalized": 0.798472,
+              "phase": -3.136699,
+              "unwrappedPhase": 9.429671
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "melodic_contour_pitch_eac_4s_phase",
+          "frameStart": 212,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "phase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 212,
+              "timeSec": 2.484535,
+              "bins": [
+                -2.398367,
+                -2.348352,
+                -2.20515,
+                -2.263031,
+                -2.105565,
+                -2.025939,
+                -1.999318,
+                -1.995232,
+                0.923172,
+                1.1415,
+                1.242605,
+                1.715672,
+                1.782863,
+                0.287,
+                0.526091,
+                0.892239
+              ]
+            },
+            {
+              "frameIndex": 213,
+              "timeSec": 2.496145,
+              "bins": [
+                2.578104,
+                2.364603,
+                2.621112,
+                2.392947,
+                2.221657,
+                2.188964,
+                2.145076,
+                2.116321,
+                -0.807929,
+                -1.033089,
+                -1.065727,
+                -1.121092,
+                -2.153196,
+                -2.91488,
+                -1.292471,
+                0.174961
+              ]
+            },
+            {
+              "frameIndex": 214,
+              "timeSec": 2.507755,
+              "bins": [
+                -0.052689,
+                -0.10452,
+                0.069325,
+                -0.077596,
+                -0.035198,
+                -0.02373,
+                -0.05527,
+                -0.061646,
+                2.857586,
+                3.080408,
+                3.01914,
+                2.90657,
+                -2.872361,
+                -1.456069,
+                -2.228277,
+                -3.125098
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "melodic_contour_pitch_eac_4s_phase",
+          "frameStart": 205,
+          "frameEnd": 222,
+          "binStart": 28,
+          "binEnd": 33,
+          "cellCount": 108,
+          "meanValue": -0.02237,
+          "meanMagnitude": 0.021678,
+          "peakValue": -0.302338,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakDisplayDb": -24.919367,
+          "peakNormalized": 0.792339,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338,
+          "peakFrameIndex": 217,
+          "peakBinIndex": 31,
+          "peakTimeSec": 2.542585,
+          "peakFreqHz": 667.529297
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_phase"
+        }
+      }
+    },
+    "uphase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "uphase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Unwrapped-phase queries stay on the same canonical magnitude binding and value echoes the unwrapped phase field.",
+      "checks": [
+        {
+          "Name": "uphase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=uphase."
+        },
+        {
+          "Name": "uphase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "uphase-noteA4-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,20); magnitude=(41,20)."
+        },
+        {
+          "Name": "uphase-noteA4-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.055270; magnitudeMode=0.055270."
+        },
+        {
+          "Name": "uphase-noteA4-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.580853; unwrappedPhase=2.580853."
+        },
+        {
+          "Name": "uphase-noteA4-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=2.580853."
+        },
+        {
+          "Name": "uphase-noteC5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(127,24); magnitude=(127,24)."
+        },
+        {
+          "Name": "uphase-noteC5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.058949; magnitudeMode=0.058949."
+        },
+        {
+          "Name": "uphase-noteC5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.038263; unwrappedPhase=1.038263."
+        },
+        {
+          "Name": "uphase-noteC5-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.038263."
+        },
+        {
+          "Name": "uphase-noteE5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(213,31); magnitude=(213,31)."
+        },
+        {
+          "Name": "uphase-noteE5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.056758; magnitudeMode=0.056758."
+        },
+        {
+          "Name": "uphase-noteE5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-4.171159; unwrappedPhase=-4.171159."
+        },
+        {
+          "Name": "uphase-noteE5-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-4.171159."
+        },
+        {
+          "Name": "uphase-noteA5-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(299,41); magnitude=(299,41)."
+        },
+        {
+          "Name": "uphase-noteA5-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.061778; magnitudeMode=0.061778."
+        },
+        {
+          "Name": "uphase-noteA5-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=9.429671; unwrappedPhase=9.429671."
+        },
+        {
+          "Name": "uphase-noteA5-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=9.429671."
+        },
+        {
+          "Name": "uphase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(217,31); magnitudePeak=(217,31)."
+        },
+        {
+          "Name": "uphase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.056759; magnitudeMode=0.056759."
+        },
+        {
+          "Name": "uphase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-0.302338; peakUnwrappedPhase=-0.302338."
+        },
+        {
+          "Name": "uphase-area-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-0.302338."
+        },
+        {
+          "Name": "uphase-tile-divergence",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "maxAbsDeltaVsPhase=31.415926."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "noteE5",
+        "pointObservations": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 2.580853,
+            "magnitude": 0.05527,
+            "db": -25.15027,
+            "phase": 2.580853,
+            "unwrappedPhase": 2.580853
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 523.251,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 24,
+            "binHz": 516.796875,
+            "value": 1.038263,
+            "magnitude": 0.058949,
+            "db": -24.59046,
+            "phase": 1.038263,
+            "unwrappedPhase": 1.038263
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "requestedTimeSec": 2.5,
+            "requestedFreqHz": 659.255,
+            "frameIndex": 213,
+            "frameTimeSec": 2.496145,
+            "binIndex": 31,
+            "binHz": 667.529297,
+            "value": -4.171159,
+            "magnitude": 0.056758,
+            "db": -24.919394,
+            "phase": 2.112026,
+            "unwrappedPhase": -4.171159
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "requestedTimeSec": 3.5,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 299,
+            "frameTimeSec": 3.494603,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": 9.429671,
+            "magnitude": 0.061778,
+            "db": -24.1833,
+            "phase": -3.136699,
+            "unwrappedPhase": 9.429671
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 213,
+          "frameTimeSec": 2.496145,
+          "binIndex": 31,
+          "binHz": 667.529297,
+          "value": -4.171159,
+          "magnitude": 0.056758,
+          "db": -24.919394,
+          "phase": 2.112026,
+          "unwrappedPhase": -4.171159
+        },
+        "areaPeak": {
+          "frameIndex": 217,
+          "binIndex": 31,
+          "timeSec": 2.542585,
+          "freqHz": 667.529297,
+          "peakValue": -0.302338,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338
+        },
+        "representativeTile": {
+          "frameStart": 212,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 34.541023
+        },
+        "phaseUphaseTileMaxAbsDelta": 31.415926
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "uphase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 341,
+          "binCount": 1025,
+          "durationS": 4.0
+        },
+        "pointQueries": [
+          {
+            "name": "noteA4",
+            "label": "A4 plateau",
+            "query": {
+              "Name": "noteA4",
+              "Label": "A4 plateau",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 15.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 2.580853,
+              "magnitude": 0.05527,
+              "db": -25.15027,
+              "displayDb": -25.15027,
+              "normalized": 0.790414,
+              "phase": 2.580853,
+              "unwrappedPhase": 2.580853
+            }
+          },
+          {
+            "name": "noteC5",
+            "label": "C5 plateau",
+            "query": {
+              "Name": "noteC5",
+              "Label": "C5 plateau",
+              "Time": 1.5,
+              "Freq": 523.251,
+              "ExpectedFreq": 523.251,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+              "frameIndex": 127,
+              "binIndex": 24,
+              "frameTimeSec": 1.497687,
+              "binHz": 516.796875,
+              "value": 1.038263,
+              "magnitude": 0.058949,
+              "db": -24.59046,
+              "displayDb": -24.59046,
+              "normalized": 0.795079,
+              "phase": 1.038263,
+              "unwrappedPhase": 1.038263
+            }
+          },
+          {
+            "name": "noteE5",
+            "label": "E5 plateau",
+            "query": {
+              "Name": "noteE5",
+              "Label": "E5 plateau",
+              "Time": 2.5,
+              "Freq": 659.255,
+              "ExpectedFreq": 659.255,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+              "frameIndex": 213,
+              "binIndex": 31,
+              "frameTimeSec": 2.496145,
+              "binHz": 667.529297,
+              "value": -4.171159,
+              "magnitude": 0.056758,
+              "db": -24.919394,
+              "displayDb": -24.919394,
+              "normalized": 0.792338,
+              "phase": 2.112026,
+              "unwrappedPhase": -4.171159
+            }
+          },
+          {
+            "name": "noteA5",
+            "label": "A5 plateau",
+            "query": {
+              "Name": "noteA5",
+              "Label": "A5 plateau",
+              "Time": 3.5,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.05
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+              "frameIndex": 299,
+              "binIndex": 41,
+              "frameTimeSec": 3.494603,
+              "binHz": 882.861328,
+              "value": 9.429671,
+              "magnitude": 0.061778,
+              "db": -24.1833,
+              "displayDb": -24.1833,
+              "normalized": 0.798472,
+              "phase": -3.136699,
+              "unwrappedPhase": 9.429671
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+          "frameStart": 212,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "uphase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 212,
+              "timeSec": 2.484535,
+              "bins": [
+                3.884818,
+                3.934833,
+                4.078036,
+                4.020154,
+                4.177621,
+                4.257246,
+                4.283868,
+                4.287953,
+                7.206357,
+                13.70787,
+                13.808976,
+                14.282043,
+                14.349234,
+                25.419741,
+                31.942017,
+                7.175424
+              ]
+            },
+            {
+              "frameIndex": 213,
+              "timeSec": 2.496145,
+              "bins": [
+                2.578104,
+                2.364603,
+                2.621112,
+                2.392947,
+                2.221657,
+                2.188964,
+                2.145076,
+                2.116321,
+                -0.807929,
+                -7.316275,
+                -7.348912,
+                -7.404277,
+                -14.719566,
+                -2.91488,
+                11.273899,
+                -31.240965
+              ]
+            },
+            {
+              "frameIndex": 214,
+              "timeSec": 2.507755,
+              "bins": [
+                -0.052689,
+                -0.10452,
+                0.069325,
+                -0.077596,
+                -0.035198,
+                -0.02373,
+                -0.05527,
+                -0.061646,
+                2.857586,
+                -3.202777,
+                -3.264045,
+                -3.376615,
+                -2.872361,
+                -1.456069,
+                -8.511462,
+                -34.541023
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "melodic_contour_pitch_eac_4s_uphase",
+          "frameStart": 205,
+          "frameEnd": 222,
+          "binStart": 28,
+          "binEnd": 33,
+          "cellCount": 108,
+          "meanValue": 2.246558,
+          "meanMagnitude": 0.021678,
+          "peakValue": -0.302338,
+          "maxMagnitude": 0.056759,
+          "maxDb": -24.919367,
+          "peakDisplayDb": -24.919367,
+          "peakNormalized": 0.792339,
+          "peakPhase": -0.302338,
+          "peakUnwrappedPhase": -0.302338,
+          "peakFrameIndex": 217,
+          "peakBinIndex": 31,
+          "peakTimeSec": 2.542585,
+          "peakFreqHz": 667.529297
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "melodic_contour_pitch_eac_4s_uphase"
+        }
+      }
+    }
+  },
+  "responses": {
+    "quit": {
+      "ok": true,
+      "cmd": "quit"
+    }
+  }
+}

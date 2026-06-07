@@ -1,7 +1,7 @@
 # Backend Research Decision
 
-**Date**: 2026-06-01  
-**Status**: PROVISIONAL — standalone GPL worker architecture accepted; FFTW (Candidate A) now has a validated native-static worker proof in a monolithic exe. Final production approval still depends on parity evidence and immutable source pinning for the reference trees.
+**Date**: 2026-06-01
+**Status**: PROVISIONAL — standalone GPL worker architecture accepted; FFTW (Candidate A) now has a validated native-static worker proof in a monolithic exe. Final production approval still depends on ratifying the saved parity evidence and immutable source pinning for the reference trees.
 
 ---
 
@@ -65,8 +65,8 @@ Under that question, `FFTW` is stronger than `AVTX` for the primary spectral-ana
 ## Remaining Gates
 
 - **Worker-contract gate**: baseline proof is now closed for `open-analysis`, `get-tile`, `point-query`, `area-query`, `close-analysis`, and `quit` with saved evidence. If editing feedback remains in scope, add `mark-dirty-range` and `recompute-range` proof as a separate gate.
-- **Parity gate**: save agreed Audacity and FFmpeg reference outputs/observations for the shared fixtures, then compare SpectrumCore outputs against them. Initial `test_sine440` FFTW baseline and FFmpeg raster references now exist; Audacity capture is still pending.
-- **Reproducibility gate**: local FFmpeg/Audacity trees still need immutable archive provenance and key-file hashes in addition to filesystem paths.
+- **Parity gate**: closed for the current canonical R5A set. The saved worker-side manifests cover `magnitude`, `phase`, and `uphase`, the current strict summary label is `match` for all seven canonical fixtures, and the archived baseline now lives in `c:\projects\KKMindWave\GnauralCore\spectrum\research\comparison\r5a-final-parity-baseline-2026-06-04.md`.
+- **Reproducibility gate**: current local FFmpeg and Audacity source-tree provenance is now pinned in `c:\projects\KKMindWave\GnauralCore\spectrum\research\comparison\reference-source-provenance-2026-06-04.md`, including the exact installed Audacity capture-runtime binary identity. The remaining nuance is narrower: the installed Audacity `3.7.7` runtime is still an external binary rather than a locally rebuilt executable from the vendored donor tree.
 - **FFTW static-link gate**: baseline probe closure is now green; the worker uses the product-local native static binding and validates without external FFTW runtime DLL dependency.
 - **AVTX static-link/value gate**: prove both that broader transform-family coverage materially helps product capability and that the required FFmpeg subset can be linked as objects/static libs into the same monolithic exe.
 
@@ -79,8 +79,8 @@ Under that question, `FFTW` is stronger than `AVTX` for the primary spectral-ana
 3. Preserve the validated FFTW worker evidence and use it as the anchor for parity/reference comparisons rather than reopening the old DLL-oriented probe path.
 4. Extend the validated FFTW analysis model only where it improves the queryable contract, such as additional data modes or richer tile/view projections, without changing the canonical worker-owned store.
 5. Build an AVTX probe focused on two questions: whether `MDCT/DCT/DST` coverage materially improves planned capabilities and whether the required FFmpeg subset can be statically linked into the same exe.
-6. Generate and store Audacity reference outputs/observations for the agreed fixtures.
-7. Compare current SpectrumCore outputs against the parity baseline on peak bin, chirp trajectory, impulse/transient behavior, deterministic output, and query responses.
+6. Preserve the canonical R5A fixture naming across FFmpeg, Audacity, and SpectrumCore comparison packs; keep `test_sine440` only as a historical alias, not as the canonical sine fixture path.
+7. Preserve the archived strict R5A parity baseline unless a concrete regression or intentional baseline roll requires a new dated archive.
 8. Keep `uos` only as probe/reference unless a later decision explicitly reopens it.
 
 ---
@@ -117,7 +117,8 @@ Under that question, `FFTW` is stronger than `AVTX` for the primary spectral-ana
 - Transform breadth does not automatically help the core spectrogram query/edit contract.
 - The same queryable worker-side analysis store would still need to be built above AVTX.
 - No existing FPC binding or validated minimal static-link integration path exists in this repo.
-- No concrete user-facing worker command or product feature depends on AVTX yet, so its product-value gate remains open even though the auxiliary transform layer already works.
+- Concrete user-facing worker commands now depend on AVTX: the worker-level `aux-transform` hook exposes `MDCT/IMDCT/DCT/DST`, and `mdct-edit-preview` proves a higher-level MDCT preview/resynthesis path on the same JSON boundary.
+- The remaining AVTX value question is no longer whether it can surface in the product at all, but how far that preview/resynthesis path should be integrated into broader editing flows.
 
 ### Candidate B — uos TFFT
 
@@ -162,8 +163,8 @@ Under that question, `FFTW` is stronger than `AVTX` for the primary spectral-ana
 
 1. Use the validated FFTW worker proof as the baseline artifact for parity/reference work.
 2. Extend the FFTW-backed analysis model only where it strengthens the query contract, starting with additional data modes or richer tile/view semantics.
-3. Produce an AVTX-focused probe that answers two questions only: does broader transform-family coverage materially improve planned product capability, and can the needed subset be statically linked into the same exe?
-4. Finish immutable source pinning for FFmpeg/Audacity local trees by capturing archive provenance plus key-file hashes.
-5. Capture Audacity baseline artifacts per fixture: raster/screenshot, exact effective settings, point/area observations, source hash, build identifier.
-6. Capture FFmpeg reference artifacts per fixture: exact CLI, output raster, stdout/stderr log.
-7. Save SpectrumCore outputs for the same settings tuples and classify each comparison as `match`, `close-enough`, `mismatch`, or `not-comparable`.
+3. Decide whether the current AVTX `mdct-edit-preview` path should stay as a proof artifact or be promoted into a larger edit-oriented worker flow; keep the same single-worker JSON boundary and canonical FFTW spectral store.
+4. Carry the archived strict R5A parity baseline forward into the implementation-phase docs and tests, and avoid reopening the old heuristic-only path unless a concrete regression appears.
+5. Decide whether the external-binary Audacity capture runtime should remain an accepted reference floor or later be replaced by a locally reproducible donor-tree build.
+6. Finish immutable source pinning for any additional reference binaries that later become part of the accepted floor.
+7. Archive the final comparison decision once the saved strict `match` set, current local source provenance, and the accepted Audacity runtime policy are all documented together.

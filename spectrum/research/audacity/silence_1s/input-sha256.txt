@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : D25E833F369713F6A5B79ABC53EF7B0EDB9493D18EC92CCC56E9FD1748CDBABF
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\silence_1s.wav
+

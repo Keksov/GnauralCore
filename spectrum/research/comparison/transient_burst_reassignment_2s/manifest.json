@@ -1,0 +1,1954 @@
+{
+  "fixtureName": "transient_burst_reassignment_2s",
+  "fixturePath": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\transient_burst_reassignment_2s.wav",
+  "fixtureHashSha256": "957D415035ED94D244D9FAE4AC58F19F2D30A75D7AECD51F67C6505E6E13433A",
+  "workerExe": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\SpectrumCoreFftwWorkerProbe.exe",
+  "workerHashSha256": "138389703ECE09DAA5992339518CF639A2445F5378E6D03A2F4029E1D96219A7",
+  "analysisConfigBase": {
+    "FScale": "log",
+    "Channel": 0,
+    "WinFunc": "hann",
+    "StartHz": 80.0,
+    "Window": 2048,
+    "Overlap": 0.75,
+    "StopHz": 4000.0,
+    "Hop": 512,
+    "Limit": 0.0,
+    "Gain": 1.0,
+    "DRange": 120.0
+  },
+  "queryProfile": {
+    "ExpectedSummary": "short harmonic bursts every 0.5 s with 700, 1700, and 3500 Hz energy",
+    "PrimaryPointName": "on700",
+    "RequirePhaseUphaseTileDelta": true,
+    "PointProbes": [
+      {
+        "Name": "on700",
+        "Label": "burst 700 Hz",
+        "Time": 0.51,
+        "Freq": 700.0,
+        "ExpectedFreq": 700.0,
+        "FreqToleranceHz": 35.0,
+        "MinMagnitude": 0.002
+      },
+      {
+        "Name": "on1700",
+        "Label": "burst 1700 Hz",
+        "Time": 0.51,
+        "Freq": 1700.0,
+        "ExpectedFreq": 1700.0,
+        "FreqToleranceHz": 80.0,
+        "MinMagnitude": 0.002
+      },
+      {
+        "Name": "on3500",
+        "Label": "burst 3500 Hz",
+        "Time": 0.51,
+        "Freq": 3500.0,
+        "ExpectedFreq": 3500.0,
+        "FreqToleranceHz": 140.0,
+        "MinMagnitude": 0.001
+      },
+      {
+        "Name": "off700",
+        "Label": "quiet 700 Hz",
+        "Time": 0.1,
+        "Freq": 700.0,
+        "ExpectedFreq": 700.0,
+        "FreqToleranceHz": 35.0,
+        "MinMagnitude": 0.0
+      },
+      {
+        "Name": "off1700",
+        "Label": "quiet 1700 Hz",
+        "Time": 0.1,
+        "Freq": 1700.0,
+        "ExpectedFreq": 1700.0,
+        "FreqToleranceHz": 80.0,
+        "MinMagnitude": 0.0
+      },
+      {
+        "Name": "off3500",
+        "Label": "quiet 3500 Hz",
+        "Time": 0.1,
+        "Freq": 3500.0,
+        "ExpectedFreq": 3500.0,
+        "FreqToleranceHz": 140.0,
+        "MinMagnitude": 0.0
+      }
+    ],
+    "AreaProbe": {
+      "TimeStart": 0.48,
+      "TimeEnd": 0.54,
+      "FreqStart": 500.0,
+      "FreqEnd": 3800.0,
+      "ExpectedPeakTime": 0.5,
+      "PeakTimeTolerance": 0.05,
+      "AllowedPeakFrequencies": [
+        700.0,
+        1700.0,
+        3500.0
+      ],
+      "PeakFreqToleranceHz": 180.0,
+      "MinMaxMagnitude": 0.002
+    }
+  },
+  "referenceCoverage": {
+    "ffmpegModes": [
+      "magnitude",
+      "phase",
+      "uphase"
+    ],
+    "audacityModes": [
+      "magnitude"
+    ],
+    "ffmpegPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\ffmpeg\\transient_burst_reassignment_2s",
+    "audacityPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\audacity\\transient_burst_reassignment_2s"
+  },
+  "phaseUphaseTileMaxAbsDelta": 515.221203,
+  "classification": "match",
+  "classificationReason": "All strict magnitude, phase, and unwrapped-phase checks passed.",
+  "modes": {
+    "magnitude": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "magnitude",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "All fixture-specific magnitude checks passed against the stricter profile.",
+      "checks": [
+        {
+          "Name": "on700-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=710.595703; expected=700.000000; tolerance=35.000000."
+        },
+        {
+          "Name": "on700-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.157316; minimum=0.002000."
+        },
+        {
+          "Name": "on1700-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=1701.123047; expected=1700.000000; tolerance=80.000000."
+        },
+        {
+          "Name": "on1700-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.132919; minimum=0.002000."
+        },
+        {
+          "Name": "on3500-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=3509.912109; expected=3500.000000; tolerance=140.000000."
+        },
+        {
+          "Name": "on3500-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.080660; minimum=0.001000."
+        },
+        {
+          "Name": "burst-on-off-contrast",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "onMin=0.080660; offMax=0.000000."
+        },
+        {
+          "Name": "burst-area-peak-time",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakTimeSec=0.510839; expected=0.500000."
+        },
+        {
+          "Name": "burst-area-peak-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakFreqHz=689.062500; expected burst harmonic +/- 180.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "on700",
+        "pointObservations": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": 0.157316,
+            "magnitude": 0.157316,
+            "db": -16.064529,
+            "phase": -1.119506,
+            "unwrappedPhase": -51.384987
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": 0.132919,
+            "magnitude": 0.132919,
+            "db": -17.528234,
+            "phase": -2.045281,
+            "unwrappedPhase": -121.425804
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": 0.08066,
+            "magnitude": 0.08066,
+            "db": -21.866844,
+            "phase": 1.072497,
+            "unwrappedPhase": -250.254913
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 42,
+          "frameTimeSec": 0.510839,
+          "binIndex": 33,
+          "binHz": 710.595703,
+          "value": 0.157316,
+          "magnitude": 0.157316,
+          "db": -16.064529,
+          "phase": -1.119506,
+          "unwrappedPhase": -51.384987
+        },
+        "areaPeak": {
+          "frameIndex": 42,
+          "binIndex": 32,
+          "timeSec": 0.510839,
+          "freqHz": 689.0625,
+          "peakValue": 0.158842,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845
+        },
+        "representativeTile": {
+          "frameStart": 41,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.030442
+        }
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "transient_burst_reassignment_2s_magnitude",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "magnitude",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "query": {
+              "Name": "on700",
+              "Label": "burst 700 Hz",
+              "Time": 0.51,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 42,
+              "binIndex": 33,
+              "frameTimeSec": 0.510839,
+              "binHz": 710.595703,
+              "value": 0.157316,
+              "magnitude": 0.157316,
+              "db": -16.064529,
+              "displayDb": -16.064529,
+              "normalized": 0.866129,
+              "phase": -1.119506,
+              "unwrappedPhase": -51.384987
+            }
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "query": {
+              "Name": "on1700",
+              "Label": "burst 1700 Hz",
+              "Time": 0.51,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 42,
+              "binIndex": 79,
+              "frameTimeSec": 0.510839,
+              "binHz": 1701.123047,
+              "value": 0.132919,
+              "magnitude": 0.132919,
+              "db": -17.528234,
+              "displayDb": -17.528234,
+              "normalized": 0.853931,
+              "phase": -2.045281,
+              "unwrappedPhase": -121.425804
+            }
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "query": {
+              "Name": "on3500",
+              "Label": "burst 3500 Hz",
+              "Time": 0.51,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.001
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 42,
+              "binIndex": 163,
+              "frameTimeSec": 0.510839,
+              "binHz": 3509.912109,
+              "value": 0.08066,
+              "magnitude": 0.08066,
+              "db": -21.866844,
+              "displayDb": -21.866844,
+              "normalized": 0.817776,
+              "phase": 1.072497,
+              "unwrappedPhase": -250.254913
+            }
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "query": {
+              "Name": "off700",
+              "Label": "quiet 700 Hz",
+              "Time": 0.1,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 7,
+              "binIndex": 33,
+              "frameTimeSec": 0.10449,
+              "binHz": 710.595703,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "query": {
+              "Name": "off1700",
+              "Label": "quiet 1700 Hz",
+              "Time": 0.1,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 7,
+              "binIndex": 79,
+              "frameTimeSec": 0.10449,
+              "binHz": 1701.123047,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "query": {
+              "Name": "off3500",
+              "Label": "quiet 3500 Hz",
+              "Time": 0.1,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_magnitude",
+              "frameIndex": 7,
+              "binIndex": 163,
+              "frameTimeSec": 0.10449,
+              "binHz": 3509.912109,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "transient_burst_reassignment_2s_magnitude",
+          "frameStart": 41,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "magnitude",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                0.005543,
+                0.005581,
+                0.005647,
+                0.005764,
+                0.005973,
+                0.006377,
+                0.007238,
+                0.009578,
+                0.030442,
+                0.007351,
+                0.000332,
+                0.003039,
+                0.008007,
+                0.000936,
+                0.000982,
+                0.001684
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                0.003214,
+                0.003142,
+                0.003016,
+                0.003025,
+                0.003332,
+                0.003358,
+                0.004125,
+                0.004812,
+                0.017812,
+                0.003678,
+                0.000207,
+                0.001609,
+                0.004285,
+                0.000476,
+                0.0006,
+                0.000902
+              ]
+            },
+            {
+              "frameIndex": 43,
+              "timeSec": 0.522449,
+              "bins": [
+                0.004234,
+                0.004261,
+                0.004304,
+                0.004393,
+                0.004561,
+                0.004862,
+                0.005511,
+                0.007306,
+                0.021305,
+                0.005542,
+                0.000274,
+                0.002315,
+                0.00615,
+                0.000713,
+                0.000754,
+                0.001283
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "transient_burst_reassignment_2s_magnitude",
+          "frameStart": 39,
+          "frameEnd": 45,
+          "binStart": 23,
+          "binEnd": 176,
+          "cellCount": 1078,
+          "meanValue": 0.005196,
+          "meanMagnitude": 0.005196,
+          "peakValue": 0.158842,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakDisplayDb": -15.98068,
+          "peakNormalized": 0.866828,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845,
+          "peakFrameIndex": 42,
+          "peakBinIndex": 32,
+          "peakTimeSec": 0.510839,
+          "peakFreqHz": 689.0625
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "transient_burst_reassignment_2s_magnitude"
+        }
+      }
+    },
+    "phase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "phase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Wrapped-phase queries stay on the same canonical magnitude binding and value echoes the wrapped phase field.",
+      "checks": [
+        {
+          "Name": "phase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=phase."
+        },
+        {
+          "Name": "phase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "phase-on700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,33); magnitude=(42,33)."
+        },
+        {
+          "Name": "phase-on700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.157316; magnitudeMode=0.157316."
+        },
+        {
+          "Name": "phase-on700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-1.119506; phase=-1.119506."
+        },
+        {
+          "Name": "phase-on700-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-1.119506."
+        },
+        {
+          "Name": "phase-on1700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,79); magnitude=(42,79)."
+        },
+        {
+          "Name": "phase-on1700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.132919; magnitudeMode=0.132919."
+        },
+        {
+          "Name": "phase-on1700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.045281; phase=-2.045281."
+        },
+        {
+          "Name": "phase-on1700-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.045281."
+        },
+        {
+          "Name": "phase-on3500-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,163); magnitude=(42,163)."
+        },
+        {
+          "Name": "phase-on3500-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.080660; magnitudeMode=0.080660."
+        },
+        {
+          "Name": "phase-on3500-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.072497; phase=1.072497."
+        },
+        {
+          "Name": "phase-on3500-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.072497."
+        },
+        {
+          "Name": "phase-off700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,33); magnitude=(7,33)."
+        },
+        {
+          "Name": "phase-off700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-off700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-off700-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-off1700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,79); magnitude=(7,79)."
+        },
+        {
+          "Name": "phase-off1700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-off1700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-off1700-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-off3500-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,163); magnitude=(7,163)."
+        },
+        {
+          "Name": "phase-off3500-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-off3500-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-off3500-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(42,32); magnitudePeak=(42,32)."
+        },
+        {
+          "Name": "phase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.158842; magnitudeMode=0.158842."
+        },
+        {
+          "Name": "phase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=2.231822; peakPhase=2.231822."
+        },
+        {
+          "Name": "phase-area-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=2.231822."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "on700",
+        "pointObservations": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": -1.119506,
+            "magnitude": 0.157316,
+            "db": -16.064529,
+            "phase": -1.119506,
+            "unwrappedPhase": -51.384987
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": -2.045281,
+            "magnitude": 0.132919,
+            "db": -17.528234,
+            "phase": -2.045281,
+            "unwrappedPhase": -121.425804
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": 1.072497,
+            "magnitude": 0.08066,
+            "db": -21.866844,
+            "phase": 1.072497,
+            "unwrappedPhase": -250.254913
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 42,
+          "frameTimeSec": 0.510839,
+          "binIndex": 33,
+          "binHz": 710.595703,
+          "value": -1.119506,
+          "magnitude": 0.157316,
+          "db": -16.064529,
+          "phase": -1.119506,
+          "unwrappedPhase": -51.384987
+        },
+        "areaPeak": {
+          "frameIndex": 42,
+          "binIndex": 32,
+          "timeSec": 0.510839,
+          "freqHz": 689.0625,
+          "peakValue": 2.231822,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845
+        },
+        "representativeTile": {
+          "frameStart": 41,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 3.08423
+        },
+        "phaseUphaseTileMaxAbsDelta": 515.221203
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "transient_burst_reassignment_2s_phase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "phase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "query": {
+              "Name": "on700",
+              "Label": "burst 700 Hz",
+              "Time": 0.51,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 42,
+              "binIndex": 33,
+              "frameTimeSec": 0.510839,
+              "binHz": 710.595703,
+              "value": -1.119506,
+              "magnitude": 0.157316,
+              "db": -16.064529,
+              "displayDb": -16.064529,
+              "normalized": 0.866129,
+              "phase": -1.119506,
+              "unwrappedPhase": -51.384987
+            }
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "query": {
+              "Name": "on1700",
+              "Label": "burst 1700 Hz",
+              "Time": 0.51,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 42,
+              "binIndex": 79,
+              "frameTimeSec": 0.510839,
+              "binHz": 1701.123047,
+              "value": -2.045281,
+              "magnitude": 0.132919,
+              "db": -17.528234,
+              "displayDb": -17.528234,
+              "normalized": 0.853931,
+              "phase": -2.045281,
+              "unwrappedPhase": -121.425804
+            }
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "query": {
+              "Name": "on3500",
+              "Label": "burst 3500 Hz",
+              "Time": 0.51,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.001
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 42,
+              "binIndex": 163,
+              "frameTimeSec": 0.510839,
+              "binHz": 3509.912109,
+              "value": 1.072497,
+              "magnitude": 0.08066,
+              "db": -21.866844,
+              "displayDb": -21.866844,
+              "normalized": 0.817776,
+              "phase": 1.072497,
+              "unwrappedPhase": -250.254913
+            }
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "query": {
+              "Name": "off700",
+              "Label": "quiet 700 Hz",
+              "Time": 0.1,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 7,
+              "binIndex": 33,
+              "frameTimeSec": 0.10449,
+              "binHz": 710.595703,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "query": {
+              "Name": "off1700",
+              "Label": "quiet 1700 Hz",
+              "Time": 0.1,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 7,
+              "binIndex": 79,
+              "frameTimeSec": 0.10449,
+              "binHz": 1701.123047,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "query": {
+              "Name": "off3500",
+              "Label": "quiet 3500 Hz",
+              "Time": 0.1,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_phase",
+              "frameIndex": 7,
+              "binIndex": 163,
+              "frameTimeSec": 0.10449,
+              "binHz": 3509.912109,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "transient_burst_reassignment_2s_phase",
+          "frameStart": 41,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "phase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                -1.282679,
+                2.079723,
+                0.160447,
+                -0.458392,
+                0.61087,
+                -2.412767,
+                -2.592723,
+                0.914822,
+                2.987087,
+                1.755607,
+                -0.743308,
+                -2.285317,
+                -2.724061,
+                -1.252991,
+                1.137668,
+                1.860889
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                0.004317,
+                -1.690204,
+                2.011443,
+                -0.936734,
+                1.264921,
+                2.2861,
+                1.61559,
+                -0.936308,
+                0.331937,
+                0.744582,
+                -0.301876,
+                -2.747689,
+                -1.209538,
+                0.571966,
+                -0.838384,
+                -0.100324
+              ]
+            },
+            {
+              "frameIndex": 43,
+              "timeSec": 0.522449,
+              "bins": [
+                -1.550066,
+                0.792089,
+                -2.442652,
+                1.505482,
+                0.352604,
+                0.725976,
+                3.08423,
+                1.714179,
+                -2.670774,
+                0.817085,
+                0.538945,
+                -2.685895,
+                -2.024622,
+                1.313674,
+                -1.387516,
+                -2.017191
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "transient_burst_reassignment_2s_phase",
+          "frameStart": 39,
+          "frameEnd": 45,
+          "binStart": 23,
+          "binEnd": 176,
+          "cellCount": 1078,
+          "meanValue": 0.02107,
+          "meanMagnitude": 0.005196,
+          "peakValue": 2.231822,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakDisplayDb": -15.98068,
+          "peakNormalized": 0.866828,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845,
+          "peakFrameIndex": 42,
+          "peakBinIndex": 32,
+          "peakTimeSec": 0.510839,
+          "peakFreqHz": 689.0625
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "transient_burst_reassignment_2s_phase"
+        }
+      }
+    },
+    "uphase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "uphase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Unwrapped-phase queries stay on the same canonical magnitude binding and value echoes the unwrapped phase field.",
+      "checks": [
+        {
+          "Name": "uphase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=uphase."
+        },
+        {
+          "Name": "uphase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "uphase-on700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,33); magnitude=(42,33)."
+        },
+        {
+          "Name": "uphase-on700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.157316; magnitudeMode=0.157316."
+        },
+        {
+          "Name": "uphase-on700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-51.384987; unwrappedPhase=-51.384987."
+        },
+        {
+          "Name": "uphase-on700-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-51.384987."
+        },
+        {
+          "Name": "uphase-on1700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,79); magnitude=(42,79)."
+        },
+        {
+          "Name": "uphase-on1700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.132919; magnitudeMode=0.132919."
+        },
+        {
+          "Name": "uphase-on1700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-121.425804; unwrappedPhase=-121.425804."
+        },
+        {
+          "Name": "uphase-on1700-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-121.425804."
+        },
+        {
+          "Name": "uphase-on3500-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(42,163); magnitude=(42,163)."
+        },
+        {
+          "Name": "uphase-on3500-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.080660; magnitudeMode=0.080660."
+        },
+        {
+          "Name": "uphase-on3500-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-250.254913; unwrappedPhase=-250.254913."
+        },
+        {
+          "Name": "uphase-on3500-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-250.254913."
+        },
+        {
+          "Name": "uphase-off700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,33); magnitude=(7,33)."
+        },
+        {
+          "Name": "uphase-off700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-off700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-off700-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-off1700-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,79); magnitude=(7,79)."
+        },
+        {
+          "Name": "uphase-off1700-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-off1700-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-off1700-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-off3500-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(7,163); magnitude=(7,163)."
+        },
+        {
+          "Name": "uphase-off3500-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-off3500-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-off3500-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(42,32); magnitudePeak=(42,32)."
+        },
+        {
+          "Name": "uphase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.158842; magnitudeMode=0.158842."
+        },
+        {
+          "Name": "uphase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-54.316845; peakUnwrappedPhase=-54.316845."
+        },
+        {
+          "Name": "uphase-area-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-54.316845."
+        },
+        {
+          "Name": "uphase-tile-divergence",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "maxAbsDeltaVsPhase=515.221203."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "on700",
+        "pointObservations": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": -51.384987,
+            "magnitude": 0.157316,
+            "db": -16.064529,
+            "phase": -1.119506,
+            "unwrappedPhase": -51.384987
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": -121.425804,
+            "magnitude": 0.132919,
+            "db": -17.528234,
+            "phase": -2.045281,
+            "unwrappedPhase": -121.425804
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "requestedTimeSec": 0.51,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 42,
+            "frameTimeSec": 0.510839,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": -250.254913,
+            "magnitude": 0.08066,
+            "db": -21.866844,
+            "phase": 1.072497,
+            "unwrappedPhase": -250.254913
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 33,
+            "binHz": 710.595703,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 1700.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 79,
+            "binHz": 1701.123047,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "requestedTimeSec": 0.1,
+            "requestedFreqHz": 3500.0,
+            "frameIndex": 7,
+            "frameTimeSec": 0.10449,
+            "binIndex": 163,
+            "binHz": 3509.912109,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 42,
+          "frameTimeSec": 0.510839,
+          "binIndex": 33,
+          "binHz": 710.595703,
+          "value": -51.384987,
+          "magnitude": 0.157316,
+          "db": -16.064529,
+          "phase": -1.119506,
+          "unwrappedPhase": -51.384987
+        },
+        "areaPeak": {
+          "frameIndex": 42,
+          "binIndex": 32,
+          "timeSec": 0.510839,
+          "freqHz": 689.0625,
+          "peakValue": -54.316845,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845
+        },
+        "representativeTile": {
+          "frameStart": 41,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 517.082092
+        },
+        "phaseUphaseTileMaxAbsDelta": 515.221203
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "transient_burst_reassignment_2s_uphase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "uphase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "on700",
+            "label": "burst 700 Hz",
+            "query": {
+              "Name": "on700",
+              "Label": "burst 700 Hz",
+              "Time": 0.51,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 42,
+              "binIndex": 33,
+              "frameTimeSec": 0.510839,
+              "binHz": 710.595703,
+              "value": -51.384987,
+              "magnitude": 0.157316,
+              "db": -16.064529,
+              "displayDb": -16.064529,
+              "normalized": 0.866129,
+              "phase": -1.119506,
+              "unwrappedPhase": -51.384987
+            }
+          },
+          {
+            "name": "on1700",
+            "label": "burst 1700 Hz",
+            "query": {
+              "Name": "on1700",
+              "Label": "burst 1700 Hz",
+              "Time": 0.51,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.002
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 42,
+              "binIndex": 79,
+              "frameTimeSec": 0.510839,
+              "binHz": 1701.123047,
+              "value": -121.425804,
+              "magnitude": 0.132919,
+              "db": -17.528234,
+              "displayDb": -17.528234,
+              "normalized": 0.853931,
+              "phase": -2.045281,
+              "unwrappedPhase": -121.425804
+            }
+          },
+          {
+            "name": "on3500",
+            "label": "burst 3500 Hz",
+            "query": {
+              "Name": "on3500",
+              "Label": "burst 3500 Hz",
+              "Time": 0.51,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.001
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 42,
+              "binIndex": 163,
+              "frameTimeSec": 0.510839,
+              "binHz": 3509.912109,
+              "value": -250.254913,
+              "magnitude": 0.08066,
+              "db": -21.866844,
+              "displayDb": -21.866844,
+              "normalized": 0.817776,
+              "phase": 1.072497,
+              "unwrappedPhase": -250.254913
+            }
+          },
+          {
+            "name": "off700",
+            "label": "quiet 700 Hz",
+            "query": {
+              "Name": "off700",
+              "Label": "quiet 700 Hz",
+              "Time": 0.1,
+              "Freq": 700.0,
+              "ExpectedFreq": 700.0,
+              "FreqToleranceHz": 35.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 7,
+              "binIndex": 33,
+              "frameTimeSec": 0.10449,
+              "binHz": 710.595703,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off1700",
+            "label": "quiet 1700 Hz",
+            "query": {
+              "Name": "off1700",
+              "Label": "quiet 1700 Hz",
+              "Time": 0.1,
+              "Freq": 1700.0,
+              "ExpectedFreq": 1700.0,
+              "FreqToleranceHz": 80.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 7,
+              "binIndex": 79,
+              "frameTimeSec": 0.10449,
+              "binHz": 1701.123047,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "off3500",
+            "label": "quiet 3500 Hz",
+            "query": {
+              "Name": "off3500",
+              "Label": "quiet 3500 Hz",
+              "Time": 0.1,
+              "Freq": 3500.0,
+              "ExpectedFreq": 3500.0,
+              "FreqToleranceHz": 140.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "transient_burst_reassignment_2s_uphase",
+              "frameIndex": 7,
+              "binIndex": 163,
+              "frameTimeSec": 0.10449,
+              "binHz": 3509.912109,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "transient_burst_reassignment_2s_uphase",
+          "frameStart": 41,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "uphase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                11.283691,
+                14.646093,
+                19.010004,
+                24.674349,
+                32.026794,
+                41.56953,
+                53.955944,
+                70.029854,
+                90.951683,
+                108.569756,
+                143.769943,
+                179.927063,
+                236.036972,
+                312.90625,
+                403.261536,
+                517.082092
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                -6.278868,
+                -7.973389,
+                -10.554927,
+                -13.503104,
+                -17.584635,
+                -22.846642,
+                -29.800337,
+                -38.635418,
+                -49.933544,
+                -55.804085,
+                -75.700104,
+                -103.278656,
+                -126.873238,
+                -169.074036,
+                -220.749863,
+                -282.843658
+              ]
+            },
+            {
+              "frameIndex": 43,
+              "timeSec": 0.522449,
+              "bins": [
+                11.016305,
+                13.35846,
+                16.406904,
+                20.355038,
+                25.485344,
+                32.141903,
+                40.78334,
+                51.97966,
+                66.444267,
+                69.932121,
+                94.78672,
+                122.977814,
+                155.055008,
+                208.658798,
+                275.072632,
+                349.841187
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "transient_burst_reassignment_2s_uphase",
+          "frameStart": 39,
+          "frameEnd": 45,
+          "binStart": 23,
+          "binEnd": 176,
+          "cellCount": 1078,
+          "meanValue": 17.669943,
+          "meanMagnitude": 0.005196,
+          "peakValue": -54.316845,
+          "maxMagnitude": 0.158842,
+          "maxDb": -15.98068,
+          "peakDisplayDb": -15.98068,
+          "peakNormalized": 0.866828,
+          "peakPhase": 2.231822,
+          "peakUnwrappedPhase": -54.316845,
+          "peakFrameIndex": 42,
+          "peakBinIndex": 32,
+          "peakTimeSec": 0.510839,
+          "peakFreqHz": 689.0625
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "transient_burst_reassignment_2s_uphase"
+        }
+      }
+    }
+  },
+  "responses": {
+    "quit": {
+      "ok": true,
+      "cmd": "quit"
+    }
+  }
+}

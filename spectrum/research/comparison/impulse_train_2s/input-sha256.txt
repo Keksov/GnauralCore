@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : 116149B2F1265A950238D12E9493CE3A30C4A9337ECD64C6E0320766FCFD034E
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\impulse_train_2s.wav
+

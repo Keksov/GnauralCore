@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : CF6917C511C63B32A28C0AB9B8E634333D23D560DF4FB989B650F73EF40A1329
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\chirp_20_8000_3s.wav
+

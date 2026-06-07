@@ -1,0 +1,28 @@
+
+C:\projects\KKMindWave\SpectrumCore\lib\vendor\audacity\au3\scripts\piped-work\pipeclient.py:192: DeprecationWarning: isSet() is deprecated, use is_set() instead
+  if PipeClient.reader_pipe_broken.isSet():
+C:\projects\KKMindWave\SpectrumCore\lib\vendor\audacity\au3\scripts\piped-work\pipeclient.py:248: DeprecationWarning: isSet() is deprecated, use is_set() instead
+  if not PipeClient.reply_ready.isSet():
+Enter command or 'Q' to quit: Sending command: New:
+BatchCommand finished: OK
+Execution time: 604.69ms
+
+Enter command or 'Q' to quit: Sending command: Import2: Filename=c:\projects\KKMindWave\SpectrumCore\cli\build\x64\impulse_train_2s.wav
+BatchCommand finished: OK
+Execution time: 91.23ms
+
+Enter command or 'Q' to quit: Sending command: SelectTracks: Track=0 TrackCount=1 Mode=Set
+BatchCommand finished: OK
+Execution time: 63.25ms
+
+Enter command or 'Q' to quit: Sending command: SetTrack: Display=Spectrogram SpecPrefs=1 Height=300
+BatchCommand finished: OK
+Execution time: 55.10ms
+
+Enter command or 'Q' to quit: Sending command: GetInfo: Type=Tracks Format=JSON
+[ 
+  { "name":"impulse_train_2s", "focused":1, "selected":1, "kind":"wave", "start":0, "end":2, "pan":0, "volume":1, "channels":1, "solo":0, "mute":0, "VZoomMin":-1, "VZoomMax":1 } ]
+BatchCommand finished: OK
+Execution time: 53.00ms
+
+Enter command or 'Q' to quit: 

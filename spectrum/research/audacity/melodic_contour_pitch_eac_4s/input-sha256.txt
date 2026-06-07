@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : D087F9E7AA582F7871DADE0776DCBE59DB0E3616DBFD1834AEE1BE814BEF544A
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\melodic_contour_pitch_eac_4s.wav
+

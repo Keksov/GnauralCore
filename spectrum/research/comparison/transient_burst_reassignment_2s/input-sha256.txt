@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : 957D415035ED94D244D9FAE4AC58F19F2D30A75D7AECD51F67C6505E6E13433A
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\transient_burst_reassignment_2s.wav
+

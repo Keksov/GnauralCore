@@ -58,12 +58,19 @@ The still-open question is narrower:
 
 Current answer:
 
-- no user-facing worker command or product feature depends on AVTX yet;
-- the FFTW worker remains the only closed spectral/query path;
-- therefore the AVTX value probe is still open even though the transform-layer reuse itself is proven.
+- the worker now exposes a concrete AVTX-facing command, `aux-transform`, on the same JSON process boundary as the FFTW spectral path;
+- the first selected feature hook is `MDCT/IMDCT`, with `DCT/DST` available on the same auxiliary request surface;
+- the first higher-level product-side capability is now also proven: `mdct-edit-preview` takes PCM samples, performs MDCT forward, applies simple coefficient edits, and returns full IMDCT preview samples plus `peakAbs`/`rms` without changing the FFTW-owned spectral path;
+- that same `mdct-edit-preview` path can now source its input window from an active FFTW analysis session by `analysisId` plus `timeSec` or `frameIndex`, which proves the first direct bridge from the canonical worker selection/time mapping into AVTX preview/resynthesis;
+- current monolithic-link sketch is concrete in the probe binary: `SpectrumCoreFftwWorkerProbe.exe` links `libfftw3f.a`, `libavtx_bridge.a`, and `libucrt.a`, with AVTX isolated behind the project-local bridge archive built from the vendored tx subset;
+- the FFTW worker still remains the only canonical spectral/query path;
+- therefore the AVTX value probe is no longer blocked on either “no product hook exists” or “no higher-level capability exists”; the remaining open question is how far this analysis-coupled preview/resynthesis path should be integrated into a larger editing workflow.
 
 Current verdict:
 
 - **technical reuse**: proven
-- **product-value case**: not yet proven
-- **promotion beyond auxiliary status**: not justified yet
+- **initial worker-visible feature hook**: proven
+- **first higher-level product-value case**: proven
+- **analysis-coupled preview path**: proven
+- **broader product-value case**: partially open
+- **promotion beyond transform-layer-only status**: justified

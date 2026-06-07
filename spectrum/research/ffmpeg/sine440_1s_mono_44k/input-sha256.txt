@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : 48EC56822558957D9922DAB94BA9F4324C66B9B24B6D4CED8F860B9B42CDC4DA
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\sine440_1s_mono_44k.wav
+

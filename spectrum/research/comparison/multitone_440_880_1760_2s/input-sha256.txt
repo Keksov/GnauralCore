@@ -1,0 +1,5 @@
+
+Algorithm : SHA256
+Hash      : 975CC9491E1DD9A8FEA81BBC9301BE1FA889D220C915E3DF8A0CDF7FABEA21D0
+Path      : C:\projects\KKMindWave\SpectrumCore\cli\build\x64\multitone_440_880_1760_2s.wav
+

@@ -1,0 +1,36 @@
+
+C:\projects\KKMindWave\SpectrumCore\lib\vendor\audacity\au3\scripts\piped-work\pipeclient.py:192: DeprecationWarning: isSet() is deprecated, use is_set() instead
+  if PipeClient.reader_pipe_broken.isSet():
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/ScaleType Value=1 Reload=0
+C:\projects\KKMindWave\SpectrumCore\lib\vendor\audacity\au3\scripts\piped-work\pipeclient.py:248: DeprecationWarning: isSet() is deprecated, use is_set() instead
+Execution time: 0.06ms
+
+  if not PipeClient.reply_ready.isSet():
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/MinFreq Value=80 Reload=0
+Execution time: 0.07ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/MaxFreq Value=4000 Reload=0
+Execution time: 0.08ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/Gain Value=0 Reload=0
+Execution time: 0.13ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/Range Value=120 Reload=0
+Execution time: 0.07ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/FrequencyGain Value=0 Reload=0
+Execution time: 0.12ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/FFTSize Value=2048 Reload=0
+BatchCommand finished: OK
+Execution time: 78.58ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/WindowType Value=3 Reload=0
+BatchCommand finished: OK
+Execution time: 82.63ms
+
+Enter command or 'Q' to quit: Sending command: SetPreference: Name=/Spectrum/Algorithm Value=0 Reload=0
+BatchCommand finished: OK
+Execution time: 53.67ms
+
+Enter command or 'Q' to quit: 

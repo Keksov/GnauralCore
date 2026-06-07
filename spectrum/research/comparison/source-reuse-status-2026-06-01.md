@@ -47,7 +47,7 @@ Current state:
 - integrated
 - static-linked
 - validated as an auxiliary transform layer
-- not yet tied to a shipped end-user feature in the worker
+- now tied to concrete worker-visible functionality, including a higher-level MDCT preview/resynthesis path
 
 What is already reused:
 - a pinned project-local tx-style subset from FFmpeg lives under `SpectrumCore\lib\vendor\avtx`
@@ -61,13 +61,17 @@ What is already reused:
 
 What this means in practice:
 - AVTX is already more than a research note; it is real reusable code inside SpectrumCore
-- however, it is still a library capability, not yet a closed product feature
+- it is no longer only a library capability: the worker now exposes both raw auxiliary transforms and a higher-level `mdct-edit-preview` capability on top of them
+- that higher-level capability is now connected to the existing FFTW analysis-time mapping: the worker can source preview windows from an active analysis session by `analysisId` plus `timeSec` or `frameIndex`
 - the open question is no longer "can we reuse AVTX at all?"; that is already answered yes
-- the open question is "which concrete product capability becomes better because AVTX is present?"
+- the open question is no longer whether AVTX unlocks any product capability, but how far the new MDCT preview/resynthesis path should be taken in the actual editing workflow
 
 Current gap:
-- no shipped worker command or higher-level feature currently depends on AVTX
-- until that mapping exists, AVTX remains an auxiliary capability waiting for a product-level use case
+- the new worker command `aux-transform` now depends on AVTX directly and exposes `MDCT/IMDCT/DCT/DST` on the same JSON boundary as the FFTW worker
+- AVTX has therefore crossed from library-only reuse into live product-side worker functionality
+- `mdct-edit-preview` now proves one higher-level user-visible capability on top of that auxiliary transform surface
+- the first selection/edit-flow connection is now proven through analysis-window sourcing on `mdct-edit-preview`
+- the remaining gap is narrower still: how that single-window preview/resynthesis path should grow into durable range-edit flows above the worker
 
 ## Audacity Status
 
@@ -103,6 +107,7 @@ Focused extraction audit:
 - `c:\projects\KKMindWave\GnauralCore\spectrum\research\comparison\audacity-spectrumcache-extraction-audit-2026-06-01.md`
 - current verdict: `SpecCache` is the right donor surface to study, but direct wrapping is still heavier than selective porting into the worker-owned SpectrumCore model
 - a product-local headless prototype now exists for the portable cache-rule slice in `SpectrumCore\cli\core\SpectrumCoreViewportCache.pas` and `SpectrumCore\cli\SpectrumCoreViewportCacheProbe.pas`; this confirms that `Matches` / `findCorrection` / `fillWhere` are good port targets even though `WaveClipSpectrumCache` is not
+- that prototype slice is now also wired into the FFTW worker `get-tile` path for overlapping requests, so the cache-rule port has crossed from proof code into a live product-side behavior
 
 ## Current Mixed-Backend Reality
 

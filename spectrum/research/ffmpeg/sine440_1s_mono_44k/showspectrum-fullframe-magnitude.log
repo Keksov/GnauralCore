@@ -1,0 +1,16 @@
+[aist#0:0/pcm_s16le @ 0xa00037f00] Guessed Channel Layout: mono
+Input #0, wav, from 'c:\projects\KKMindWave\SpectrumCore\cli\build\x64\sine440_1s_mono_44k.wav':
+  Duration: 00:00:01.00, bitrate: 705 kb/s
+  Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, mono, s16, 705 kb/s
+Stream mapping:
+  Stream #0:0 (pcm_s16le) -> showspectrum:default
+  showspectrum:default -> Stream #0:0 (bmp)
+Press [q] to stop, [?] for help
+Output #0, image2, to 'c:\projects\KKMindWave\GnauralCore\spectrum\research\ffmpeg\sine440_1s_mono_44k\showspectrum-fullframe-magnitude.bmp':
+  Metadata:
+    encoder         : Lavf62.19.100
+  Stream #0:0: Video: bmp, bgr24(pc, gbr/unknown/unknown, progressive), 640x512 [SAR 1:1 DAR 5:4], q=2-31, 200 kb/s, 0.27 fps, 0.27 tbn
+    Metadata:
+      encoder         : Lavc62.36.100 bmp
+[out#0/image2 @ 0xa00038180] video:960KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+frame=    1 fps=0.0 q=-0.0 Lsize=N/A time=00:00:03.71 bitrate=N/A speed= 130x elapsed=0:00:00.02    

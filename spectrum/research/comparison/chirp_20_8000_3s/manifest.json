@@ -1,0 +1,1385 @@
+{
+  "fixtureName": "chirp_20_8000_3s",
+  "fixturePath": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\chirp_20_8000_3s.wav",
+  "fixtureHashSha256": "CF6917C511C63B32A28C0AB9B8E634333D23D560DF4FB989B650F73EF40A1329",
+  "workerExe": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\SpectrumCoreFftwWorkerProbe.exe",
+  "workerHashSha256": "138389703ECE09DAA5992339518CF639A2445F5378E6D03A2F4029E1D96219A7",
+  "analysisConfigBase": {
+    "FScale": "log",
+    "Channel": 0,
+    "WinFunc": "hann",
+    "StartHz": 80.0,
+    "Window": 2048,
+    "Overlap": 0.75,
+    "StopHz": 4000.0,
+    "Hop": 512,
+    "Limit": 0.0,
+    "Gain": 1.0,
+    "DRange": 120.0
+  },
+  "queryProfile": {
+    "ExpectedSummary": "exponential chirp rising from 20 Hz to 8 kHz over 3 s",
+    "PrimaryPointName": "mid400",
+    "RequirePhaseUphaseTileDelta": true,
+    "PointProbes": [
+      {
+        "Name": "early89",
+        "Label": "early chirp crossing",
+        "Time": 0.75,
+        "Freq": 89.443,
+        "ExpectedFreq": 89.443,
+        "FreqToleranceHz": 20.0,
+        "MinMagnitude": 0.01
+      },
+      {
+        "Name": "mid400",
+        "Label": "mid chirp crossing",
+        "Time": 1.5,
+        "Freq": 400.0,
+        "ExpectedFreq": 400.0,
+        "FreqToleranceHz": 30.0,
+        "MinMagnitude": 0.01
+      },
+      {
+        "Name": "late1789",
+        "Label": "late chirp crossing",
+        "Time": 2.25,
+        "Freq": 1788.854,
+        "ExpectedFreq": 1788.854,
+        "FreqToleranceHz": 100.0,
+        "MinMagnitude": 0.01
+      }
+    ],
+    "AreaProbe": {
+      "TimeStart": 1.4,
+      "TimeEnd": 1.6,
+      "FreqStart": 250.0,
+      "FreqEnd": 600.0,
+      "ExpectedPeakTime": 1.5,
+      "PeakTimeTolerance": 0.1,
+      "AllowedPeakFrequencies": [
+        400.0
+      ],
+      "PeakFreqToleranceHz": 70.0,
+      "MinMaxMagnitude": 0.01
+    }
+  },
+  "referenceCoverage": {
+    "ffmpegModes": [
+      "magnitude",
+      "phase",
+      "uphase"
+    ],
+    "audacityModes": [
+      "magnitude"
+    ],
+    "ffmpegPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\ffmpeg\\chirp_20_8000_3s",
+    "audacityPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\audacity\\chirp_20_8000_3s"
+  },
+  "phaseUphaseTileMaxAbsDelta": 18.849556,
+  "classification": "match",
+  "classificationReason": "All strict magnitude, phase, and unwrapped-phase checks passed.",
+  "modes": {
+    "magnitude": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "magnitude",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "All fixture-specific magnitude checks passed against the stricter profile.",
+      "checks": [
+        {
+          "Name": "early89-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=86.132813; expected=89.443000; tolerance=20.000000."
+        },
+        {
+          "Name": "early89-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.389947; minimum=0.010000."
+        },
+        {
+          "Name": "mid400-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=409.130859; expected=400.000000; tolerance=30.000000."
+        },
+        {
+          "Name": "mid400-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.333281; minimum=0.010000."
+        },
+        {
+          "Name": "late1789-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=1787.255859; expected=1788.854000; tolerance=100.000000."
+        },
+        {
+          "Name": "late1789-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.272518; minimum=0.010000."
+        },
+        {
+          "Name": "chirp-monotonic-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "early=86.132813; mid=409.130859; late=1787.255859."
+        },
+        {
+          "Name": "chirp-area-peak-time",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakTimeSec=1.428027; expected=1.500000."
+        },
+        {
+          "Name": "chirp-area-peak-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakFreqHz=344.531250; expected=400.000000 +/- 70.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "mid400",
+        "pointObservations": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "requestedTimeSec": 0.75,
+            "requestedFreqHz": 89.443,
+            "frameIndex": 63,
+            "frameTimeSec": 0.754649,
+            "binIndex": 4,
+            "binHz": 86.132813,
+            "value": 0.389947,
+            "magnitude": 0.389947,
+            "db": -8.179893,
+            "phase": -0.347776,
+            "unwrappedPhase": -0.347776
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 400.0,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 19,
+            "binHz": 409.130859,
+            "value": 0.333281,
+            "magnitude": 0.333281,
+            "db": -9.543778,
+            "phase": -2.396857,
+            "unwrappedPhase": -2.396857
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "requestedTimeSec": 2.25,
+            "requestedFreqHz": 1788.854,
+            "frameIndex": 192,
+            "frameTimeSec": 2.252336,
+            "binIndex": 83,
+            "binHz": 1787.255859,
+            "value": 0.272518,
+            "magnitude": 0.272518,
+            "db": -11.29211,
+            "phase": 1.282918,
+            "unwrappedPhase": -5.000268
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 127,
+          "frameTimeSec": 1.497687,
+          "binIndex": 19,
+          "binHz": 409.130859,
+          "value": 0.333281,
+          "magnitude": 0.333281,
+          "db": -9.543778,
+          "phase": -2.396857,
+          "unwrappedPhase": -2.396857
+        },
+        "areaPeak": {
+          "frameIndex": 121,
+          "binIndex": 16,
+          "timeSec": 1.428027,
+          "freqHz": 344.53125,
+          "peakValue": 0.391495,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991
+        },
+        "representativeTile": {
+          "frameStart": 126,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.342777
+        }
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "chirp_20_8000_3s_magnitude",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "magnitude",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 255,
+          "binCount": 1025,
+          "durationS": 3.0
+        },
+        "pointQueries": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "query": {
+              "Name": "early89",
+              "Label": "early chirp crossing",
+              "Time": 0.75,
+              "Freq": 89.443,
+              "ExpectedFreq": 89.443,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_magnitude",
+              "frameIndex": 63,
+              "binIndex": 4,
+              "frameTimeSec": 0.754649,
+              "binHz": 86.132813,
+              "value": 0.389947,
+              "magnitude": 0.389947,
+              "db": -8.179893,
+              "displayDb": -8.179893,
+              "normalized": 0.931834,
+              "phase": -0.347776,
+              "unwrappedPhase": -0.347776
+            }
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "query": {
+              "Name": "mid400",
+              "Label": "mid chirp crossing",
+              "Time": 1.5,
+              "Freq": 400.0,
+              "ExpectedFreq": 400.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_magnitude",
+              "frameIndex": 127,
+              "binIndex": 19,
+              "frameTimeSec": 1.497687,
+              "binHz": 409.130859,
+              "value": 0.333281,
+              "magnitude": 0.333281,
+              "db": -9.543778,
+              "displayDb": -9.543778,
+              "normalized": 0.920469,
+              "phase": -2.396857,
+              "unwrappedPhase": -2.396857
+            }
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "query": {
+              "Name": "late1789",
+              "Label": "late chirp crossing",
+              "Time": 2.25,
+              "Freq": 1788.854,
+              "ExpectedFreq": 1788.854,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_magnitude",
+              "frameIndex": 192,
+              "binIndex": 83,
+              "frameTimeSec": 2.252336,
+              "binHz": 1787.255859,
+              "value": 0.272518,
+              "magnitude": 0.272518,
+              "db": -11.29211,
+              "displayDb": -11.29211,
+              "normalized": 0.905899,
+              "phase": 1.282918,
+              "unwrappedPhase": -5.000268
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "chirp_20_8000_3s_magnitude",
+          "frameStart": 126,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "magnitude",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 126,
+              "timeSec": 1.486077,
+              "bins": [
+                1.1E-05,
+                1.5E-05,
+                2.4E-05,
+                4.5E-05,
+                0.000133,
+                0.001268,
+                0.342777,
+                0.000665,
+                2.5E-05,
+                4E-06,
+                1E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 127,
+              "timeSec": 1.497687,
+              "bins": [
+                3.3E-05,
+                4.5E-05,
+                6.7E-05,
+                0.000116,
+                0.000278,
+                0.001533,
+                0.278266,
+                0.001789,
+                9E-05,
+                1.6E-05,
+                4E-06,
+                1E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 128,
+              "timeSec": 1.509297,
+              "bins": [
+                1.1E-05,
+                1.4E-05,
+                2E-05,
+                3.4E-05,
+                8.9E-05,
+                0.000586,
+                0.182085,
+                0.00163,
+                3.2E-05,
+                4E-06,
+                1E-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "chirp_20_8000_3s_magnitude",
+          "frameStart": 119,
+          "frameEnd": 136,
+          "binStart": 12,
+          "binEnd": 28,
+          "cellCount": 306,
+          "meanValue": 0.052449,
+          "meanMagnitude": 0.052449,
+          "peakValue": 0.391495,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakDisplayDb": -8.145484,
+          "peakNormalized": 0.932121,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991,
+          "peakFrameIndex": 121,
+          "peakBinIndex": 16,
+          "peakTimeSec": 1.428027,
+          "peakFreqHz": 344.53125
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "chirp_20_8000_3s_magnitude"
+        }
+      }
+    },
+    "phase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "phase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Wrapped-phase queries stay on the same canonical magnitude binding and value echoes the wrapped phase field.",
+      "checks": [
+        {
+          "Name": "phase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=phase."
+        },
+        {
+          "Name": "phase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "phase-early89-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(63,4); magnitude=(63,4)."
+        },
+        {
+          "Name": "phase-early89-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.389947; magnitudeMode=0.389947."
+        },
+        {
+          "Name": "phase-early89-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.347776; phase=-0.347776."
+        },
+        {
+          "Name": "phase-early89-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.347776."
+        },
+        {
+          "Name": "phase-mid400-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(127,19); magnitude=(127,19)."
+        },
+        {
+          "Name": "phase-mid400-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.333281; magnitudeMode=0.333281."
+        },
+        {
+          "Name": "phase-mid400-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.396857; phase=-2.396857."
+        },
+        {
+          "Name": "phase-mid400-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.396857."
+        },
+        {
+          "Name": "phase-late1789-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(192,83); magnitude=(192,83)."
+        },
+        {
+          "Name": "phase-late1789-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.272518; magnitudeMode=0.272518."
+        },
+        {
+          "Name": "phase-late1789-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.282918; phase=1.282918."
+        },
+        {
+          "Name": "phase-late1789-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=1.282918."
+        },
+        {
+          "Name": "phase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(121,16); magnitudePeak=(121,16)."
+        },
+        {
+          "Name": "phase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.391495; magnitudeMode=0.391495."
+        },
+        {
+          "Name": "phase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=1.438194; peakPhase=1.438194."
+        },
+        {
+          "Name": "phase-area-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=1.438194."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "mid400",
+        "pointObservations": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "requestedTimeSec": 0.75,
+            "requestedFreqHz": 89.443,
+            "frameIndex": 63,
+            "frameTimeSec": 0.754649,
+            "binIndex": 4,
+            "binHz": 86.132813,
+            "value": -0.347776,
+            "magnitude": 0.389947,
+            "db": -8.179893,
+            "phase": -0.347776,
+            "unwrappedPhase": -0.347776
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 400.0,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 19,
+            "binHz": 409.130859,
+            "value": -2.396857,
+            "magnitude": 0.333281,
+            "db": -9.543778,
+            "phase": -2.396857,
+            "unwrappedPhase": -2.396857
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "requestedTimeSec": 2.25,
+            "requestedFreqHz": 1788.854,
+            "frameIndex": 192,
+            "frameTimeSec": 2.252336,
+            "binIndex": 83,
+            "binHz": 1787.255859,
+            "value": 1.282918,
+            "magnitude": 0.272518,
+            "db": -11.29211,
+            "phase": 1.282918,
+            "unwrappedPhase": -5.000268
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 127,
+          "frameTimeSec": 1.497687,
+          "binIndex": 19,
+          "binHz": 409.130859,
+          "value": -2.396857,
+          "magnitude": 0.333281,
+          "db": -9.543778,
+          "phase": -2.396857,
+          "unwrappedPhase": -2.396857
+        },
+        "areaPeak": {
+          "frameIndex": 121,
+          "binIndex": 16,
+          "timeSec": 1.428027,
+          "freqHz": 344.53125,
+          "peakValue": 1.438194,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991
+        },
+        "representativeTile": {
+          "frameStart": 126,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 2.895286
+        },
+        "phaseUphaseTileMaxAbsDelta": 18.849556
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "chirp_20_8000_3s_phase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "phase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 255,
+          "binCount": 1025,
+          "durationS": 3.0
+        },
+        "pointQueries": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "query": {
+              "Name": "early89",
+              "Label": "early chirp crossing",
+              "Time": 0.75,
+              "Freq": 89.443,
+              "ExpectedFreq": 89.443,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_phase",
+              "frameIndex": 63,
+              "binIndex": 4,
+              "frameTimeSec": 0.754649,
+              "binHz": 86.132813,
+              "value": -0.347776,
+              "magnitude": 0.389947,
+              "db": -8.179893,
+              "displayDb": -8.179893,
+              "normalized": 0.931834,
+              "phase": -0.347776,
+              "unwrappedPhase": -0.347776
+            }
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "query": {
+              "Name": "mid400",
+              "Label": "mid chirp crossing",
+              "Time": 1.5,
+              "Freq": 400.0,
+              "ExpectedFreq": 400.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_phase",
+              "frameIndex": 127,
+              "binIndex": 19,
+              "frameTimeSec": 1.497687,
+              "binHz": 409.130859,
+              "value": -2.396857,
+              "magnitude": 0.333281,
+              "db": -9.543778,
+              "displayDb": -9.543778,
+              "normalized": 0.920469,
+              "phase": -2.396857,
+              "unwrappedPhase": -2.396857
+            }
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "query": {
+              "Name": "late1789",
+              "Label": "late chirp crossing",
+              "Time": 2.25,
+              "Freq": 1788.854,
+              "ExpectedFreq": 1788.854,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_phase",
+              "frameIndex": 192,
+              "binIndex": 83,
+              "frameTimeSec": 2.252336,
+              "binHz": 1787.255859,
+              "value": 1.282918,
+              "magnitude": 0.272518,
+              "db": -11.29211,
+              "displayDb": -11.29211,
+              "normalized": 0.905899,
+              "phase": 1.282918,
+              "unwrappedPhase": -5.000268
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "chirp_20_8000_3s_phase",
+          "frameStart": 126,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "phase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 126,
+              "timeSec": 1.486077,
+              "bins": [
+                2.363288,
+                2.315701,
+                2.285632,
+                2.328478,
+                2.411606,
+                2.489702,
+                -2.110049,
+                -2.895286,
+                -2.386246,
+                -2.111578,
+                -1.92807,
+                -2.116639,
+                -2.213295,
+                1.415849,
+                -0.948812,
+                1.367296
+              ]
+            },
+            {
+              "frameIndex": 127,
+              "timeSec": 1.497687,
+              "bins": [
+                -0.933773,
+                -1.023097,
+                -1.102945,
+                -1.152251,
+                -1.193572,
+                -1.273864,
+                1.355305,
+                1.835218,
+                1.937597,
+                1.928738,
+                1.874912,
+                1.866207,
+                1.910175,
+                2.185495,
+                1.244108,
+                -1.258806
+              ]
+            },
+            {
+              "frameIndex": 128,
+              "timeSec": 1.509297,
+              "bins": [
+                2.665102,
+                2.548832,
+                2.429277,
+                2.288697,
+                2.13082,
+                1.856524,
+                -0.959384,
+                0.948852,
+                0.762514,
+                0.50725,
+                0.350776,
+                -0.187897,
+                0.291186,
+                1.629042,
+                -0.479141,
+                1.172039
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "chirp_20_8000_3s_phase",
+          "frameStart": 119,
+          "frameEnd": 136,
+          "binStart": 12,
+          "binEnd": 28,
+          "cellCount": 306,
+          "meanValue": 0.110834,
+          "meanMagnitude": 0.052449,
+          "peakValue": 1.438194,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakDisplayDb": -8.145484,
+          "peakNormalized": 0.932121,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991,
+          "peakFrameIndex": 121,
+          "peakBinIndex": 16,
+          "peakTimeSec": 1.428027,
+          "peakFreqHz": 344.53125
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "chirp_20_8000_3s_phase"
+        }
+      }
+    },
+    "uphase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "uphase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Unwrapped-phase queries stay on the same canonical magnitude binding and value echoes the unwrapped phase field.",
+      "checks": [
+        {
+          "Name": "uphase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=uphase."
+        },
+        {
+          "Name": "uphase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "uphase-early89-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(63,4); magnitude=(63,4)."
+        },
+        {
+          "Name": "uphase-early89-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.389947; magnitudeMode=0.389947."
+        },
+        {
+          "Name": "uphase-early89-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.347776; unwrappedPhase=-0.347776."
+        },
+        {
+          "Name": "uphase-early89-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.347776."
+        },
+        {
+          "Name": "uphase-mid400-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(127,19); magnitude=(127,19)."
+        },
+        {
+          "Name": "uphase-mid400-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.333281; magnitudeMode=0.333281."
+        },
+        {
+          "Name": "uphase-mid400-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.396857; unwrappedPhase=-2.396857."
+        },
+        {
+          "Name": "uphase-mid400-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-2.396857."
+        },
+        {
+          "Name": "uphase-late1789-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(192,83); magnitude=(192,83)."
+        },
+        {
+          "Name": "uphase-late1789-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.272518; magnitudeMode=0.272518."
+        },
+        {
+          "Name": "uphase-late1789-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-5.000268; unwrappedPhase=-5.000268."
+        },
+        {
+          "Name": "uphase-late1789-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-5.000268."
+        },
+        {
+          "Name": "uphase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(121,16); magnitudePeak=(121,16)."
+        },
+        {
+          "Name": "uphase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.391495; magnitudeMode=0.391495."
+        },
+        {
+          "Name": "uphase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-4.844991; peakUnwrappedPhase=-4.844991."
+        },
+        {
+          "Name": "uphase-area-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-4.844991."
+        },
+        {
+          "Name": "uphase-tile-divergence",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "maxAbsDeltaVsPhase=18.849556."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "mid400",
+        "pointObservations": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "requestedTimeSec": 0.75,
+            "requestedFreqHz": 89.443,
+            "frameIndex": 63,
+            "frameTimeSec": 0.754649,
+            "binIndex": 4,
+            "binHz": 86.132813,
+            "value": -0.347776,
+            "magnitude": 0.389947,
+            "db": -8.179893,
+            "phase": -0.347776,
+            "unwrappedPhase": -0.347776
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "requestedTimeSec": 1.5,
+            "requestedFreqHz": 400.0,
+            "frameIndex": 127,
+            "frameTimeSec": 1.497687,
+            "binIndex": 19,
+            "binHz": 409.130859,
+            "value": -2.396857,
+            "magnitude": 0.333281,
+            "db": -9.543778,
+            "phase": -2.396857,
+            "unwrappedPhase": -2.396857
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "requestedTimeSec": 2.25,
+            "requestedFreqHz": 1788.854,
+            "frameIndex": 192,
+            "frameTimeSec": 2.252336,
+            "binIndex": 83,
+            "binHz": 1787.255859,
+            "value": -5.000268,
+            "magnitude": 0.272518,
+            "db": -11.29211,
+            "phase": 1.282918,
+            "unwrappedPhase": -5.000268
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 127,
+          "frameTimeSec": 1.497687,
+          "binIndex": 19,
+          "binHz": 409.130859,
+          "value": -2.396857,
+          "magnitude": 0.333281,
+          "db": -9.543778,
+          "phase": -2.396857,
+          "unwrappedPhase": -2.396857
+        },
+        "areaPeak": {
+          "frameIndex": 121,
+          "binIndex": 16,
+          "timeSec": 1.428027,
+          "freqHz": 344.53125,
+          "peakValue": -4.844991,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991
+        },
+        "representativeTile": {
+          "frameStart": 126,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 20.108362
+        },
+        "phaseUphaseTileMaxAbsDelta": 18.849556
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "chirp_20_8000_3s_uphase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "uphase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 255,
+          "binCount": 1025,
+          "durationS": 3.0
+        },
+        "pointQueries": [
+          {
+            "name": "early89",
+            "label": "early chirp crossing",
+            "query": {
+              "Name": "early89",
+              "Label": "early chirp crossing",
+              "Time": 0.75,
+              "Freq": 89.443,
+              "ExpectedFreq": 89.443,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_uphase",
+              "frameIndex": 63,
+              "binIndex": 4,
+              "frameTimeSec": 0.754649,
+              "binHz": 86.132813,
+              "value": -0.347776,
+              "magnitude": 0.389947,
+              "db": -8.179893,
+              "displayDb": -8.179893,
+              "normalized": 0.931834,
+              "phase": -0.347776,
+              "unwrappedPhase": -0.347776
+            }
+          },
+          {
+            "name": "mid400",
+            "label": "mid chirp crossing",
+            "query": {
+              "Name": "mid400",
+              "Label": "mid chirp crossing",
+              "Time": 1.5,
+              "Freq": 400.0,
+              "ExpectedFreq": 400.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_uphase",
+              "frameIndex": 127,
+              "binIndex": 19,
+              "frameTimeSec": 1.497687,
+              "binHz": 409.130859,
+              "value": -2.396857,
+              "magnitude": 0.333281,
+              "db": -9.543778,
+              "displayDb": -9.543778,
+              "normalized": 0.920469,
+              "phase": -2.396857,
+              "unwrappedPhase": -2.396857
+            }
+          },
+          {
+            "name": "late1789",
+            "label": "late chirp crossing",
+            "query": {
+              "Name": "late1789",
+              "Label": "late chirp crossing",
+              "Time": 2.25,
+              "Freq": 1788.854,
+              "ExpectedFreq": 1788.854,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.01
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "chirp_20_8000_3s_uphase",
+              "frameIndex": 192,
+              "binIndex": 83,
+              "frameTimeSec": 2.252336,
+              "binHz": 1787.255859,
+              "value": -5.000268,
+              "magnitude": 0.272518,
+              "db": -11.29211,
+              "displayDb": -11.29211,
+              "normalized": 0.905899,
+              "phase": 1.282918,
+              "unwrappedPhase": -5.000268
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "chirp_20_8000_3s_uphase",
+          "frameStart": 126,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "uphase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 126,
+              "timeSec": 1.486077,
+              "bins": [
+                2.363288,
+                2.315701,
+                2.285632,
+                2.328478,
+                2.411606,
+                2.489702,
+                -2.110049,
+                3.3879,
+                3.896939,
+                4.171607,
+                4.355116,
+                4.166546,
+                -2.213295,
+                -17.433706,
+                -7.231997,
+                -11.199075
+              ]
+            },
+            {
+              "frameIndex": 127,
+              "timeSec": 1.497687,
+              "bins": [
+                -0.933773,
+                -1.023097,
+                -1.102945,
+                -1.152251,
+                -1.193572,
+                -1.273864,
+                -4.927881,
+                1.835218,
+                1.937597,
+                1.928738,
+                1.874912,
+                1.866207,
+                1.910175,
+                2.185495,
+                -11.322262,
+                -20.108362
+              ]
+            },
+            {
+              "frameIndex": 128,
+              "timeSec": 1.509297,
+              "bins": [
+                2.665102,
+                2.548832,
+                2.429277,
+                2.288697,
+                2.13082,
+                1.856524,
+                -0.959384,
+                0.948852,
+                0.762514,
+                0.50725,
+                0.350776,
+                -0.187897,
+                0.291186,
+                1.629042,
+                5.804044,
+                13.738409
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "chirp_20_8000_3s_uphase",
+          "frameStart": 119,
+          "frameEnd": 136,
+          "binStart": 12,
+          "binEnd": 28,
+          "cellCount": 306,
+          "meanValue": 0.685766,
+          "meanMagnitude": 0.052449,
+          "peakValue": -4.844991,
+          "maxMagnitude": 0.391495,
+          "maxDb": -8.145484,
+          "peakDisplayDb": -8.145484,
+          "peakNormalized": 0.932121,
+          "peakPhase": 1.438194,
+          "peakUnwrappedPhase": -4.844991,
+          "peakFrameIndex": 121,
+          "peakBinIndex": 16,
+          "peakTimeSec": 1.428027,
+          "peakFreqHz": 344.53125
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "chirp_20_8000_3s_uphase"
+        }
+      }
+    }
+  },
+  "responses": {
+    "quit": {
+      "ok": true,
+      "cmd": "quit"
+    }
+  }
+}

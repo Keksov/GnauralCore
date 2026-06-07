@@ -1,0 +1,1341 @@
+{
+  "fixtureName": "silence_1s",
+  "fixturePath": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\silence_1s.wav",
+  "fixtureHashSha256": "D25E833F369713F6A5B79ABC53EF7B0EDB9493D18EC92CCC56E9FD1748CDBABF",
+  "workerExe": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\SpectrumCoreFftwWorkerProbe.exe",
+  "workerHashSha256": "138389703ECE09DAA5992339518CF639A2445F5378E6D03A2F4029E1D96219A7",
+  "analysisConfigBase": {
+    "FScale": "log",
+    "Channel": 0,
+    "WinFunc": "hann",
+    "StartHz": 80.0,
+    "Window": 2048,
+    "Overlap": 0.75,
+    "StopHz": 4000.0,
+    "Hop": 512,
+    "Limit": 0.0,
+    "Gain": 1.0,
+    "DRange": 120.0
+  },
+  "queryProfile": {
+    "ExpectedSummary": "floor-clamped silence with no stable peak",
+    "PrimaryPointName": "silent440",
+    "RequirePhaseUphaseTileDelta": false,
+    "PointProbes": [
+      {
+        "Name": "silent440",
+        "Label": "440 Hz silence probe",
+        "Time": 0.5,
+        "Freq": 440.0,
+        "ExpectedFreq": 440.0,
+        "FreqToleranceHz": 20.0,
+        "MinMagnitude": 0.0
+      },
+      {
+        "Name": "silent1000",
+        "Label": "1000 Hz silence probe",
+        "Time": 0.5,
+        "Freq": 1000.0,
+        "ExpectedFreq": 1000.0,
+        "FreqToleranceHz": 50.0,
+        "MinMagnitude": 0.0
+      },
+      {
+        "Name": "silent2000",
+        "Label": "2000 Hz silence probe",
+        "Time": 0.5,
+        "Freq": 2000.0,
+        "ExpectedFreq": 2000.0,
+        "FreqToleranceHz": 100.0,
+        "MinMagnitude": 0.0
+      }
+    ],
+    "AreaProbe": {
+      "TimeStart": 0.25,
+      "TimeEnd": 0.75,
+      "FreqStart": 80.0,
+      "FreqEnd": 4000.0,
+      "ExpectedPeakTime": 0.5,
+      "PeakTimeTolerance": 0.25,
+      "AllowedPeakFrequencies": [],
+      "PeakFreqToleranceHz": 0.0,
+      "MinMaxMagnitude": 0.0
+    }
+  },
+  "referenceCoverage": {
+    "ffmpegModes": [
+      "magnitude",
+      "phase",
+      "uphase"
+    ],
+    "audacityModes": [
+      "magnitude"
+    ],
+    "ffmpegPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\ffmpeg\\silence_1s",
+    "audacityPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\audacity\\silence_1s"
+  },
+  "phaseUphaseTileMaxAbsDelta": 0.0,
+  "classification": "match",
+  "classificationReason": "All strict magnitude, phase, and unwrapped-phase checks passed.",
+  "modes": {
+    "magnitude": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "magnitude",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "All fixture-specific magnitude checks passed against the stricter profile.",
+      "checks": [
+        {
+          "Name": "silence-point-floor",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "pointMax=0.000000."
+        },
+        {
+          "Name": "silence-area-floor",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "areaMax=0.000000."
+        },
+        {
+          "Name": "silence-tile-floor",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "tileMax=0.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "silent440",
+        "pointObservations": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 1000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 46,
+            "binHz": 990.527344,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 2000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 93,
+            "binHz": 2002.587891,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 41,
+          "frameTimeSec": 0.499229,
+          "binIndex": 20,
+          "binHz": 430.664063,
+          "value": 0.0,
+          "magnitude": 0.0,
+          "db": -120.0,
+          "phase": 0.0,
+          "unwrappedPhase": 0.0
+        },
+        "areaPeak": {
+          "frameIndex": 20,
+          "binIndex": 4,
+          "timeSec": 0.255419,
+          "freqHz": 86.132813,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0
+        },
+        "representativeTile": {
+          "frameStart": 40,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.0
+        }
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "silence_1s_magnitude",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "magnitude",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 83,
+          "binCount": 1025,
+          "durationS": 1.0
+        },
+        "pointQueries": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "query": {
+              "Name": "silent440",
+              "Label": "440 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_magnitude",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "query": {
+              "Name": "silent1000",
+              "Label": "1000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 1000.0,
+              "ExpectedFreq": 1000.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_magnitude",
+              "frameIndex": 41,
+              "binIndex": 46,
+              "frameTimeSec": 0.499229,
+              "binHz": 990.527344,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "query": {
+              "Name": "silent2000",
+              "Label": "2000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 2000.0,
+              "ExpectedFreq": 2000.0,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_magnitude",
+              "frameIndex": 41,
+              "binIndex": 93,
+              "frameTimeSec": 0.499229,
+              "binHz": 2002.587891,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "silence_1s_magnitude",
+          "frameStart": 40,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "magnitude",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 40,
+              "timeSec": 0.487619,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "silence_1s_magnitude",
+          "frameStart": 20,
+          "frameEnd": 63,
+          "binStart": 4,
+          "binEnd": 186,
+          "cellCount": 8052,
+          "meanValue": 0.0,
+          "meanMagnitude": 0.0,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakDisplayDb": -120.0,
+          "peakNormalized": 0.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0,
+          "peakFrameIndex": 20,
+          "peakBinIndex": 4,
+          "peakTimeSec": 0.255419,
+          "peakFreqHz": 86.132813
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "silence_1s_magnitude"
+        }
+      }
+    },
+    "phase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "phase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Wrapped-phase queries stay on the same canonical magnitude binding and value echoes the wrapped phase field.",
+      "checks": [
+        {
+          "Name": "phase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=phase."
+        },
+        {
+          "Name": "phase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "phase-silent440-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,20); magnitude=(41,20)."
+        },
+        {
+          "Name": "phase-silent440-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-silent440-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-silent440-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-silent1000-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,46); magnitude=(41,46)."
+        },
+        {
+          "Name": "phase-silent1000-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-silent1000-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-silent1000-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-silent2000-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,93); magnitude=(41,93)."
+        },
+        {
+          "Name": "phase-silent2000-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-silent2000-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; phase=0.000000."
+        },
+        {
+          "Name": "phase-silent2000-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "phase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(20,4); magnitudePeak=(20,4)."
+        },
+        {
+          "Name": "phase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "phase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=0.000000; peakPhase=0.000000."
+        },
+        {
+          "Name": "phase-area-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=0.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "silent440",
+        "pointObservations": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 1000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 46,
+            "binHz": 990.527344,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 2000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 93,
+            "binHz": 2002.587891,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 41,
+          "frameTimeSec": 0.499229,
+          "binIndex": 20,
+          "binHz": 430.664063,
+          "value": 0.0,
+          "magnitude": 0.0,
+          "db": -120.0,
+          "phase": 0.0,
+          "unwrappedPhase": 0.0
+        },
+        "areaPeak": {
+          "frameIndex": 20,
+          "binIndex": 4,
+          "timeSec": 0.255419,
+          "freqHz": 86.132813,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0
+        },
+        "representativeTile": {
+          "frameStart": 40,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.0
+        },
+        "phaseUphaseTileMaxAbsDelta": 0.0
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "silence_1s_phase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "phase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 83,
+          "binCount": 1025,
+          "durationS": 1.0
+        },
+        "pointQueries": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "query": {
+              "Name": "silent440",
+              "Label": "440 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_phase",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "query": {
+              "Name": "silent1000",
+              "Label": "1000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 1000.0,
+              "ExpectedFreq": 1000.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_phase",
+              "frameIndex": 41,
+              "binIndex": 46,
+              "frameTimeSec": 0.499229,
+              "binHz": 990.527344,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "query": {
+              "Name": "silent2000",
+              "Label": "2000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 2000.0,
+              "ExpectedFreq": 2000.0,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_phase",
+              "frameIndex": 41,
+              "binIndex": 93,
+              "frameTimeSec": 0.499229,
+              "binHz": 2002.587891,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "silence_1s_phase",
+          "frameStart": 40,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "phase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 40,
+              "timeSec": 0.487619,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "silence_1s_phase",
+          "frameStart": 20,
+          "frameEnd": 63,
+          "binStart": 4,
+          "binEnd": 186,
+          "cellCount": 8052,
+          "meanValue": 0.0,
+          "meanMagnitude": 0.0,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakDisplayDb": -120.0,
+          "peakNormalized": 0.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0,
+          "peakFrameIndex": 20,
+          "peakBinIndex": 4,
+          "peakTimeSec": 0.255419,
+          "peakFreqHz": 86.132813
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "silence_1s_phase"
+        }
+      }
+    },
+    "uphase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "uphase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Unwrapped-phase queries stay on the same canonical magnitude binding and value echoes the unwrapped phase field.",
+      "checks": [
+        {
+          "Name": "uphase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=uphase."
+        },
+        {
+          "Name": "uphase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "uphase-silent440-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,20); magnitude=(41,20)."
+        },
+        {
+          "Name": "uphase-silent440-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-silent440-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-silent440-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-silent1000-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,46); magnitude=(41,46)."
+        },
+        {
+          "Name": "uphase-silent1000-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-silent1000-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-silent1000-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-silent2000-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(41,93); magnitude=(41,93)."
+        },
+        {
+          "Name": "uphase-silent2000-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-silent2000-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000; unwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-silent2000-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.000000."
+        },
+        {
+          "Name": "uphase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(20,4); magnitudePeak=(20,4)."
+        },
+        {
+          "Name": "uphase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.000000; magnitudeMode=0.000000."
+        },
+        {
+          "Name": "uphase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=0.000000; peakUnwrappedPhase=0.000000."
+        },
+        {
+          "Name": "uphase-area-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=0.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "silent440",
+        "pointObservations": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 1000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 46,
+            "binHz": 990.527344,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "requestedTimeSec": 0.5,
+            "requestedFreqHz": 2000.0,
+            "frameIndex": 41,
+            "frameTimeSec": 0.499229,
+            "binIndex": 93,
+            "binHz": 2002.587891,
+            "value": 0.0,
+            "magnitude": 0.0,
+            "db": -120.0,
+            "phase": 0.0,
+            "unwrappedPhase": 0.0
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 41,
+          "frameTimeSec": 0.499229,
+          "binIndex": 20,
+          "binHz": 430.664063,
+          "value": 0.0,
+          "magnitude": 0.0,
+          "db": -120.0,
+          "phase": 0.0,
+          "unwrappedPhase": 0.0
+        },
+        "areaPeak": {
+          "frameIndex": 20,
+          "binIndex": 4,
+          "timeSec": 0.255419,
+          "freqHz": 86.132813,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0
+        },
+        "representativeTile": {
+          "frameStart": 40,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.0
+        },
+        "phaseUphaseTileMaxAbsDelta": 0.0
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "silence_1s_uphase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "uphase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 83,
+          "binCount": 1025,
+          "durationS": 1.0
+        },
+        "pointQueries": [
+          {
+            "name": "silent440",
+            "label": "440 Hz silence probe",
+            "query": {
+              "Name": "silent440",
+              "Label": "440 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 20.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_uphase",
+              "frameIndex": 41,
+              "binIndex": 20,
+              "frameTimeSec": 0.499229,
+              "binHz": 430.664063,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent1000",
+            "label": "1000 Hz silence probe",
+            "query": {
+              "Name": "silent1000",
+              "Label": "1000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 1000.0,
+              "ExpectedFreq": 1000.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_uphase",
+              "frameIndex": 41,
+              "binIndex": 46,
+              "frameTimeSec": 0.499229,
+              "binHz": 990.527344,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          },
+          {
+            "name": "silent2000",
+            "label": "2000 Hz silence probe",
+            "query": {
+              "Name": "silent2000",
+              "Label": "2000 Hz silence probe",
+              "Time": 0.5,
+              "Freq": 2000.0,
+              "ExpectedFreq": 2000.0,
+              "FreqToleranceHz": 100.0,
+              "MinMagnitude": 0.0
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "silence_1s_uphase",
+              "frameIndex": 41,
+              "binIndex": 93,
+              "frameTimeSec": 0.499229,
+              "binHz": 2002.587891,
+              "value": 0.0,
+              "magnitude": 0.0,
+              "db": -120.0,
+              "displayDb": -120.0,
+              "normalized": 0.0,
+              "phase": 0.0,
+              "unwrappedPhase": 0.0
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "silence_1s_uphase",
+          "frameStart": 40,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "uphase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 40,
+              "timeSec": 0.487619,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 41,
+              "timeSec": 0.499229,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "frameIndex": 42,
+              "timeSec": 0.510839,
+              "bins": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "silence_1s_uphase",
+          "frameStart": 20,
+          "frameEnd": 63,
+          "binStart": 4,
+          "binEnd": 186,
+          "cellCount": 8052,
+          "meanValue": 0.0,
+          "meanMagnitude": 0.0,
+          "peakValue": 0.0,
+          "maxMagnitude": 0.0,
+          "maxDb": -120.0,
+          "peakDisplayDb": -120.0,
+          "peakNormalized": 0.0,
+          "peakPhase": 0.0,
+          "peakUnwrappedPhase": 0.0,
+          "peakFrameIndex": 20,
+          "peakBinIndex": 4,
+          "peakTimeSec": 0.255419,
+          "peakFreqHz": 86.132813
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "silence_1s_uphase"
+        }
+      }
+    }
+  },
+  "responses": {
+    "quit": {
+      "ok": true,
+      "cmd": "quit"
+    }
+  }
+}

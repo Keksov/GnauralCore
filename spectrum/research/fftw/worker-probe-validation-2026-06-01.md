@@ -1,6 +1,7 @@
 # FFTW Worker Probe Validation
 
 Date: 2026-06-01
+Updated: 2026-06-02
 Status: validated
 Scope: native-static FFTW worker proof for the analytics-first JSON contract
 
@@ -108,4 +109,42 @@ Response:
 - Point and area queries keep magnitude-derived fields stable while also exposing `value`, `phase`, and `unwrappedPhase` from the same canonical FFT frame store.
 - Separate live sessions now validate `data=phase` and `data=uphase` on the same worker-owned store; the peak sine bin still resolves at frame `41`, bin `20`, while mode-aware tile values change as expected.
 - A separate live session now validates `data=reassign` on the same worker-owned store: at frame `41`, bin `20`, canonical `magnitude` stayed `0.442239` while mode-aware `value` rose to `0.612354`, and the narrow tile `[18..23]` collapsed to `[0.000068,0.000137,0.612354,0.000376,0.000009,0.000009]`.
+- After the reassignment peak-semantics fix, `area-query` over frames `37..45` and bins `19..23` now resolves the peak at frame `41`, bin `20` with `peakValue=0.612354`, while canonical summary fields remain `maxMagnitude=0.442242` and `maxDb=-7.086802`.
 - A separate live session also validates `frequencyGain=10` as a display-only transform: at the same sine peak, canonical `magnitude` stayed `0.442239` and raw `db` stayed `-7.086859`, while `displayDb` shifted to `-10.745472` and `normalized` to `0.910454`.
+- Two overlapping `get-tile` calls (`frameStart=37,frameCount=8` then `frameStart=38,frameCount=8`) also completed successfully after the viewport-cache integration, exercising the product-local reuse path without changing returned values for the shared rows.
+- A separate live session now validates the first worker-visible AVTX hook: `aux-transform mdct-forward` returned `[-1.726000,1.596328,-2.757174,-0.526216]`, and `aux-transform imdct-full` returned `[0.027699,0.953362,-0.953362,-0.027699,-0.689141,-0.230040,-0.230040,-0.689141]` with `backend="avtx"`, `role="auxiliary"`, `bridgeVersion="avtx-bridge-tx-subset-3"`, and `apiLevel=5`.
+- A follow-up live session also validates parser variants on the same command: `aux-transform dct-forward` returned `[2.500000,-2.804468,3.889087,1.544332]`, and `aux-transform mdct-inverse` with `fullOutput=true` returned the same 8-sample full IMDCT output while echoing `effectiveFlags:["full-output"]`.
+- A separate live session now validates a higher-level AVTX path, `mdct-edit-preview`: with the original 8-sample PCM block it returned the MDCT coefficients `[-1.726000,1.596328,-2.757174,-0.526216]` plus full IMDCT preview `[-1.750000,-1.500000,1.500000,1.750000,-0.625000,1.000000,1.000000,-0.625000]`; with `gain=0.0`, the same command returned zeroed edited coefficients, zeroed preview samples, `peakAbs=0.000000`, and `rms=0.000000`.
+- Another live session validated coefficient-band editing on that same command: `muteStart=1,muteCount=2` changed the edited coefficients to `[-1.726000,0.000000,0.000000,-0.526216]` and produced preview samples `[-0.698223,0.089689,-0.089689,0.698223,0.571383,0.897748,0.897748,0.571383]`.
+- A follow-up live session now validates that the same command is connected to the real FFTW analysis flow rather than only to ad hoc sample arrays: after `open-analysis` on `test_sine440.wav`, `mdct-edit-preview` with `analysisId="sine"`, `timeSec=0.50`, and `sampleCount=8` resolved `frameIndex=41`, `frameTimeSec=0.499229`, and `sampleStart=22012`.
+- Repeating that analysis-coupled request with `gain=0.0` returned zeroed edited coefficients and zeroed preview samples, confirming that the AVTX preview/resynthesis path now runs directly on a window sourced from the active worker analysis session.
+
+Request:
+
+```json
+{"cmd":"mdct-edit-preview-range","analysisId":"sine","timeStartSec":0.49,"timeEndSec":0.51,"sampleCount":8}
+```
+
+Response excerpt:
+
+```json
+{"ok":true,"cmd":"mdct-edit-preview-range","sourceMode":"analysis-range","analysisId":"sine","frameStart":40,"frameEnd":42,"frameStep":1,"sampleCount":8,"itemCount":3,"maxPeakAbs":1.953156,"meanRms":1.075802,"items":[{"frameIndex":40,"sampleStart":21500,"coefficients":[1.599715,0.307243,-0.258463,-0.200844],"peakAbs":0.820831,"rms":0.587434},{"frameIndex":41,"sampleStart":22012,"coefficients":[3.306162,0.993523,-0.693905,-0.577425],"peakAbs":1.785278,"rms":1.261582},{"frameIndex":42,"sampleStart":22524,"coefficients":[3.537474,1.236496,-0.819768,-0.696404],"peakAbs":1.953156,"rms":1.378389}]}
+```
+
+Request:
+
+```json
+{"cmd":"mdct-edit-preview-range","analysisId":"sine","timeStartSec":0.49,"timeEndSec":0.51,"sampleCount":8,"gain":0.0}
+```
+
+Response excerpt:
+
+```json
+{"ok":true,"cmd":"mdct-edit-preview-range","sourceMode":"analysis-range","analysisId":"sine","frameStart":40,"frameEnd":42,"frameStep":1,"sampleCount":8,"itemCount":3,"gain":0.0,"maxPeakAbs":0.000000,"meanRms":0.000000,"items":[{"frameIndex":40,"editedCoefficients":[0.000000,0.000000,0.000000,0.000000],"previewSamples":[0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000],"peakAbs":0.000000,"rms":0.000000},{"frameIndex":41,"editedCoefficients":[0.000000,0.000000,0.000000,0.000000],"previewSamples":[0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000],"peakAbs":0.000000,"rms":0.000000},{"frameIndex":42,"editedCoefficients":[0.000000,0.000000,0.000000,0.000000],"previewSamples":[0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000],"peakAbs":0.000000,"rms":0.000000}]}
+```
+
+## Additional Conclusions
+
+- The worker now validates `mdct-edit-preview-range` as the first analysis-range AVTX preview flow on top of the FFTW-owned canonical store.
+- A time-selected request over `0.49..0.51 s` resolved to frames `40..42` with per-frame coefficient previews and aggregate `maxPeakAbs=1.953156`, `meanRms=1.075802`.
+- Repeating the same range request with `gain=0.0` zeroed every emitted frame item, which confirms that the per-frame edit/resynthesis loop reuses the same coefficient edit controls as the single-window path.

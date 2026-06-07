@@ -1,0 +1,1387 @@
+{
+  "fixtureName": "multitone_440_880_1760_2s",
+  "fixturePath": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\multitone_440_880_1760_2s.wav",
+  "fixtureHashSha256": "975CC9491E1DD9A8FEA81BBC9301BE1FA889D220C915E3DF8A0CDF7FABEA21D0",
+  "workerExe": "c:\\projects\\KKMindWave\\SpectrumCore\\cli\\build\\x64\\SpectrumCoreFftwWorkerProbe.exe",
+  "workerHashSha256": "138389703ECE09DAA5992339518CF639A2445F5378E6D03A2F4029E1D96219A7",
+  "analysisConfigBase": {
+    "FScale": "log",
+    "Channel": 0,
+    "WinFunc": "hann",
+    "StartHz": 80.0,
+    "Window": 2048,
+    "Overlap": 0.75,
+    "StopHz": 4000.0,
+    "Hop": 512,
+    "Limit": 0.0,
+    "Gain": 1.0,
+    "DRange": 120.0
+  },
+  "queryProfile": {
+    "ExpectedSummary": "harmonic stack around 440/880/1760 Hz",
+    "PrimaryPointName": "tone880",
+    "RequirePhaseUphaseTileDelta": true,
+    "PointProbes": [
+      {
+        "Name": "tone440",
+        "Label": "440 Hz harmonic",
+        "Time": 1.0,
+        "Freq": 440.0,
+        "ExpectedFreq": 440.0,
+        "FreqToleranceHz": 25.0,
+        "MinMagnitude": 0.003
+      },
+      {
+        "Name": "tone880",
+        "Label": "880 Hz harmonic",
+        "Time": 1.0,
+        "Freq": 880.0,
+        "ExpectedFreq": 880.0,
+        "FreqToleranceHz": 30.0,
+        "MinMagnitude": 0.003
+      },
+      {
+        "Name": "tone1760",
+        "Label": "1760 Hz harmonic",
+        "Time": 1.0,
+        "Freq": 1760.0,
+        "ExpectedFreq": 1760.0,
+        "FreqToleranceHz": 50.0,
+        "MinMagnitude": 0.003
+      }
+    ],
+    "AreaProbe": {
+      "TimeStart": 0.9,
+      "TimeEnd": 1.1,
+      "FreqStart": 400.0,
+      "FreqEnd": 1900.0,
+      "ExpectedPeakTime": 1.0,
+      "PeakTimeTolerance": 0.07,
+      "AllowedPeakFrequencies": [
+        440.0,
+        880.0,
+        1760.0
+      ],
+      "PeakFreqToleranceHz": 60.0,
+      "MinMaxMagnitude": 0.01
+    }
+  },
+  "referenceCoverage": {
+    "ffmpegModes": [
+      "magnitude",
+      "phase",
+      "uphase"
+    ],
+    "audacityModes": [
+      "magnitude"
+    ],
+    "ffmpegPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\ffmpeg\\multitone_440_880_1760_2s",
+    "audacityPack": "c:\\projects\\KKMindWave\\GnauralCore\\spectrum\\research\\audacity\\multitone_440_880_1760_2s"
+  },
+  "phaseUphaseTileMaxAbsDelta": 25.13274,
+  "classification": "match",
+  "classificationReason": "All strict magnitude, phase, and unwrapped-phase checks passed.",
+  "modes": {
+    "magnitude": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "magnitude",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "All fixture-specific magnitude checks passed against the stricter profile.",
+      "checks": [
+        {
+          "Name": "tone440-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=430.664063; expected=440.000000; tolerance=25.000000."
+        },
+        {
+          "Name": "tone440-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.055270; minimum=0.003000."
+        },
+        {
+          "Name": "tone880-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=882.861328; expected=880.000000; tolerance=30.000000."
+        },
+        {
+          "Name": "tone880-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.061779; minimum=0.003000."
+        },
+        {
+          "Name": "tone1760-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "binHz=1765.722656; expected=1760.000000; tolerance=50.000000."
+        },
+        {
+          "Name": "tone1760-magnitude",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "magnitude=0.059692; minimum=0.003000."
+        },
+        {
+          "Name": "multitone-distinct-harmonic-bins",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "resolvedBins=20, 41, 82."
+        },
+        {
+          "Name": "multitone-area-peak-frequency",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakFreqHz=882.861328; expected one harmonic +/- 60.000000."
+        },
+        {
+          "Name": "multitone-area-peak-time",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakTimeSec=1.021678; expected=1.000000."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "tone880",
+        "pointObservations": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.05527,
+            "magnitude": 0.05527,
+            "db": -25.15019,
+            "phase": 0.44941,
+            "unwrappedPhase": 6.732595
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": 0.061779,
+            "magnitude": 0.061779,
+            "db": -24.183153,
+            "phase": -0.671831,
+            "unwrappedPhase": 5.611354
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 1760.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 82,
+            "binHz": 1765.722656,
+            "value": 0.059692,
+            "magnitude": 0.059692,
+            "db": -24.481741,
+            "phase": 0.227161,
+            "unwrappedPhase": 6.510346
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 84,
+          "frameTimeSec": 0.998458,
+          "binIndex": 41,
+          "binHz": 882.861328,
+          "value": 0.061779,
+          "magnitude": 0.061779,
+          "db": -24.183153,
+          "phase": -0.671831,
+          "unwrappedPhase": 5.611354
+        },
+        "areaPeak": {
+          "frameIndex": 86,
+          "binIndex": 41,
+          "timeSec": 1.021678,
+          "freqHz": 882.861328,
+          "peakValue": 0.06178,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923
+        },
+        "representativeTile": {
+          "frameStart": 83,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 0.001534
+        }
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "multitone_440_880_1760_2s_magnitude",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "magnitude",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "query": {
+              "Name": "tone440",
+              "Label": "440 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 25.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_magnitude",
+              "frameIndex": 84,
+              "binIndex": 20,
+              "frameTimeSec": 0.998458,
+              "binHz": 430.664063,
+              "value": 0.05527,
+              "magnitude": 0.05527,
+              "db": -25.15019,
+              "displayDb": -25.15019,
+              "normalized": 0.790415,
+              "phase": 0.44941,
+              "unwrappedPhase": 6.732595
+            }
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "query": {
+              "Name": "tone880",
+              "Label": "880 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_magnitude",
+              "frameIndex": 84,
+              "binIndex": 41,
+              "frameTimeSec": 0.998458,
+              "binHz": 882.861328,
+              "value": 0.061779,
+              "magnitude": 0.061779,
+              "db": -24.183153,
+              "displayDb": -24.183153,
+              "normalized": 0.798474,
+              "phase": -0.671831,
+              "unwrappedPhase": 5.611354
+            }
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "query": {
+              "Name": "tone1760",
+              "Label": "1760 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 1760.0,
+              "ExpectedFreq": 1760.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_magnitude",
+              "frameIndex": 84,
+              "binIndex": 82,
+              "frameTimeSec": 0.998458,
+              "binHz": 1765.722656,
+              "value": 0.059692,
+              "magnitude": 0.059692,
+              "db": -24.481741,
+              "displayDb": -24.481741,
+              "normalized": 0.795985,
+              "phase": 0.227161,
+              "unwrappedPhase": 6.510346
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "multitone_440_880_1760_2s_magnitude",
+          "frameStart": 83,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "magnitude",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 83,
+              "timeSec": 0.986848,
+              "bins": [
+                5E-06,
+                7E-06,
+                8E-06,
+                1.1E-05,
+                2.1E-05,
+                6.7E-05,
+                0.001367,
+                0.001304,
+                2.2E-05,
+                0.001531,
+                9E-06,
+                2E-06,
+                0.000524,
+                1E-06,
+                1E-06,
+                1E-06
+              ]
+            },
+            {
+              "frameIndex": 84,
+              "timeSec": 0.998458,
+              "bins": [
+                5E-06,
+                6E-06,
+                7E-06,
+                1.1E-05,
+                2.1E-05,
+                6.7E-05,
+                0.001366,
+                0.001305,
+                2.6E-05,
+                0.001533,
+                9E-06,
+                4E-06,
+                0.000524,
+                1E-06,
+                1E-06,
+                1E-06
+              ]
+            },
+            {
+              "frameIndex": 85,
+              "timeSec": 1.010068,
+              "bins": [
+                3E-06,
+                4E-06,
+                6E-06,
+                1E-05,
+                2E-05,
+                6.6E-05,
+                0.001365,
+                0.001306,
+                2.9E-05,
+                0.001534,
+                1E-05,
+                4E-06,
+                0.000524,
+                1E-06,
+                1E-06,
+                0.0
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "multitone_440_880_1760_2s_magnitude",
+          "frameStart": 76,
+          "frameEnd": 93,
+          "binStart": 19,
+          "binEnd": 88,
+          "cellCount": 1260,
+          "meanValue": 0.005555,
+          "meanMagnitude": 0.005555,
+          "peakValue": 0.06178,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakDisplayDb": -24.182991,
+          "peakNormalized": 0.798475,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923,
+          "peakFrameIndex": 86,
+          "peakBinIndex": 41,
+          "peakTimeSec": 1.021678,
+          "peakFreqHz": 882.861328
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "multitone_440_880_1760_2s_magnitude"
+        }
+      }
+    },
+    "phase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "phase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Wrapped-phase queries stay on the same canonical magnitude binding and value echoes the wrapped phase field.",
+      "checks": [
+        {
+          "Name": "phase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=phase."
+        },
+        {
+          "Name": "phase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "phase-tone440-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,20); magnitude=(84,20)."
+        },
+        {
+          "Name": "phase-tone440-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.055270; magnitudeMode=0.055270."
+        },
+        {
+          "Name": "phase-tone440-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.449410; phase=0.449410."
+        },
+        {
+          "Name": "phase-tone440-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.449410."
+        },
+        {
+          "Name": "phase-tone880-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,41); magnitude=(84,41)."
+        },
+        {
+          "Name": "phase-tone880-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.061779; magnitudeMode=0.061779."
+        },
+        {
+          "Name": "phase-tone880-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.671831; phase=-0.671831."
+        },
+        {
+          "Name": "phase-tone880-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=-0.671831."
+        },
+        {
+          "Name": "phase-tone1760-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,82); magnitude=(84,82)."
+        },
+        {
+          "Name": "phase-tone1760-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.059692; magnitudeMode=0.059692."
+        },
+        {
+          "Name": "phase-tone1760-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.227161; phase=0.227161."
+        },
+        {
+          "Name": "phase-tone1760-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=0.227161."
+        },
+        {
+          "Name": "phase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(86,41); magnitudePeak=(86,41)."
+        },
+        {
+          "Name": "phase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.061780; magnitudeMode=0.061780."
+        },
+        {
+          "Name": "phase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=2.052262; peakPhase=2.052262."
+        },
+        {
+          "Name": "phase-area-wrapped-range",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=2.052262."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "tone880",
+        "pointObservations": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 0.44941,
+            "magnitude": 0.05527,
+            "db": -25.15019,
+            "phase": 0.44941,
+            "unwrappedPhase": 6.732595
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": -0.671831,
+            "magnitude": 0.061779,
+            "db": -24.183153,
+            "phase": -0.671831,
+            "unwrappedPhase": 5.611354
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 1760.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 82,
+            "binHz": 1765.722656,
+            "value": 0.227161,
+            "magnitude": 0.059692,
+            "db": -24.481741,
+            "phase": 0.227161,
+            "unwrappedPhase": 6.510346
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 84,
+          "frameTimeSec": 0.998458,
+          "binIndex": 41,
+          "binHz": 882.861328,
+          "value": -0.671831,
+          "magnitude": 0.061779,
+          "db": -24.183153,
+          "phase": -0.671831,
+          "unwrappedPhase": 5.611354
+        },
+        "areaPeak": {
+          "frameIndex": 86,
+          "binIndex": 41,
+          "timeSec": 1.021678,
+          "freqHz": 882.861328,
+          "peakValue": 2.052262,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923
+        },
+        "representativeTile": {
+          "frameStart": 83,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 3.063116
+        },
+        "phaseUphaseTileMaxAbsDelta": 25.13274
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "multitone_440_880_1760_2s_phase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "phase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "query": {
+              "Name": "tone440",
+              "Label": "440 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 25.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_phase",
+              "frameIndex": 84,
+              "binIndex": 20,
+              "frameTimeSec": 0.998458,
+              "binHz": 430.664063,
+              "value": 0.44941,
+              "magnitude": 0.05527,
+              "db": -25.15019,
+              "displayDb": -25.15019,
+              "normalized": 0.790415,
+              "phase": 0.44941,
+              "unwrappedPhase": 6.732595
+            }
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "query": {
+              "Name": "tone880",
+              "Label": "880 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_phase",
+              "frameIndex": 84,
+              "binIndex": 41,
+              "frameTimeSec": 0.998458,
+              "binHz": 882.861328,
+              "value": -0.671831,
+              "magnitude": 0.061779,
+              "db": -24.183153,
+              "displayDb": -24.183153,
+              "normalized": 0.798474,
+              "phase": -0.671831,
+              "unwrappedPhase": 5.611354
+            }
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "query": {
+              "Name": "tone1760",
+              "Label": "1760 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 1760.0,
+              "ExpectedFreq": 1760.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_phase",
+              "frameIndex": 84,
+              "binIndex": 82,
+              "frameTimeSec": 0.998458,
+              "binHz": 1765.722656,
+              "value": 0.227161,
+              "magnitude": 0.059692,
+              "db": -24.481741,
+              "displayDb": -24.481741,
+              "normalized": 0.795985,
+              "phase": 0.227161,
+              "unwrappedPhase": 6.510346
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "multitone_440_880_1760_2s_phase",
+          "frameStart": 83,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "phase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 83,
+              "timeSec": 0.986848,
+              "bins": [
+                3.063116,
+                3.005734,
+                2.989777,
+                2.965109,
+                2.938424,
+                2.920801,
+                2.910622,
+                -0.233234,
+                -0.506948,
+                -2.031269,
+                1.065505,
+                -2.554935,
+                0.644178,
+                2.469013,
+                -1.883375,
+                1.297161
+              ]
+            },
+            {
+              "frameIndex": 84,
+              "timeSec": 0.998458,
+              "bins": [
+                -2.881122,
+                -2.795913,
+                -2.806178,
+                -2.709315,
+                -2.701745,
+                -2.693997,
+                -2.691962,
+                0.448426,
+                0.234667,
+                -0.669063,
+                2.357047,
+                0.441217,
+                -2.914674,
+                -2.660765,
+                2.4536,
+                -2.459972
+              ]
+            },
+            {
+              "frameIndex": 85,
+              "timeSec": 1.010068,
+              "bins": [
+                -2.302971,
+                -2.200625,
+                -2.120499,
+                -2.073473,
+                -2.030365,
+                -2.013195,
+                -2.011355,
+                1.130366,
+                1.043457,
+                0.691576,
+                -2.510389,
+                2.991407,
+                -0.190251,
+                -0.611668,
+                1.257839,
+                0.793177
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "multitone_440_880_1760_2s_phase",
+          "frameStart": 76,
+          "frameEnd": 93,
+          "binStart": 19,
+          "binEnd": 88,
+          "cellCount": 1260,
+          "meanValue": -0.067539,
+          "meanMagnitude": 0.005555,
+          "peakValue": 2.052262,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakDisplayDb": -24.182991,
+          "peakNormalized": 0.798475,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923,
+          "peakFrameIndex": 86,
+          "peakBinIndex": 41,
+          "peakTimeSec": 1.021678,
+          "peakFreqHz": 882.861328
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "multitone_440_880_1760_2s_phase"
+        }
+      }
+    },
+    "uphase": {
+      "analysisConfig": {
+        "Window": 2048,
+        "Hop": 512,
+        "Channel": 0,
+        "Overlap": 0.75,
+        "WinFunc": "hann",
+        "Data": "uphase",
+        "FScale": "log",
+        "StartHz": 80.0,
+        "StopHz": 4000.0,
+        "Gain": 1.0,
+        "DRange": 120.0,
+        "Limit": 0.0
+      },
+      "classification": "match",
+      "classificationReason": "Unwrapped-phase queries stay on the same canonical magnitude binding and value echoes the unwrapped phase field.",
+      "checks": [
+        {
+          "Name": "uphase-open-data-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "openAnalysis.data=uphase."
+        },
+        {
+          "Name": "uphase-tile-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "Representative tile values are finite."
+        },
+        {
+          "Name": "uphase-tone440-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,20); magnitude=(84,20)."
+        },
+        {
+          "Name": "uphase-tone440-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.055270; magnitudeMode=0.055270."
+        },
+        {
+          "Name": "uphase-tone440-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=6.732595; unwrappedPhase=6.732595."
+        },
+        {
+          "Name": "uphase-tone440-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=6.732595."
+        },
+        {
+          "Name": "uphase-tone880-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,41); magnitude=(84,41)."
+        },
+        {
+          "Name": "uphase-tone880-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.061779; magnitudeMode=0.061779."
+        },
+        {
+          "Name": "uphase-tone880-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=5.611354; unwrappedPhase=5.611354."
+        },
+        {
+          "Name": "uphase-tone880-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=5.611354."
+        },
+        {
+          "Name": "uphase-tone1760-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "mode=(84,82); magnitude=(84,82)."
+        },
+        {
+          "Name": "uphase-tone1760-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMagnitude=0.059692; magnitudeMode=0.059692."
+        },
+        {
+          "Name": "uphase-tone1760-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=6.510346; unwrappedPhase=6.510346."
+        },
+        {
+          "Name": "uphase-tone1760-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "value=6.510346."
+        },
+        {
+          "Name": "uphase-area-binding",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modePeak=(86,41); magnitudePeak=(86,41)."
+        },
+        {
+          "Name": "uphase-area-magnitude-stable",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "modeMaxMagnitude=0.061780; magnitudeMode=0.061780."
+        },
+        {
+          "Name": "uphase-area-value-echo",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-4.230923; peakUnwrappedPhase=-4.230923."
+        },
+        {
+          "Name": "uphase-area-finite",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "peakValue=-4.230923."
+        },
+        {
+          "Name": "uphase-tile-divergence",
+          "Passed": true,
+          "Severity": "required",
+          "Detail": "maxAbsDeltaVsPhase=25.132740."
+        }
+      ],
+      "derivedObservations": {
+        "primaryProbeName": "tone880",
+        "pointObservations": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 440.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 20,
+            "binHz": 430.664063,
+            "value": 6.732595,
+            "magnitude": 0.05527,
+            "db": -25.15019,
+            "phase": 0.44941,
+            "unwrappedPhase": 6.732595
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 880.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 41,
+            "binHz": 882.861328,
+            "value": 5.611354,
+            "magnitude": 0.061779,
+            "db": -24.183153,
+            "phase": -0.671831,
+            "unwrappedPhase": 5.611354
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "requestedTimeSec": 1.0,
+            "requestedFreqHz": 1760.0,
+            "frameIndex": 84,
+            "frameTimeSec": 0.998458,
+            "binIndex": 82,
+            "binHz": 1765.722656,
+            "value": 6.510346,
+            "magnitude": 0.059692,
+            "db": -24.481741,
+            "phase": 0.227161,
+            "unwrappedPhase": 6.510346
+          }
+        ],
+        "primaryPoint": {
+          "frameIndex": 84,
+          "frameTimeSec": 0.998458,
+          "binIndex": 41,
+          "binHz": 882.861328,
+          "value": 5.611354,
+          "magnitude": 0.061779,
+          "db": -24.183153,
+          "phase": -0.671831,
+          "unwrappedPhase": 5.611354
+        },
+        "areaPeak": {
+          "frameIndex": 86,
+          "binIndex": 41,
+          "timeSec": 1.021678,
+          "freqHz": 882.861328,
+          "peakValue": -4.230923,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923
+        },
+        "representativeTile": {
+          "frameStart": 83,
+          "frameCount": 3,
+          "viewBinCount": 16,
+          "maxAbsValue": 27.592712
+        },
+        "phaseUphaseTileMaxAbsDelta": 25.13274
+      },
+      "responses": {
+        "openAnalysis": {
+          "ok": true,
+          "cmd": "open-analysis",
+          "analysisId": "multitone_440_880_1760_2s_uphase",
+          "sampleRate": 44100,
+          "windowSize": 2048,
+          "hopSize": 512,
+          "overlap": 0.75,
+          "windowFunc": "hann",
+          "data": "uphase",
+          "fscale": "log",
+          "startHz": 80.0,
+          "stopHz": 4000.0,
+          "gain": 1.0,
+          "frequencyGain": 0.0,
+          "drange": 120.0,
+          "limit": 0.0,
+          "binding": "native-static",
+          "frameCount": 169,
+          "binCount": 1025,
+          "durationS": 2.0
+        },
+        "pointQueries": [
+          {
+            "name": "tone440",
+            "label": "440 Hz harmonic",
+            "query": {
+              "Name": "tone440",
+              "Label": "440 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 440.0,
+              "ExpectedFreq": 440.0,
+              "FreqToleranceHz": 25.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_uphase",
+              "frameIndex": 84,
+              "binIndex": 20,
+              "frameTimeSec": 0.998458,
+              "binHz": 430.664063,
+              "value": 6.732595,
+              "magnitude": 0.05527,
+              "db": -25.15019,
+              "displayDb": -25.15019,
+              "normalized": 0.790415,
+              "phase": 0.44941,
+              "unwrappedPhase": 6.732595
+            }
+          },
+          {
+            "name": "tone880",
+            "label": "880 Hz harmonic",
+            "query": {
+              "Name": "tone880",
+              "Label": "880 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 880.0,
+              "ExpectedFreq": 880.0,
+              "FreqToleranceHz": 30.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_uphase",
+              "frameIndex": 84,
+              "binIndex": 41,
+              "frameTimeSec": 0.998458,
+              "binHz": 882.861328,
+              "value": 5.611354,
+              "magnitude": 0.061779,
+              "db": -24.183153,
+              "displayDb": -24.183153,
+              "normalized": 0.798474,
+              "phase": -0.671831,
+              "unwrappedPhase": 5.611354
+            }
+          },
+          {
+            "name": "tone1760",
+            "label": "1760 Hz harmonic",
+            "query": {
+              "Name": "tone1760",
+              "Label": "1760 Hz harmonic",
+              "Time": 1.0,
+              "Freq": 1760.0,
+              "ExpectedFreq": 1760.0,
+              "FreqToleranceHz": 50.0,
+              "MinMagnitude": 0.003
+            },
+            "response": {
+              "ok": true,
+              "cmd": "point-query",
+              "analysisId": "multitone_440_880_1760_2s_uphase",
+              "frameIndex": 84,
+              "binIndex": 82,
+              "frameTimeSec": 0.998458,
+              "binHz": 1765.722656,
+              "value": 6.510346,
+              "magnitude": 0.059692,
+              "db": -24.481741,
+              "displayDb": -24.481741,
+              "normalized": 0.795985,
+              "phase": 0.227161,
+              "unwrappedPhase": 6.510346
+            }
+          }
+        ],
+        "representativeTile": {
+          "ok": true,
+          "cmd": "get-tile",
+          "analysisId": "multitone_440_880_1760_2s_uphase",
+          "frameStart": 83,
+          "frameCount": 3,
+          "binStart": 3,
+          "binCount": 16,
+          "sourceBinCount": 184,
+          "data": "uphase",
+          "fscale": "log",
+          "viewStartHz": 80.0,
+          "viewStopHz": 4000.0,
+          "binFrequenciesHz": [
+            80.0,
+            103.837603,
+            134.778097,
+            174.937932,
+            227.064194,
+            294.72252,
+            382.541,
+            496.526756,
+            644.476851,
+            836.511642,
+            1085.767047,
+            1409.293093,
+            1829.220208,
+            2374.27302,
+            3081.735238,
+            4000.0
+          ],
+          "frames": [
+            {
+              "frameIndex": 83,
+              "timeSec": 0.986848,
+              "bins": [
+                3.063116,
+                3.005734,
+                2.989777,
+                2.965109,
+                2.938424,
+                2.920801,
+                2.910622,
+                6.049952,
+                5.776237,
+                4.251916,
+                7.348691,
+                10.011436,
+                0.644178,
+                2.469013,
+                4.399811,
+                20.146717
+              ]
+            },
+            {
+              "frameIndex": 84,
+              "timeSec": 0.998458,
+              "bins": [
+                3.402063,
+                3.487272,
+                3.477007,
+                3.57387,
+                3.58144,
+                3.589188,
+                3.591224,
+                6.731611,
+                6.517852,
+                5.614122,
+                8.640232,
+                6.724402,
+                9.651697,
+                9.905606,
+                8.736786,
+                -27.592712
+              ]
+            },
+            {
+              "frameIndex": 85,
+              "timeSec": 1.010068,
+              "bins": [
+                3.980215,
+                4.08256,
+                4.162687,
+                4.209712,
+                4.25282,
+                4.269991,
+                4.271831,
+                7.413551,
+                7.326642,
+                6.974761,
+                10.055982,
+                9.274592,
+                12.376119,
+                11.954702,
+                13.824209,
+                19.642733
+              ]
+            }
+          ]
+        },
+        "areaQuery": {
+          "ok": true,
+          "cmd": "area-query",
+          "analysisId": "multitone_440_880_1760_2s_uphase",
+          "frameStart": 76,
+          "frameEnd": 93,
+          "binStart": 19,
+          "binEnd": 88,
+          "cellCount": 1260,
+          "meanValue": 1.54315,
+          "meanMagnitude": 0.005555,
+          "peakValue": -4.230923,
+          "maxMagnitude": 0.06178,
+          "maxDb": -24.182991,
+          "peakDisplayDb": -24.182991,
+          "peakNormalized": 0.798475,
+          "peakPhase": 2.052262,
+          "peakUnwrappedPhase": -4.230923,
+          "peakFrameIndex": 86,
+          "peakBinIndex": 41,
+          "peakTimeSec": 1.021678,
+          "peakFreqHz": 882.861328
+        },
+        "closeAnalysis": {
+          "ok": true,
+          "cmd": "close-analysis",
+          "analysisId": "multitone_440_880_1760_2s_uphase"
+        }
+      }
+    }
+  },
+  "responses": {
+    "quit": {
+      "ok": true,
+      "cmd": "quit"
+    }
+  }
+}

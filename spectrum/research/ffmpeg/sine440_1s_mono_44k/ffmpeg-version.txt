@@ -1,0 +1,12 @@
+ffmpeg version 8.0.git Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 15.2.0 (GCC)
+configuration: --prefix=/c/projects/KKMindWave/SpectrumCore/lib/build/ffmpeg-win64/install --bindir=/c/projects/KKMindWave/SpectrumCore/lib/build/ffmpeg-win64/install/bin --arch=x86_64 --target-os=mingw32 --disable-doc --disable-debug --disable-indev=gdigrab --enable-gpl --disable-shared --enable-static --disable-filter=scale_d3d11 --disable-filter=scale_d3d12 --disable-filter=gfxcapture
+libavutil      60. 31.100 / 60. 31.100
+libavcodec     62. 36.100 / 62. 36.100
+libavformat    62. 19.100 / 62. 19.100
+libavdevice    62.  4.100 / 62.  4.100
+libavfilter    11. 17.100 / 11. 17.100
+libswscale      9.  7.100 /  9.  7.100
+libswresample   6.  4.100 /  6.  4.100
+
+Exiting with exit code 0
