@@ -8,20 +8,6 @@
   >
     <div class="gnaural-schedule-view__toolbar">
       <div class="gnaural-schedule-view__toolbar-leading">
-        <q-btn
-          flat
-          round
-          dense
-          color="primary"
-          icon="settings"
-          class="gnaural-schedule-view__settings-toggle"
-          :class="{ 'gnaural-schedule-view__settings-toggle--active': settingsPanelOpen }"
-          :aria-label="settingsPanelOpen ? t('audio.scheduleSettingsClose') : t('audio.scheduleSettingsOpen')"
-          :aria-expanded="settingsPanelOpen"
-          aria-controls="gnaural-schedule-settings-panel"
-          @click="toggleSettingsPanel"
-        />
-
         <div v-if="$slots.transportControls" class="gnaural-schedule-view__toolbar-slot">
           <slot name="transportControls" />
         </div>
@@ -165,16 +151,35 @@
           </div>
         </div>
 
-        <canvas
-          ref="minimapCanvasEl"
-          class="gnaural-schedule-view__minimap-canvas"
-          role="img"
-          :aria-label="t('audio.scheduleMinimapLabel')"
-          :style="{ cursor: minimapCursor }"
-          @pointerdown="handleMinimapPointerDown"
-          @pointermove="handleMinimapPointerMove"
-          @pointerleave="handleMinimapPointerLeave"
-        />
+        <div class="gnaural-schedule-view__minimap-wrap">
+          <canvas
+            ref="minimapCanvasEl"
+            class="gnaural-schedule-view__minimap-canvas"
+            role="img"
+            :aria-label="t('audio.scheduleMinimapLabel')"
+            :style="{ cursor: minimapCursor }"
+            @pointerdown="handleMinimapPointerDown"
+            @pointermove="handleMinimapPointerMove"
+            @pointerleave="handleMinimapPointerLeave"
+          />
+
+          <div class="gnaural-schedule-view__overlay-controls">
+            <q-btn
+              class="gnaural-schedule-view__overlay-settings-toggle"
+              :class="{ 'gnaural-schedule-view__overlay-settings-toggle--active': settingsPanelOpen }"
+              dense
+              round
+              size="xs"
+              color="primary"
+              text-color="white"
+              icon="settings"
+              :aria-label="t('audio.scheduleSettingsOpen')"
+              :title="t('audio.scheduleSettingsOpen')"
+              aria-controls="gnaural-schedule-settings-panel"
+              @click="toggleSettingsPanel"
+            />
+          </div>
+        </div>
       </div>
 
       <aside
@@ -299,6 +304,11 @@ interface FrequencyRange {
 interface MinimapLayout {
   readonly axisRect: Rect
   readonly plotRect: Rect
+}
+
+interface TimeViewportPayload {
+  readonly startSec: number
+  readonly endSec: number
 }
 
 const VOICE_BASE_COLORS = [
@@ -427,12 +437,15 @@ const props = defineProps<{
   readonly trackStateBusy: boolean
   readonly canSeek: boolean
   readonly uiStateScope?: string
+  readonly timeViewportStartSec?: number | null
+  readonly timeViewportEndSec?: number | null
 }>()
 
 const emit = defineEmits<{
   seek: [positionSec: number]
   'patch-voice-state': [patch: VoiceStatePatch]
   'patch-voice-state-batch': [patches: readonly VoiceStatePatch[]]
+  'update:time-viewport': [viewport: TimeViewportPayload]
 }>()
 
 const { t } = useI18n()
@@ -756,14 +769,26 @@ function getVisibleDurationSec(): number {
   return Math.max(timeViewport.endSec - timeViewport.startSec, MIN_VISIBLE_DURATION_SEC)
 }
 
-function setTimeViewport(startSec: number, durationSec: number): void {
+function setTimeViewport(startSec: number, durationSec: number): boolean {
   const totalTimeSec = getTotalTimeSec()
   const clampedDuration = Math.min(Math.max(durationSec, MIN_VISIBLE_DURATION_SEC), totalTimeSec)
   const maxStartSec = Math.max(0, totalTimeSec - clampedDuration)
   const clampedStartSec = Math.min(Math.max(startSec, 0), maxStartSec)
+  const nextEndSec = clampedStartSec + clampedDuration
+  const didChange = Math.abs(timeViewport.startSec - clampedStartSec) > 0.0001
+    || Math.abs(timeViewport.endSec - nextEndSec) > 0.0001
+
+  if (!didChange) {
+    return false
+  }
 
   timeViewport.startSec = clampedStartSec
-  timeViewport.endSec = clampedStartSec + clampedDuration
+  timeViewport.endSec = nextEndSec
+  emit('update:time-viewport', {
+    startSec: timeViewport.startSec,
+    endSec: timeViewport.endSec,
+  })
+  return true
 }
 
 function panTimeViewport(deltaSec: number): void {
@@ -781,6 +806,36 @@ function zoomTimeViewport(factor: number, anchorSec: number): void {
 function resetView(): void {
   frequencyZoom.value = 1
   setTimeViewport(0, getTotalTimeSec())
+}
+
+function normalizeExternalTimeViewport(
+  startSec: number | null | undefined,
+  endSec: number | null | undefined,
+): TimeViewportPayload | null {
+  if (props.schedule === null) {
+    return null
+  }
+
+  if (
+    typeof startSec !== 'number'
+    || typeof endSec !== 'number'
+    || !Number.isFinite(startSec)
+    || !Number.isFinite(endSec)
+  ) {
+    return null
+  }
+
+  const totalTimeSec = getTotalTimeSec()
+  const clampedStartSec = Math.min(Math.max(0, startSec), totalTimeSec)
+  const clampedEndSec = Math.min(
+    Math.max(clampedStartSec + MIN_VISIBLE_DURATION_SEC, endSec),
+    totalTimeSec,
+  )
+
+  return {
+    startSec: clampedStartSec,
+    endSec: clampedEndSec,
+  }
 }
 
 function closeTrackPanel(): void {
@@ -2464,6 +2519,24 @@ watch(() => props.schedule, () => {
   scheduleRender()
 }, { immediate: true })
 
+watch(
+  () => [props.timeViewportStartSec, props.timeViewportEndSec] as const,
+  ([startSec, endSec]) => {
+    const externalViewport = normalizeExternalTimeViewport(startSec, endSec)
+    if (externalViewport === null) {
+      return
+    }
+
+    if (setTimeViewport(
+      externalViewport.startSec,
+      externalViewport.endSec - externalViewport.startSec,
+    )) {
+      scheduleRender()
+    }
+  },
+  { immediate: true },
+)
+
 watch(layoutMode, (nextLayoutMode: LayoutMode) => {
   saveStoredLayoutMode(uiStateScope.value, nextLayoutMode)
 })
@@ -2599,13 +2672,26 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.gnaural-schedule-view__settings-toggle {
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  min-height: 40px;
-  min-width: 40px;
+.gnaural-schedule-view__overlay-controls {
+  align-items: flex-end;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  position: absolute;
+  right: 4px;
+  z-index: 35;
 }
 
-.gnaural-schedule-view__settings-toggle--active {
+.gnaural-schedule-view__overlay-settings-toggle {
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  min-height: 34px;
+  min-width: 34px;
+  pointer-events: auto;
+}
+
+.gnaural-schedule-view__overlay-settings-toggle--active {
   background: rgba(37, 99, 235, 0.12);
 }
 
@@ -2720,9 +2806,9 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
-  left: 0;
   max-width: calc(100% - 56px);
   position: absolute;
+  right: 0;
   top: 0;
   width: 320px;
   z-index: 30;
@@ -2808,6 +2894,11 @@ onBeforeUnmount(() => {
   outline: none;
   overflow: hidden;
   padding: 0;
+  position: relative;
+}
+
+.gnaural-schedule-view__minimap-wrap {
+  min-height: 0;
   position: relative;
 }
 
@@ -3046,7 +3137,7 @@ onBeforeUnmount(() => {
 .gnaural-schedule-settings-panel-enter-from,
 .gnaural-schedule-settings-panel-leave-to {
   opacity: 0;
-  transform: translateX(-24px);
+  transform: translateX(24px);
 }
 
 @media (max-width: 900px) {
