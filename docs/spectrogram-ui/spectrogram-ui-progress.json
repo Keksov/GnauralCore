@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "plan": "spectrogram-ui-plan",
+  "planDoc": "docs/spectrogram-ui/spectrogram-ui-plan.md",
+  "title": "Spectrogram UI (Audacity-style) on the SpectrumCore worker",
+  "status": "active",
+  "createdAt": "2026-06-25",
+  "updatedAt": "2026-06-25",
+  "decisions": [
+    { "id": "DU1", "text": "Architecture: LIVE worker over WebSocket. The bun server spawns/manages a long-lived SpectrumCoreFftwWorkerProbe and proxies JSON; the UI requests tiles on demand by (timeStart,timeEnd,zoom) over the overview pyramid. Reuses the worker's W2/W3 (pyramid + budgeted cache)." },
+    { "id": "DU2", "text": "Code location: UI in GnauralCore/ui (source of truth; MindWaveCore re-exports). Server integration in GnauralCore/server (audio domain) wired through MindWaveCore/server (bun, the runtime host). Plan + ledger live here in GnauralCore/docs/spectrogram-ui/." },
+    { "id": "DU3", "text": "Worker binary: DEV-ONLY for now. The server locates SpectrumCoreFftwWorkerProbe.exe via config/ENV (run manually in dev); packaging/distribution deferred to a later step." },
+    { "id": "DU4", "text": "The UI settings panel must surface the FULL SpectrumCore capability set (post Audacity-parity): fscale lin/log/mel/bark/erb/period; data magnitude/phase/uphase/reassign/pitch; scale lin/sqrt/cbrt/log/4thrt/5thrt; window + zero-padding; the full win_func list incl. gauss25/35/45; gain/frequencyGain/drange/limit/saturation; start/stop; mode combined/separate; channel; palette + color gain. Coverage is an acceptance criterion (U4.3)." },
+    { "id": "DU5", "text": "Render split: fetch LINEAR-magnitude tiles from the worker and apply scale/gain/drange/limit/saturation/palette in the renderer (live, no re-analysis). Re-analysis (worker reconfigure) is needed only for window/hop/overlap/win_func/data/fscale/zero-padding/mode/channel/start/stop. Finalized in U4.2." },
+    { "id": "DU6", "text": "Time slider: reuse the existing schedule-player time slider/scrubber IF it provides the needed seek + zoom/pan for spectrogram mode; otherwise adapt or build one styled to match. U3.2 includes the evaluation. (GnauralTransportControls.vue is play/pause/export only, not a scrubber.)" },
+    { "id": "DU7", "text": "Process: plan doc + JSON ledger; per-step atomic commits prefixed with the step id; NO push (origin left to the user); pause at phase boundaries for review." },
+    { "id": "DU8", "text": "Gates: vue-tsc typecheck + lint; bun contract tests for the server worker-bridge (spawn on a fixture; assert tile/point/area shapes; reconfigure; crash-restart) as the PRIMARY automated gate; vitest unit tests for composable/store logic; visual parity vs Audacity/ffmpeg references is manual / non-blocking." },
+    { "id": "DU9", "text": "Prerequisite met: the SpectrumCore Audacity full-parity backend (../../../SpectrumCore/cli/spec/audacity-parity-plan.md) is complete; this plan consumes it." }
+  ],
+  "steps": [
+    {
+      "id": "U0.1",
+      "phase": 0,
+      "title": "Plan & ledger",
+      "status": "done",
+      "dependsOn": [],
+      "artifacts": ["docs/spectrogram-ui/spectrogram-ui-plan.md", "docs/spectrogram-ui/spectrogram-ui-progress.json"],
+      "verify": "ledger JSON parses; dependsOn DAG acyclic; plan + ledger committed",
+      "startedAt": "2026-06-25T00:00:00Z",
+      "finishedAt": "2026-06-25T00:00:00Z",
+      "blockedReason": null,
+      "evidence": [
+        "Authored the Spectrogram UI plan + ledger after exploring the stack (Quasar/Vue3 UI in GnauralCore/ui re-exported into MindWave; bun server with WS handlers; existing placeholder SpectrogramView.vue computing Goertzel client-side; SpectrumCore worker exposes open-analysis/get-tile(time,zoom)/point-query/area-query/export-matrix).",
+        "DAG acyclic: U0.1 -> U0.2 -> U1.1 -> U1.2 -> U1.3 -> {U2.1->U2.2->U2.3, plus U3/U4/U5 chains}.",
+        "Committed as U0.1 (single commit, no push)."
+      ]
+    },
+    {
+      "id": "U0.2",
+      "phase": 0,
+      "title": "WS spectrogram protocol + bridge skeleton + smoke harness",
+      "status": "not-started",
+      "dependsOn": ["U0.1"],
+      "artifacts": ["GnauralCore/server (protocol types)", "GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server (bun smoke test)"],
+      "verify": "additive WS message types defined (TS); bridge skeleton spawns the worker on a fixture, opens an analysis, requests one tile, asserts shape; bun smoke test green",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U1.1",
+      "phase": 1,
+      "title": "Worker process manager (spawn / NDJSON / lifecycle)",
+      "status": "not-started",
+      "dependsOn": ["U0.2"],
+      "artifacts": ["GnauralCore/server/spectrogram-bridge.ts"],
+      "verify": "Bun.spawn of the worker (exe path from config/ENV); newline-delimited JSON framing; request/response correlation; timeout + crash-restart; clean shutdown. Unit/bun test for framing + restart",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U1.2",
+      "phase": 1,
+      "title": "Audio source resolution (WAV for the worker)",
+      "status": "not-started",
+      "dependsOn": ["U1.1"],
+      "artifacts": ["GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server/audio-file-utils.ts"],
+      "verify": "resolve the server-side WAV path for audio.selectedPath; convert non-WAV to a temp WAV via the existing export pipeline; cache + cleanup. Test: open-analysis succeeds for a non-WAV source",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U1.3",
+      "phase": 1,
+      "title": "WS endpoints (open / reconfigure / get-tile / point / area / close)",
+      "status": "not-started",
+      "dependsOn": ["U1.2"],
+      "artifacts": ["MindWaveCore/server (ws handler)", "GnauralCore/server/spectrogram-bridge.ts"],
+      "verify": "per-connection session routes UI WS messages to the worker and streams responses; backpressure-safe. bun contract test (open -> get-tile -> point-query -> area-query -> reconfigure -> close) green",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U2.1",
+      "phase": 2,
+      "title": "useSpectrogram composable (tile fetch + client cache)",
+      "status": "not-started",
+      "dependsOn": ["U1.3"],
+      "artifacts": ["GnauralCore/ui/composables/useSpectrogram.ts"],
+      "verify": "opens an analysis over WS; requests tiles for the visible (time-range, zoom); client-side tile cache; debounced refetch on view change; cancellation. vitest unit for the cache/refetch logic",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U2.2",
+      "phase": 2,
+      "title": "Canvas tile renderer (replace the Goertzel placeholder)",
+      "status": "not-started",
+      "dependsOn": ["U2.1"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "draw worker tiles (float -> palette -> ImageData) on canvas; frequency axis honours fscale (lin/log/mel/bark/erb/period via binFrequenciesHz); replaces the client-side Goertzel path; renders a fixture end-to-end",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U2.3",
+      "phase": 2,
+      "title": "Palettes + client-side value transform",
+      "status": "not-started",
+      "dependsOn": ["U2.2"],
+      "artifacts": ["GnauralCore/ui/composables/useSpectrogram.ts", "GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "scale/gain/drange/limit/saturation/palette + color gain applied in the renderer on linear tiles (live, no refetch); palettes mirror the backend for parity; updates without re-analysis",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U3.1",
+      "phase": 3,
+      "title": "Frequency axis + time ruler (chrome)",
+      "status": "not-started",
+      "dependsOn": ["U2.2"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "frequency axis labels honour fscale; time ruler labels; legend/units. The chrome SpectrumCore intentionally omitted is rendered here",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U3.2",
+      "phase": 3,
+      "title": "Time slider + zoom/pan",
+      "status": "not-started",
+      "dependsOn": ["U3.1"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/components (slider)"],
+      "verify": "evaluate the schedule-player time slider for reuse (DU6); reuse or adapt; zoom/pan over time drives get-tile by (timeStart,timeEnd,zoom) across pyramid tiers; smooth at multiple zooms",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U3.3",
+      "phase": 3,
+      "title": "Playhead sync with audio playback (optional)",
+      "status": "not-started",
+      "dependsOn": ["U3.2"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/pages/AudioPage.vue"],
+      "verify": "a playhead overlay tracks the transport position during playback; seeking via the slider updates playback if wired. Non-blocking if transport integration is out of reach",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U4.1",
+      "phase": 4,
+      "title": "Full parameter panel (all backend capabilities)",
+      "status": "not-started",
+      "dependsOn": ["U2.3"],
+      "artifacts": ["GnauralCore/ui/components (settings panel)", "GnauralCore/ui/stores (spectrogram store)"],
+      "verify": "panel exposes window, zero-padding, hop/overlap, win_func (full incl. gauss25/35/45), data (magnitude/phase/uphase/reassign/pitch), scale family, fscale (lin/log/mel/bark/erb/period), start/stop, gain, frequencyGain, drange, limit, saturation, mode, channel, palette + color gain; bound to a pinia store",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U4.2",
+      "phase": 4,
+      "title": "Apply semantics (render-only vs reconfigure) + persistence",
+      "status": "not-started",
+      "dependsOn": ["U4.1"],
+      "artifacts": ["GnauralCore/ui/composables/useSpectrogram.ts", "GnauralCore/ui/stores (spectrogram store)"],
+      "verify": "render-only params (scale/gain/drange/limit/saturation/palette) update without refetch; reconfigure params (window/hop/overlap/win_func/data/fscale/zero-padding/mode/channel/start/stop) trigger re-analysis; settings persist (localStorage)",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U4.3",
+      "phase": 4,
+      "title": "Capability-coverage check + Audacity/ffmpeg presets",
+      "status": "not-started",
+      "dependsOn": ["U4.2"],
+      "artifacts": ["GnauralCore/ui (presets)", "docs/spectrogram-ui/capability-coverage.md"],
+      "verify": "every SpectrumCore option (DU4) reachable from the UI (coverage matrix doc + a test asserting the option set); Audacity-default and ffmpeg-showspectrumpic-default presets selectable",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U5.1",
+      "phase": 5,
+      "title": "Hover readout (time / frequency / intensity)",
+      "status": "not-started",
+      "dependsOn": ["U3.1"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/composables/useSpectrogram.ts"],
+      "verify": "hovering shows time/frequency/intensity via worker point-query (throttled); readout matches the rendered cell",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U5.2",
+      "phase": 5,
+      "title": "Area selection -> area-query overlay",
+      "status": "not-started",
+      "dependsOn": ["U5.1"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "drag-select a time/frequency region -> worker area-query -> peak/mean stats overlay; selection maps correctly under zoom/pan and fscale",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    },
+    {
+      "id": "U5.3",
+      "phase": 5,
+      "title": "i18n / a11y / states / perf + final acceptance",
+      "status": "not-started",
+      "dependsOn": ["U4.3", "U5.2"],
+      "artifacts": ["GnauralCore/ui (i18n, states)", "docs/spectrogram-ui/spectrogram-ui-progress.json"],
+      "verify": "i18n strings; a11y (canvas aria, keyboard); loading/empty/error states; perf pass (tile cache sizing, request cancellation); vue-tsc + lint + bun contract + vitest all green; set plan status complete",
+      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+    }
+  ],
+  "log": [
+    { "ts": "2026-06-25T00:00:00Z", "step": "U0.1", "event": "done", "note": "Spectrogram UI plan + ledger created. Architecture: live SpectrumCore worker over WebSocket via the bun server (DU1); UI in GnauralCore/ui re-exported to MindWave (DU2); worker exe dev-only via config/ENV (DU3); UI must surface the full post-Audacity-parity capability set (DU4); render-only vs reconfigure split (DU5). Prerequisite (Audacity full-parity backend) complete." }
+  ]
+}
