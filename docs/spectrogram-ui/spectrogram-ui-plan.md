@@ -11,8 +11,13 @@ lin/log/mel/bark/erb/period, data magnitude/phase/uphase/reassign/pitch, gain/ra
 frequencyGain, window + zero-padding, the full window set incl. Gaussians, start/stop,
 combined/separate). This plan builds the **UI + server bridge** that exposes all of it.
 
-Prerequisite (met): [SpectrumCore/cli/spec/audacity-parity-plan.md](../../../SpectrumCore/cli/spec/audacity-parity-plan.md)
+Prerequisite (met): [SpectrumCore/spec/audacity-parity-plan.md](../../../SpectrumCore/spec/audacity-parity-plan.md)
 (complete) and the showspectrum compute core + worker follow-on.
+
+> Path note: SpectrumCore was restructured (2026-06; `cli/`+`lib/` → `src/ tests/ spec/
+> research/ patches/`, CLI build in `cli/`, outputs in `build/win64`). Links below use the
+> new `SpectrumCore/spec/…` paths and the worker exe lives at
+> `SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe`.
 
 ## 1. Where things live (today)
 
@@ -80,9 +85,12 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
 
 **Phase 0 — Plan & protocol**
 - [x] **U0.1 — Plan & ledger.** This document + [spectrogram-ui-progress.json](spectrogram-ui-progress.json).
-- [ ] **U0.2 — WS protocol + bridge skeleton + smoke harness.** Additive WS message types;
-  a `spectrogram-bridge` skeleton that spawns the worker on a fixture, opens, fetches one
-  tile, asserts shape; bun smoke test.
+- [x] **U0.2 — WS protocol + bridge skeleton + smoke harness.** Additive WS message types
+  ([SharedPasCore/ts/spectrogram-protocol.ts](../../../SharedPasCore/ts/spectrogram-protocol.ts),
+  re-exported via GnauralCore/server/protocol.ts); a `spectrogram-bridge` skeleton
+  ([GnauralCore/server/spectrogram-bridge.ts](../../server/spectrogram-bridge.ts)) that
+  spawns the worker on a fixture, opens, fetches one tile, asserts shape; bun smoke test
+  ([spectrogram-bridge.test.ts](../../server/spectrogram-bridge.test.ts)) green; vue-tsc clean.
 
 **Phase 1 — Server worker bridge**
 - [ ] **U1.1 — Worker process manager.** Bun.spawn (exe from config/ENV), NDJSON framing,
@@ -123,7 +131,7 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
 
 - Audacity Spectrogram View — <https://manual.audacityteam.org/man/spectrogram_view.html>
 - ffmpeg showspectrumpic — <https://ffmpeg.org/ffmpeg-filters.html#showspectrumpic>
-- Worker contract — [SpectrumCore/cli/spec/fftw-worker-probe-contract.md](../../../SpectrumCore/cli/spec/fftw-worker-probe-contract.md)
-- One-shot contract — [SpectrumCore/cli/spec/cli-contract.md](../../../SpectrumCore/cli/spec/cli-contract.md)
-- Backend parity final status — [SpectrumCore/cli/spec/audacity-parity-final-status.md](../../../SpectrumCore/cli/spec/audacity-parity-final-status.md)
-- Worker follow-on (tiling/cache/export) — [SpectrumCore/cli/spec/worker-integration-plan.md](../../../SpectrumCore/cli/spec/worker-integration-plan.md)
+- Worker contract — [SpectrumCore/spec/fftw-worker-probe-contract.md](../../../SpectrumCore/spec/fftw-worker-probe-contract.md)
+- One-shot contract — [SpectrumCore/spec/cli-contract.md](../../../SpectrumCore/spec/cli-contract.md)
+- Backend parity final status — [SpectrumCore/spec/audacity-parity-final-status.md](../../../SpectrumCore/spec/audacity-parity-final-status.md)
+- Worker follow-on (tiling/cache/export) — [SpectrumCore/spec/worker-integration-plan.md](../../../SpectrumCore/spec/worker-integration-plan.md)

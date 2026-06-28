@@ -5,7 +5,7 @@
   "title": "Spectrogram UI (Audacity-style) on the SpectrumCore worker",
   "status": "active",
   "createdAt": "2026-06-25",
-  "updatedAt": "2026-06-25",
+  "updatedAt": "2026-06-28",
   "decisions": [
     { "id": "DU1", "text": "Architecture: LIVE worker over WebSocket. The bun server spawns/manages a long-lived SpectrumCoreFftwWorkerProbe and proxies JSON; the UI requests tiles on demand by (timeStart,timeEnd,zoom) over the overview pyramid. Reuses the worker's W2/W3 (pyramid + budgeted cache)." },
     { "id": "DU2", "text": "Code location: UI in GnauralCore/ui (source of truth; MindWaveCore re-exports). Server integration in GnauralCore/server (audio domain) wired through MindWaveCore/server (bun, the runtime host). Plan + ledger live here in GnauralCore/docs/spectrogram-ui/." },
@@ -15,7 +15,7 @@
     { "id": "DU6", "text": "Time slider: reuse the existing schedule-player time slider/scrubber IF it provides the needed seek + zoom/pan for spectrogram mode; otherwise adapt or build one styled to match. U3.2 includes the evaluation. (GnauralTransportControls.vue is play/pause/export only, not a scrubber.)" },
     { "id": "DU7", "text": "Process: plan doc + JSON ledger; per-step atomic commits prefixed with the step id; NO push (origin left to the user); pause at phase boundaries for review." },
     { "id": "DU8", "text": "Gates: vue-tsc typecheck + lint; bun contract tests for the server worker-bridge (spawn on a fixture; assert tile/point/area shapes; reconfigure; crash-restart) as the PRIMARY automated gate; vitest unit tests for composable/store logic; visual parity vs Audacity/ffmpeg references is manual / non-blocking." },
-    { "id": "DU9", "text": "Prerequisite met: the SpectrumCore Audacity full-parity backend (../../../SpectrumCore/cli/spec/audacity-parity-plan.md) is complete; this plan consumes it." }
+    { "id": "DU9", "text": "Prerequisite met: the SpectrumCore Audacity full-parity backend (../../../SpectrumCore/spec/audacity-parity-plan.md) is complete; this plan consumes it." }
   ],
   "steps": [
     {
@@ -39,11 +39,18 @@
       "id": "U0.2",
       "phase": 0,
       "title": "WS spectrogram protocol + bridge skeleton + smoke harness",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U0.1"],
-      "artifacts": ["GnauralCore/server (protocol types)", "GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server (bun smoke test)"],
+      "artifacts": ["SharedPasCore/ts/spectrogram-protocol.ts", "GnauralCore/server/protocol.ts", "GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server/spectrogram-bridge.test.ts"],
       "verify": "additive WS message types defined (TS); bridge skeleton spawns the worker on a fixture, opens an analysis, requests one tile, asserts shape; bun smoke test green",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "startedAt": "2026-06-28T21:30:00Z", "finishedAt": "2026-06-28T21:42:05Z", "blockedReason": null,
+      "evidence": [
+        "Additive WS protocol in SharedPasCore/ts/spectrogram-protocol.ts (no existing type touched): camelCase discriminated unions SpectrogramClientMessage (open/reconfigure/get-tile/point-query/area-query/close) + SpectrogramServerMessage (opened/reconfigured/tile/point/area/closed/error) + payload shapes (SpectrogramAnalysisInfo/Tile/TileFrame/PointResult/AreaResult), mirroring the worker contract. Re-exported via GnauralCore/server/protocol.ts.",
+        "GnauralCore/server/spectrogram-bridge.ts skeleton: resolveSpectrogramWorkerExe (SPECTRUMCORE_WORKER_EXE env, else dev fallback ../../SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe, DU3); spawnSpectrogramWorker (Bun.spawn, NDJSON line reader, FIFO req/resp correlation -- U1.1 will add id-correlation/timeout/restart); smokeOpenAndGetTile (open-analysis -> get-tile -> close, always closes).",
+        "bun smoke spectrogram-bridge.test.ts: spawns the real worker on tests/fixtures/sine440_1s_mono_44k.wav, asserts open shape (sampleRate/frameCount/binCount) + tile shape (frames.length==emittedFrameCount, binFrequenciesHz.length==binCount, frame bins.length==binCount). `bun test` -> 2 pass / 0 fail / 14 expect (251ms). skipIf(exe||fixture missing) for portability (DU3 dev-only).",
+        "Gates: bun smoke green; tsc --noEmit (MindWave tsconfig, which includes GnauralCore/server) -> exit 0, 0 errors. Stale SpectrumCore cli/spec/ doc links repointed to spec/ after the SpectrumCore restructure.",
+        "Two repos (DU2): SharedPasCore commit (protocol types) + GnauralCore commit (bridge/test/re-export/plan+ledger). No push."
+      ]
     },
     {
       "id": "U1.1",
@@ -197,6 +204,7 @@
     }
   ],
   "log": [
-    { "ts": "2026-06-25T00:00:00Z", "step": "U0.1", "event": "done", "note": "Spectrogram UI plan + ledger created. Architecture: live SpectrumCore worker over WebSocket via the bun server (DU1); UI in GnauralCore/ui re-exported to MindWave (DU2); worker exe dev-only via config/ENV (DU3); UI must surface the full post-Audacity-parity capability set (DU4); render-only vs reconfigure split (DU5). Prerequisite (Audacity full-parity backend) complete." }
+    { "ts": "2026-06-25T00:00:00Z", "step": "U0.1", "event": "done", "note": "Spectrogram UI plan + ledger created. Architecture: live SpectrumCore worker over WebSocket via the bun server (DU1); UI in GnauralCore/ui re-exported to MindWave (DU2); worker exe dev-only via config/ENV (DU3); UI must surface the full post-Audacity-parity capability set (DU4); render-only vs reconfigure split (DU5). Prerequisite (Audacity full-parity backend) complete." },
+    { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." }
   ]
 }
