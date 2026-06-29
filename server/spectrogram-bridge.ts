@@ -3,17 +3,25 @@ import { resolve } from "node:path"
 import type { Subprocess } from "bun"
 
 /**
- * SpectrumCore worker bridge — skeleton (Spectrogram UI plan, U0.2).
+ * SpectrumCore worker bridge (Spectrogram UI plan, Phase 1).
  *
- * Spawns the long-lived `SpectrumCoreFftwWorkerProbe` (one JSON object per line
- * over stdin/stdout, see SpectrumCore/spec/fftw-worker-probe-contract.md), sends
- * one command at a time and resolves the matching response line. Correlation is
- * FIFO here because the probe answers requests in order; U1.1 hardens this with
- * explicit id-correlation, timeouts and crash-restart. The exe is located from
- * config/ENV (dev-only, DU3).
+ * `spawnSpectrogramWorker` is the low-level handle around a single long-lived
+ * `SpectrumCoreFftwWorkerProbe` process (one JSON object per line over
+ * stdin/stdout, see SpectrumCore/spec/fftw-worker-probe-contract.md).
+ * `SpectrogramWorkerManager` (U1.1) adds lifecycle: request timeouts, crash
+ * detection + lazy restart, a restart-loop guard and clean shutdown.
+ *
+ * Correlation is FIFO: the worker answers commands in order and its responses
+ * carry no request id, so a per-process queue is the correlation. A timeout
+ * therefore *poisons* the worker (a late response would map to the wrong next
+ * request) — the manager kills it and respawns clean on the next send.
+ *
+ * The worker exe is located from config/ENV (dev-only, DU3).
  */
 
 const DEV_WORKER_RELATIVE = "../../SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe"
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+const DEFAULT_MAX_CONSECUTIVE_RESTARTS = 5
 
 /**
  * Locate the worker exe: `SPECTRUMCORE_WORKER_EXE` wins, otherwise fall back to
@@ -35,10 +43,17 @@ export interface WorkerResponse {
 }
 
 export interface SpectrogramWorker {
-  /** Send one worker command line and resolve its response line. */
+  /** Send one worker command line and resolve its response line (FIFO). */
   send(aCommand: Record<string, unknown>): Promise<WorkerResponse>
   /** End stdin, kill the process and reject any in-flight requests. */
   close(): Promise<void>
+  /** Resolves with the process exit code once it has terminated. */
+  readonly exited: Promise<number>
+}
+
+export interface SpawnSpectrogramWorkerOptions {
+  /** Called per stderr line (diagnostics); stderr is always drained regardless. */
+  readonly onStderr?: (aLine: string) => void
 }
 
 interface PendingResolver {
@@ -46,12 +61,35 @@ interface PendingResolver {
   readonly reject: (aError: Error) => void
 }
 
+const drainLines = (
+  aStream: ReadableStream<Uint8Array>,
+  aOnLine: (aLine: string) => void,
+): Promise<void> =>
+  (async () => {
+    const decoder = new TextDecoder()
+    let buffer = ""
+    for await (const chunk of aStream) {
+      buffer += decoder.decode(chunk, { stream: true })
+      let newlineIndex = buffer.indexOf("\n")
+      while (newlineIndex >= 0) {
+        aOnLine(buffer.slice(0, newlineIndex))
+        buffer = buffer.slice(newlineIndex + 1)
+        newlineIndex = buffer.indexOf("\n")
+      }
+    }
+    const tail = buffer.trim()
+    if (tail !== "") {
+      aOnLine(tail)
+    }
+  })()
+
 /**
  * Spawn a worker process and return a minimal request/response handle. Throws
  * synchronously if the exe is missing so callers fail fast with a clear message.
  */
 export const spawnSpectrogramWorker = (
   aExePath: string = resolveSpectrogramWorkerExe(),
+  aOptions: SpawnSpectrogramWorkerOptions = {},
 ): SpectrogramWorker => {
   if (!existsSync(aExePath)) {
     throw new Error(
@@ -66,7 +104,6 @@ export const spawnSpectrogramWorker = (
   })
 
   const pending: PendingResolver[] = []
-  let closed = false
 
   const failAll = (aError: Error): void => {
     while (pending.length > 0) {
@@ -74,39 +111,42 @@ export const spawnSpectrogramWorker = (
     }
   }
 
-  void (async () => {
-    const decoder = new TextDecoder()
-    let buffer = ""
-    try {
-      for await (const chunk of child.stdout) {
-        buffer += decoder.decode(chunk, { stream: true })
-        let newlineIndex = buffer.indexOf("\n")
-        while (newlineIndex >= 0) {
-          const line = buffer.slice(0, newlineIndex).trim()
-          buffer = buffer.slice(newlineIndex + 1)
-          if (line !== "") {
-            const waiter = pending.shift()
-            if (waiter !== undefined) {
-              try {
-                waiter.resolve(JSON.parse(line) as WorkerResponse)
-              } catch {
-                waiter.reject(new Error(`malformed JSON line from worker: ${line}`))
-              }
-            }
-          }
-          newlineIndex = buffer.indexOf("\n")
-        }
-      }
-    } catch (error) {
-      failAll(error instanceof Error ? error : new Error(String(error)))
+  // stdout: dispatch each response line to the oldest pending request (FIFO).
+  void drainLines(child.stdout, (aLine) => {
+    const line = aLine.trim()
+    if (line === "") {
       return
     }
-    failAll(new Error("worker stdout closed before a response arrived"))
-  })()
+    const waiter = pending.shift()
+    if (waiter === undefined) {
+      return
+    }
+    try {
+      waiter.resolve(JSON.parse(line) as WorkerResponse)
+    } catch {
+      waiter.reject(new Error(`malformed JSON line from worker: ${line}`))
+    }
+  }).catch((error: unknown) => {
+    failAll(error instanceof Error ? error : new Error(String(error)))
+  })
+
+  // stderr: always drained (avoid backpressure); forward to the optional sink.
+  void drainLines(child.stderr, (aLine) => {
+    if (aOptions.onStderr !== undefined && aLine.trim() !== "") {
+      aOptions.onStderr(aLine)
+    }
+  }).catch(() => undefined)
+
+  // crash safety: if the process exits, no further responses will arrive.
+  void child.exited.then(() => {
+    failAll(new Error("worker process exited"))
+  })
 
   const writer = child.stdin
+  let closed = false
 
   return {
+    exited: child.exited,
     send(aCommand: Record<string, unknown>): Promise<WorkerResponse> {
       if (closed) {
         return Promise.reject(new Error("worker is closed"))
@@ -134,15 +174,142 @@ export const spawnSpectrogramWorker = (
   }
 }
 
+export type SpectrogramWorkerFactory = (aExePath: string) => SpectrogramWorker
+
+export interface SpectrogramWorkerManagerOptions {
+  readonly exePath?: string
+  /** Per-request timeout; on expiry the worker is poisoned + restarted. */
+  readonly requestTimeoutMs?: number
+  /** Restart-loop guard: max spawns without a healthy response before giving up. */
+  readonly maxConsecutiveRestarts?: number
+  readonly onStderr?: (aLine: string) => void
+  /** Injectable spawn for tests; defaults to the real `spawnSpectrogramWorker`. */
+  readonly spawn?: SpectrogramWorkerFactory
+}
+
+/**
+ * Manages one worker process with lifecycle guarantees: lazy (re)spawn, per
+ * request timeout, crash detection + restart, a restart-loop guard and clean
+ * shutdown. A healthy response resets the restart budget. Does NOT transparently
+ * retry: analysis state lives in the process, so a restarted worker has no open
+ * analyses — the WS session layer (U1.3) re-opens after a restart.
+ */
+export class SpectrogramWorkerManager {
+  private readonly exePath: string
+  private readonly requestTimeoutMs: number
+  private readonly maxConsecutiveRestarts: number
+  private readonly spawnWorker: SpectrogramWorkerFactory
+  private current: SpectrogramWorker | undefined
+  private consecutiveRestarts = 0
+  private totalSpawns = 0
+  private disposed = false
+
+  constructor(aOptions: SpectrogramWorkerManagerOptions = {}) {
+    this.exePath = aOptions.exePath ?? resolveSpectrogramWorkerExe()
+    this.requestTimeoutMs = aOptions.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+    this.maxConsecutiveRestarts = aOptions.maxConsecutiveRestarts ?? DEFAULT_MAX_CONSECUTIVE_RESTARTS
+    this.spawnWorker =
+      aOptions.spawn ?? ((aPath) => spawnSpectrogramWorker(aPath, { onStderr: aOptions.onStderr }))
+  }
+
+  /** Total worker processes spawned over this manager's life (test/diagnostic). */
+  get spawnCount(): number {
+    return this.totalSpawns
+  }
+
+  get isRunning(): boolean {
+    return this.current !== undefined
+  }
+
+  private ensureWorker(): SpectrogramWorker {
+    if (this.disposed) {
+      throw new Error("worker manager is disposed")
+    }
+    if (this.current !== undefined) {
+      return this.current
+    }
+    if (this.consecutiveRestarts >= this.maxConsecutiveRestarts) {
+      throw new Error(
+        `worker exceeded ${this.maxConsecutiveRestarts} consecutive restarts without a healthy response`,
+      )
+    }
+    const worker = this.spawnWorker(this.exePath)
+    this.current = worker
+    this.totalSpawns += 1
+    this.consecutiveRestarts += 1
+    // crash detection: if it exits while still current, drop it so the next send respawns.
+    void worker.exited.then(() => {
+      if (this.current === worker) {
+        this.current = undefined
+      }
+    })
+    return worker
+  }
+
+  /** Send a command, (re)spawning as needed and enforcing the request timeout. */
+  async send(
+    aCommand: Record<string, unknown>,
+    aTimeoutMs: number = this.requestTimeoutMs,
+  ): Promise<WorkerResponse> {
+    const worker = this.ensureWorker()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const response = await Promise.race<WorkerResponse>([
+        worker.send(aCommand),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`worker request timed out after ${aTimeoutMs}ms`)),
+            aTimeoutMs,
+          )
+        }),
+      ])
+      this.consecutiveRestarts = 0
+      return response
+    } catch (error) {
+      // Timeout desyncs FIFO; a crash already broke the pipe. Either way poison
+      // this worker so the next send starts a clean process.
+      if (this.current === worker) {
+        this.current = undefined
+        await worker.close().catch(() => undefined)
+      }
+      throw error instanceof Error ? error : new Error(String(error))
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
+    }
+  }
+
+  /** Gracefully stop the current worker; the next send spawns a fresh one. */
+  async restart(): Promise<void> {
+    const worker = this.current
+    this.current = undefined
+    this.consecutiveRestarts = 0
+    if (worker !== undefined) {
+      await worker.close().catch(() => undefined)
+    }
+  }
+
+  /** Permanently stop; further sends throw. */
+  async shutdown(): Promise<void> {
+    this.disposed = true
+    const worker = this.current
+    this.current = undefined
+    if (worker !== undefined) {
+      await worker.close().catch(() => undefined)
+    }
+  }
+}
+
 export interface SpectrogramSmokeResult {
   readonly open: WorkerResponse
   readonly tile: WorkerResponse
 }
 
 /**
- * U0.2 smoke path: spawn the worker on a fixture WAV, open an analysis, request
- * one tile and return both responses for the caller to assert on. Always closes
- * the worker, even on failure.
+ * Smoke path: spawn the worker on a fixture WAV, open an analysis, request one
+ * tile and return both responses for the caller to assert on. Always closes the
+ * worker, even on failure.
  */
 export const smokeOpenAndGetTile = async (
   aInputWavPath: string,

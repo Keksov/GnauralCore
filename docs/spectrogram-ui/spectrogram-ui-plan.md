@@ -93,8 +93,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   ([spectrogram-bridge.test.ts](../../server/spectrogram-bridge.test.ts)) green; vue-tsc clean.
 
 **Phase 1 — Server worker bridge**
-- [ ] **U1.1 — Worker process manager.** Bun.spawn (exe from config/ENV), NDJSON framing,
-  req/resp correlation, timeout + crash-restart, clean shutdown.
+- [x] **U1.1 — Worker process manager.** `SpectrogramWorkerManager` in
+  [spectrogram-bridge.ts](../../server/spectrogram-bridge.ts): Bun.spawn (exe from config/ENV),
+  NDJSON framing, FIFO req/resp correlation, per-request timeout + crash-restart + restart-loop
+  guard, clean shutdown; deterministic + real lifecycle tests
+  ([spectrogram-worker-manager.test.ts](../../server/spectrogram-worker-manager.test.ts)).
 - [ ] **U1.2 — Audio source resolution.** WAV path for the selected track; non-WAV → temp
   WAV via existing export; cache + cleanup.
 - [ ] **U1.3 — WS endpoints.** Per-connection session: open/reconfigure/get-tile/point-query/

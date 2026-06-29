@@ -56,11 +56,17 @@
       "id": "U1.1",
       "phase": 1,
       "title": "Worker process manager (spawn / NDJSON / lifecycle)",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U0.2"],
-      "artifacts": ["GnauralCore/server/spectrogram-bridge.ts"],
+      "artifacts": ["GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server/spectrogram-worker-manager.test.ts"],
       "verify": "Bun.spawn of the worker (exe path from config/ENV); newline-delimited JSON framing; request/response correlation; timeout + crash-restart; clean shutdown. Unit/bun test for framing + restart",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "startedAt": "2026-06-28T21:45:00Z", "finishedAt": "2026-06-28T22:05:00Z", "blockedReason": null,
+      "evidence": [
+        "SpectrogramWorkerManager added to spectrogram-bridge.ts: lazy (re)spawn, per-request timeout (default 15s), crash detection via worker.exited -> drop current -> lazy respawn, restart-loop guard (maxConsecutiveRestarts default 5, reset on a healthy response), restart()/shutdown(). Correlation is FIFO (worker echoes cmd, carries no id) so a timeout POISONS the worker (kill + respawn) to avoid desync; documented. No transparent retry (analysis state is per-process; U1.3 re-opens after a restart).",
+        "Low-level spawnSpectrogramWorker hardened: exposes exited:Promise<number>; always drains stderr (backpressure-safe) with optional onStderr sink; fails pending on stdout close AND on child.exited; shared NDJSON line reader (drainLines).",
+        "Injectable spawn factory (options.spawn) enables deterministic lifecycle tests without a process. spectrogram-worker-manager.test.ts: timeout->poison+!isRunning, crash->auto-respawn(spawnCount), restart()->fresh worker, restart-loop guard->'exceeded N consecutive restarts', shutdown->sends throw; plus real-process FIFO concurrent-ping framing + real restart (skipIf exe missing, DU3).",
+        "Gates: bun test 9 pass / 0 fail / 40 expect (223ms, incl. real worker); tsc --noEmit (MindWave tsconfig) exit 0, 0 errors."
+      ]
     },
     {
       "id": "U1.2",
@@ -205,6 +211,7 @@
   ],
   "log": [
     { "ts": "2026-06-25T00:00:00Z", "step": "U0.1", "event": "done", "note": "Spectrogram UI plan + ledger created. Architecture: live SpectrumCore worker over WebSocket via the bun server (DU1); UI in GnauralCore/ui re-exported to MindWave (DU2); worker exe dev-only via config/ENV (DU3); UI must surface the full post-Audacity-parity capability set (DU4); render-only vs reconfigure split (DU5). Prerequisite (Audacity full-parity backend) complete." },
-    { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." }
+    { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
+    { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." }
   ]
 }
