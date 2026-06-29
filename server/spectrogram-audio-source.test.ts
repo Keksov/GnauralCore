@@ -35,13 +35,13 @@ describe("SpectrogramAudioSource (U1.2)", () => {
     expect(source.cachedCount).toBe(0)
   })
 
-  test("flac is rejected with a clear, actionable error", async () => {
-    const source = new SpectrogramAudioSource({
-      statFile: async () => ({ mtimeMs: 1 }),
-    })
-    await expect(source.acquire("C:/whatever/track.flac", "flac")).rejects.toThrow(
-      /not yet supported/,
-    )
+  test("flac passes through to the worker (no render; worker decodes it natively)", async () => {
+    const source = new SpectrogramAudioSource({ statFile: async () => ({ mtimeMs: 1 }) })
+    const handle = await source.acquire("C:/whatever/track.flac", "flac")
+    expect(handle.rendered).toBe(false)
+    expect(handle.fileKind).toBe("flac")
+    await handle.release()
+    expect(source.cachedCount).toBe(0)
   })
 
   test.skipIf(!fixtureExists)("gnaural renders to a temp WAV and cleans up on release", async () => {

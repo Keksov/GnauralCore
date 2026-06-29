@@ -9,12 +9,10 @@ import type { AudioFileKind } from "./protocol"
 /**
  * Audio source resolution for the spectrogram bridge (Spectrogram UI plan, U1.2).
  *
- * The SpectrumCore worker reads WAV only, so the selected track is resolved to a
- * WAV path the worker can open: `.wav` passes through; `.gnaural` is rendered to
- * a temp WAV via the Gnaural exe (the same `<exe> <input> -o <out>` pipeline the
- * audio session uses); `.flac` is not yet supported (no decoder on the worker or
- * server — a follow-up that needs either worker-side uos decode or a server
- * flac->wav step).
+ * The SpectrumCore worker decodes WAV + flac/ogg/mp3/opus natively (worker
+ * audio-formats plan), so audio files pass through untouched. Only `.gnaural`
+ * (a schedule, not an audio file) is rendered to a temp WAV via the Gnaural exe
+ * (the same `<exe> <input> -o <out>` pipeline the audio session uses).
  *
  * Renders are cached + refcounted by (kind, path, mtime): concurrent opens of the
  * same source share one render, and the temp WAV is removed only when the last
@@ -132,7 +130,8 @@ export class SpectrogramAudioSource {
   }
 
   private async createEntry(aResolvedPath: string, aFileKind: AudioFileKind): Promise<CacheEntry> {
-    if (aFileKind === "wav") {
+    // wav + flac (and any other worker-decodable audio) pass straight to the worker.
+    if (aFileKind === "wav" || aFileKind === "flac") {
       return { wavPath: aResolvedPath, tempDir: null, refs: 0 }
     }
     if (aFileKind === "gnaural") {
@@ -146,10 +145,7 @@ export class SpectrogramAudioSource {
       }
       return { wavPath, tempDir, refs: 0 }
     }
-    throw new Error(
-      `spectrogram: audio kind "${aFileKind}" is not yet supported ` +
-        `(worker reads WAV only; flac needs worker-side decode or a server flac->wav step)`,
-    )
+    throw new Error(`spectrogram: unsupported audio kind "${aFileKind}"`)
   }
 
   /** Number of cached (live) entries — for tests/diagnostics. */

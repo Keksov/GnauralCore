@@ -99,10 +99,10 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   guard, clean shutdown; deterministic + real lifecycle tests
   ([spectrogram-worker-manager.test.ts](../../server/spectrogram-worker-manager.test.ts)).
 - [x] **U1.2 — Audio source resolution.** `SpectrogramAudioSource`
-  ([spectrogram-audio-source.ts](../../server/spectrogram-audio-source.ts)): wav pass-through;
-  `.gnaural` → temp WAV via the Gnaural render pipeline; `.flac` unsupported for now (worker
-  is WAV-only — needs worker-side uos decode or a server flac→wav step). Refcounted cache by
-  (kind, path, mtime), cleanup on last release, `dispose()` on shutdown.
+  ([spectrogram-audio-source.ts](../../server/spectrogram-audio-source.ts)): wav **and flac**
+  pass through (the worker now decodes flac/ogg/mp3/opus natively — SpectrumCore
+  worker-audio-formats plan); `.gnaural` → temp WAV via the Gnaural render pipeline.
+  Refcounted cache by (kind, path, mtime), cleanup on last release, `dispose()` on shutdown.
 - [x] **U1.3 — WS endpoints.** `SpectrogramSession`
   ([spectrogram-session.ts](../../server/spectrogram-session.ts)) per-connection router
   (open/reconfigure/get-tile/point-query/area-query/close), wired into the MindWave UI WS
