@@ -103,8 +103,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   `.gnaural` → temp WAV via the Gnaural render pipeline; `.flac` unsupported for now (worker
   is WAV-only — needs worker-side uos decode or a server flac→wav step). Refcounted cache by
   (kind, path, mtime), cleanup on last release, `dispose()` on shutdown.
-- [ ] **U1.3 — WS endpoints.** Per-connection session: open/reconfigure/get-tile/point-query/
-  area-query/close; bun contract test green.
+- [x] **U1.3 — WS endpoints.** `SpectrogramSession`
+  ([spectrogram-session.ts](../../server/spectrogram-session.ts)) per-connection router
+  (open/reconfigure/get-tile/point-query/area-query/close), wired into the MindWave UI WS
+  handler (per-socket session, authorized source resolution, dispose on close); real-worker
+  bun contract test green ([spectrogram-session.test.ts](../../server/spectrogram-session.test.ts)).
 
 **Phase 2 — Core rendering**
 - [ ] **U2.1 — useSpectrogram composable.** Tile fetch for visible (time,zoom) + client
