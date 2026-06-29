@@ -72,11 +72,18 @@
       "id": "U1.2",
       "phase": 1,
       "title": "Audio source resolution (WAV for the worker)",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U1.1"],
-      "artifacts": ["GnauralCore/server/spectrogram-bridge.ts", "GnauralCore/server/audio-file-utils.ts"],
+      "artifacts": ["GnauralCore/server/spectrogram-audio-source.ts", "GnauralCore/server/spectrogram-audio-source.test.ts"],
       "verify": "resolve the server-side WAV path for audio.selectedPath; convert non-WAV to a temp WAV via the existing export pipeline; cache + cleanup. Test: open-analysis succeeds for a non-WAV source",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "startedAt": "2026-06-28T22:10:00Z", "finishedAt": "2026-06-28T22:30:00Z", "blockedReason": null,
+      "evidence": [
+        "Established: the SpectrumCoreFftwWorkerProbe reads WAV only (SpectrumCoreWavReader; no uos/flac in the probe). The 'existing export pipeline' is the Gnaural render (gnaural-session.ts: `<gnauralExe> <input> -o <tempWav>`); resolveGnauralExecutablePath() (GNAURAL_EXE env / default) supplies exe+cwd.",
+        "New SpectrogramAudioSource (spectrogram-audio-source.ts): acquire(filePath, fileKind) -> SpectrogramWavHandle{ wavPath, rendered, release() }. wav -> pass-through (no temp); gnaural -> render to mkdtemp temp WAV (decoupled from the stateful gnaural-session, one Bun.spawn); flac -> explicit 'not yet supported' error (worker is WAV-only; needs worker-side uos decode or a server flac->wav step -- recommended as a SpectrumCore follow-on so there is a single decode path).",
+        "Refcounted cache keyed by (kind, resolvedPath, mtime): concurrent opens of the same source share ONE render; the temp WAV is deleted only when the LAST holder releases (kept for the analysis lifetime since the worker may re-read the source WAV, e.g. mdct-edit-preview). dispose() removes all temp renders on shutdown. Injectable renderGnaural + statFile for deterministic tests.",
+        "spectrogram-audio-source.test.ts: wav pass-through (no delete), flac rejected, gnaural render->temp->cleanup-on-release, single-render-for-concurrent-holders + delete-on-last-release, and end-to-end 'open-analysis succeeds for a rendered non-WAV source' against the real worker (stubbed render copies the sine440 fixture). bun all spectrogram tests 14 pass / 0 fail / 58 expect; tsc 0 errors.",
+        "Validation entrypoint stays resolveAllowedAudioFilePath (audio-file-utils.ts): the WS session (U1.3) resolves+authorizes the path, then SpectrogramAudioSource.acquire produces the worker WAV."
+      ]
     },
     {
       "id": "U1.3",
@@ -212,6 +219,7 @@
   "log": [
     { "ts": "2026-06-25T00:00:00Z", "step": "U0.1", "event": "done", "note": "Spectrogram UI plan + ledger created. Architecture: live SpectrumCore worker over WebSocket via the bun server (DU1); UI in GnauralCore/ui re-exported to MindWave (DU2); worker exe dev-only via config/ENV (DU3); UI must surface the full post-Audacity-parity capability set (DU4); render-only vs reconfigure split (DU5). Prerequisite (Audacity full-parity backend) complete." },
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
-    { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." }
+    { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
+    { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." }
   ]
 }

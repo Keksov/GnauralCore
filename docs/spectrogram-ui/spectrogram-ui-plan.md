@@ -98,8 +98,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   NDJSON framing, FIFO req/resp correlation, per-request timeout + crash-restart + restart-loop
   guard, clean shutdown; deterministic + real lifecycle tests
   ([spectrogram-worker-manager.test.ts](../../server/spectrogram-worker-manager.test.ts)).
-- [ ] **U1.2 — Audio source resolution.** WAV path for the selected track; non-WAV → temp
-  WAV via existing export; cache + cleanup.
+- [x] **U1.2 — Audio source resolution.** `SpectrogramAudioSource`
+  ([spectrogram-audio-source.ts](../../server/spectrogram-audio-source.ts)): wav pass-through;
+  `.gnaural` → temp WAV via the Gnaural render pipeline; `.flac` unsupported for now (worker
+  is WAV-only — needs worker-side uos decode or a server flac→wav step). Refcounted cache by
+  (kind, path, mtime), cleanup on last release, `dispose()` on shutdown.
 - [ ] **U1.3 — WS endpoints.** Per-connection session: open/reconfigure/get-tile/point-query/
   area-query/close; bun contract test green.
 
