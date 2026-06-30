@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   DEFAULT_SPECTROGRAM_SETTINGS,
+  mergeStoredSettings,
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_PALETTES,
@@ -24,6 +25,37 @@ describe('option lists cover the full backend capability set (DU4) (U4.1)', () =
     expect(SPECTROGRAM_FSCALES).toEqual(['lin', 'log', 'mel', 'bark', 'erb', 'period'])
     expect(SPECTROGRAM_SCALES).toEqual(['lin', 'sqrt', 'cbrt', 'log', '4thrt', '5thrt'])
     expect(SPECTROGRAM_PALETTES).toEqual(['intensity', 'rainbow'])
+  })
+})
+
+describe('mergeStoredSettings (U4.2 persistence)', () => {
+  test('applies valid stored values over the defaults', () => {
+    const merged = mergeStoredSettings({ window: 4096, fscale: 'mel', palette: 'rainbow', gain: 3 })
+    expect(merged.window).toBe(4096)
+    expect(merged.fscale).toBe('mel')
+    expect(merged.palette).toBe('rainbow')
+    expect(merged.gain).toBe(3)
+    expect(merged.hop).toBe(DEFAULT_SPECTROGRAM_SETTINGS.hop) // untouched key keeps default
+  })
+
+  test('rejects wrong types, invalid enums and unknown keys', () => {
+    const merged = mergeStoredSettings({
+      window: 'big',
+      fscale: 'spiral',
+      winFunc: 'nope',
+      gain: Number.NaN,
+      bogus: 123,
+    })
+    expect(merged.window).toBe(DEFAULT_SPECTROGRAM_SETTINGS.window)
+    expect(merged.fscale).toBe(DEFAULT_SPECTROGRAM_SETTINGS.fscale)
+    expect(merged.winFunc).toBe(DEFAULT_SPECTROGRAM_SETTINGS.winFunc)
+    expect(merged.gain).toBe(DEFAULT_SPECTROGRAM_SETTINGS.gain)
+    expect('bogus' in merged).toBe(false)
+  })
+
+  test('non-object input -> defaults', () => {
+    expect(mergeStoredSettings(null)).toEqual(DEFAULT_SPECTROGRAM_SETTINGS)
+    expect(mergeStoredSettings('x')).toEqual(DEFAULT_SPECTROGRAM_SETTINGS)
   })
 })
 

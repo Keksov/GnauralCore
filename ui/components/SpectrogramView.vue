@@ -328,8 +328,14 @@ watch(() => props.playheadSec, () => {
 })
 
 // analysis params changed -> re-analyse the open source (reconfigure), then refetch.
+// Debounced so dragging a control coalesces into one re-analysis (U4.2).
+let reconfigureTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => props.analysis, () => {
-  void reconfigureAnalysis()
+  if (reconfigureTimer !== null) clearTimeout(reconfigureTimer)
+  reconfigureTimer = setTimeout(() => {
+    reconfigureTimer = null
+    void reconfigureAnalysis()
+  }, 150)
 }, { deep: true })
 
 onMounted(() => {
@@ -345,6 +351,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (reconfigureTimer !== null) {
+    clearTimeout(reconfigureTimer)
+    reconfigureTimer = null
+  }
   if (resizeObserver !== null) {
     resizeObserver.disconnect()
     resizeObserver = null

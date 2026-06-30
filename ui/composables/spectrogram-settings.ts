@@ -77,6 +77,45 @@ export const SPECTROGRAM_SCALES: readonly SpectrogramScale[] = [
 export const SPECTROGRAM_CHANNEL_MODES: readonly SpectrogramChannelMode[] = ['combined', 'separate']
 export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = ['intensity', 'rainbow']
 
+/**
+ * Merge a parsed (untrusted, e.g. localStorage) value over the defaults, keeping
+ * only known keys with valid types/enums. Used for settings persistence (U4.2).
+ */
+export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
+  const base = { ...DEFAULT_SPECTROGRAM_SETTINGS }
+  if (typeof aRaw !== 'object' || aRaw === null) {
+    return base
+  }
+  const raw = aRaw as Record<string, unknown>
+  const num = (aKey: keyof SpectrogramSettings, aCurrent: number): number =>
+    typeof raw[aKey] === 'number' && Number.isFinite(raw[aKey]) ? (raw[aKey] as number) : aCurrent
+  const pick = <T>(aKey: keyof SpectrogramSettings, aList: readonly T[], aCurrent: T): T =>
+    aList.includes(raw[aKey] as T) ? (raw[aKey] as T) : aCurrent
+
+  return {
+    window: num('window', base.window),
+    zeroPaddingFactor: num('zeroPaddingFactor', base.zeroPaddingFactor),
+    hop: num('hop', base.hop),
+    overlap: num('overlap', base.overlap),
+    channel: num('channel', base.channel),
+    winFunc: typeof raw.winFunc === 'string' && SPECTROGRAM_WIN_FUNCS.includes(raw.winFunc)
+      ? raw.winFunc
+      : base.winFunc,
+    data: pick('data', SPECTROGRAM_DATA_MODES, base.data),
+    fscale: pick('fscale', SPECTROGRAM_FSCALES, base.fscale),
+    startHz: num('startHz', base.startHz),
+    stopHz: num('stopHz', base.stopHz),
+    mode: pick('mode', SPECTROGRAM_CHANNEL_MODES, base.mode),
+    scale: pick('scale', SPECTROGRAM_SCALES, base.scale),
+    gain: num('gain', base.gain),
+    frequencyGain: num('frequencyGain', base.frequencyGain),
+    drange: num('drange', base.drange),
+    limit: num('limit', base.limit),
+    saturation: num('saturation', base.saturation),
+    palette: pick('palette', SPECTROGRAM_PALETTES, base.palette),
+  }
+}
+
 /** Render-only options (client, applied live on linear tiles). */
 export function toRenderOptions(aSettings: SpectrogramSettings): SpectrogramRenderOptions {
   return {

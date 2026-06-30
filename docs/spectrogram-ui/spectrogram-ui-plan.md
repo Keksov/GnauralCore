@@ -147,8 +147,9 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   [SpectrogramSettingsPanel.vue](../../ui/components/SpectrogramSettingsPanel.vue); AudioPage
   drives the view's `analysis` (reconfigure-on-change) + `render` (live) groups; frequencyGain
   added to the render path. vue-tsc fully clean; bun ui suite 46/0.
-- [ ] **U4.2 — Apply semantics + persistence.** render-only vs reconfigure split (DU5);
-  persist settings (localStorage).
+- [x] **U4.2 — Apply semantics + persistence.** render-only (`render` prop) live, no refetch;
+  reconfigure (`analysis` prop) re-analyses, **debounced 150ms**; settings persist to
+  localStorage via the validated `mergeStoredSettings` (unit-tested).
 - [ ] **U4.3 — Capability-coverage + presets.** Coverage matrix (every option reachable) +
   Audacity / ffmpeg default presets.
 
