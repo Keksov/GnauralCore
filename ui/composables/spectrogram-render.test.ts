@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   chooseZoom,
+  frequencyGainFactor,
   magnitudeToScaled,
   paletteColor,
   tileToImage,
@@ -101,6 +102,15 @@ describe('tileToImage (U2.3)', () => {
     const tile = fakeTile([[0.5]])
     const broken: SpectrogramTile = { ...tile, frames: [{ frameIndex: 0, timeSec: 0, bins: [] }] }
     expect(tileToImage(broken).rgba[0]).toBe(0)
+  })
+})
+
+describe('frequencyGainFactor (U4.1)', () => {
+  test('1.0 at 1 kHz, boosts highs / cuts lows by dB-per-decade', () => {
+    expect(frequencyGainFactor(1000, 20)).toBeCloseTo(1, 6)
+    expect(frequencyGainFactor(10000, 20)).toBeCloseTo(10, 6) // +20 dB/decade
+    expect(frequencyGainFactor(100, 20)).toBeCloseTo(0.1, 6) // -20 dB/decade
+    expect(frequencyGainFactor(5000, 0)).toBe(1) // disabled
   })
 })
 

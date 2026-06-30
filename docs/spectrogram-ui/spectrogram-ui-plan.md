@@ -141,7 +141,12 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   wired in AudioPage to `displayedPositionSec`/`canSeek`/`handleSeek`. Phase 3 complete.
 
 **Phase 4 — Full parameter panel**
-- [ ] **U4.1 — Settings panel** exposing every backend parameter (DU4); bound to a pinia store.
+- [x] **U4.1 — Settings panel** exposing every backend parameter (DU4), bound to a pinia store.
+  Pure [spectrogram-settings.ts](../../ui/composables/spectrogram-settings.ts) (full option
+  lists + render/analysis mappers, tested), [stores/spectrogram.ts](../../ui/stores/spectrogram.ts),
+  [SpectrogramSettingsPanel.vue](../../ui/components/SpectrogramSettingsPanel.vue); AudioPage
+  drives the view's `analysis` (reconfigure-on-change) + `render` (live) groups; frequencyGain
+  added to the render path. vue-tsc fully clean; bun ui suite 46/0.
 - [ ] **U4.2 — Apply semantics + persistence.** render-only vs reconfigure split (DU5);
   persist settings (localStorage).
 - [ ] **U4.3 — Capability-coverage + presets.** Coverage matrix (every option reachable) +

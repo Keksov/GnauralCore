@@ -233,13 +233,20 @@
                       <div v-else-if="audio.spectrogramBuffer === null" class="audio-page__empty text-grey-7">
                         {{ noSpectrogramLabel }}
                       </div>
-                      <spectrogram-view
-                        v-else
-                        :file-path="audio.displayFilePath"
-                        :playhead-sec="displayedPositionSec"
-                        :seekable="canSeek"
-                        @seek="handleSeek"
-                      />
+                      <div v-else class="row no-wrap items-stretch" style="gap: 16px;">
+                        <spectrogram-view
+                          class="col"
+                          :file-path="audio.displayFilePath"
+                          :analysis="spectrogramStore.analysisParams"
+                          :render="spectrogramStore.renderOptions"
+                          :playhead-sec="displayedPositionSec"
+                          :seekable="canSeek"
+                          @seek="handleSeek"
+                        />
+                        <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
+                          <spectrogram-settings-panel />
+                        </div>
+                      </div>
                     </div>
                   </q-tab-panel>
                 </q-tab-panels>
@@ -276,6 +283,7 @@ import { useAudioTransport } from '../composables/use-audio-transport'
 import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import { useAudioStore } from '../stores/audio'
+import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
@@ -317,6 +325,7 @@ function createAsyncAudioPanel(loader: AsyncComponentLoader<Component>) {
 const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/GnauralEditorPanel.vue'))
 const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
 const SpectrogramView = createAsyncAudioPanel(() => import('../components/SpectrogramView.vue'))
+const SpectrogramSettingsPanel = createAsyncAudioPanel(() => import('../components/SpectrogramSettingsPanel.vue'))
 
 const loadStoredExpandedPaths = (): string[] => {
   try {
@@ -340,6 +349,7 @@ const { t } = useI18n()
 const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
+const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())

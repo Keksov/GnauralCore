@@ -11,6 +11,8 @@ export type SpectrogramPalette = 'intensity' | 'rainbow'
 export interface SpectrogramRenderOptions {
   readonly scale: SpectrogramScale
   readonly gain: number
+  /** Audacity-style frequency-dependent dB shaping (per-bin), applied in the renderer. */
+  readonly frequencyGain: number
   readonly drange: number
   readonly limit: number
   readonly palette: SpectrogramPalette
@@ -20,10 +22,19 @@ export interface SpectrogramRenderOptions {
 export const DEFAULT_RENDER_OPTIONS: SpectrogramRenderOptions = {
   scale: 'log',
   gain: 1,
+  frequencyGain: 0,
   drange: 120,
   limit: 0,
   palette: 'intensity',
   saturation: 1,
+}
+
+/** Per-bin linear factor for frequency gain: `frequencyGain` dB per decade around 1 kHz. */
+export function frequencyGainFactor(aBinHz: number, aFrequencyGain: number): number {
+  if (aFrequencyGain === 0) return 1
+  const hz = aBinHz > 1 ? aBinHz : 1
+  const offsetDb = aFrequencyGain * Math.log10(hz / 1000)
+  return Math.pow(10, offsetDb / 20)
 }
 
 export function resolveRenderOptions(
@@ -159,11 +170,13 @@ export function tileToImage(
   const height = aTile.binCount
   const rgba = new Uint8ClampedArray(Math.max(0, width * height) * 4)
 
+  const binFrequenciesHz = aTile.binFrequenciesHz
   for (let x = 0; x < width; x++) {
     const bins = frames[x]?.bins ?? []
     for (let row = 0; row < height; row++) {
       const bin = height - 1 - row // top row = highest-frequency bin
-      const scaled = magnitudeToScaled(bins[bin] ?? 0, opts)
+      const factor = frequencyGainFactor(binFrequenciesHz[bin] ?? 0, opts.frequencyGain)
+      const scaled = magnitudeToScaled((bins[bin] ?? 0) * factor, opts)
       const [r, g, b] = paletteColor(scaled, opts.palette, opts.saturation)
       const offset = (row * width + x) * 4
       rgba[offset] = r

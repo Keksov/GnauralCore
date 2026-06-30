@@ -32,6 +32,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { SpectrogramAnalysisParams } from '@protocol'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
@@ -59,6 +60,9 @@ import {
 
 interface Props {
   filePath: string | null
+  /** Worker analysis params (window/hop/win_func/data/fscale/...); a change
+      re-analyses the open source (DU5 reconfigure). */
+  analysis?: SpectrogramAnalysisParams
   /** Client-side render transform applied live on the cached linear tiles (DU5). */
   render?: Partial<SpectrogramRenderOptions>
   /** Current transport playback position (s); draws a playhead overlay (U3.3). */
@@ -277,11 +281,25 @@ async function openForPath(aFilePath: string | null): Promise<void> {
     return
   }
   try {
-    const info = await spec.open({ filePath: aFilePath, window: 2048, hop: 512 })
+    const info = await spec.open({ filePath: aFilePath, ...(props.analysis ?? { window: 2048, hop: 512 }) })
     view.value = fullWindow(info.durationSec)
     applyView()
   } catch {
     // surfaced via spec.error
+  }
+}
+
+let reconfiguring = false
+async function reconfigureAnalysis(): Promise<void> {
+  if (props.analysis === undefined || spec.analysis.value === null || reconfiguring) return
+  reconfiguring = true
+  try {
+    await spec.reconfigure(props.analysis)
+    applyView()
+  } catch {
+    // surfaced via spec.error
+  } finally {
+    reconfiguring = false
   }
 }
 
@@ -308,6 +326,11 @@ watch(() => props.render, () => {
 watch(() => props.playheadSec, () => {
   scheduleDraw()
 })
+
+// analysis params changed -> re-analyse the open source (reconfigure), then refetch.
+watch(() => props.analysis, () => {
+  void reconfigureAnalysis()
+}, { deep: true })
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
