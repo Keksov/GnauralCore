@@ -60,6 +60,18 @@ export function isFullWindow(aWindow: TimeWindow, aDurationSec: number): boolean
   return aWindow.startSec <= 1e-6 && aWindow.endSec >= aDurationSec - 1e-6
 }
 
+/** Fraction (0..1 inside the window) of a time within the window; may be <0 or >1. */
+export function timeToFraction(aSec: number, aWindow: TimeWindow): number {
+  const width = aWindow.endSec - aWindow.startSec
+  if (width <= 0) return 0
+  return (aSec - aWindow.startSec) / width
+}
+
+/** Inverse of timeToFraction: a window-relative fraction back to seconds. */
+export function fractionToTime(aFraction: number, aWindow: TimeWindow): number {
+  return aWindow.startSec + aFraction * (aWindow.endSec - aWindow.startSec)
+}
+
 /**
  * Overview-pyramid tier for a visible window: maps the visible full-resolution
  * frame span to ~`columns` pixels (reuses chooseZoom).

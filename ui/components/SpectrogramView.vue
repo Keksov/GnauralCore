@@ -22,7 +22,9 @@
       class="spectrogram-view__canvas"
       role="img"
       :aria-label="t('audio.spectrogramCanvasLabel')"
+      :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
+      @click="onClick"
     />
   </div>
 </template>
@@ -41,9 +43,11 @@ import {
 } from '../composables/spectrogram-axes'
 import {
   clampWindow,
+  fractionToTime,
   fullWindow,
   isFullWindow,
   MIN_WINDOW_SEC,
+  timeToFraction,
   viewportZoomTier,
   zoomWindow,
   type TimeWindow,
@@ -57,9 +61,14 @@ interface Props {
   filePath: string | null
   /** Client-side render transform applied live on the cached linear tiles (DU5). */
   render?: Partial<SpectrogramRenderOptions>
+  /** Current transport playback position (s); draws a playhead overlay (U3.3). */
+  playheadSec?: number | null
+  /** When true, clicking the plot emits `seek` with the clicked time. */
+  seekable?: boolean
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{ (event: 'seek', sec: number): void }>()
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -148,6 +157,21 @@ function draw(): void {
   ctx.restore()
 
   drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], win.startSec, win.endSec)
+
+  // playhead overlay (U3.3) when the transport position is inside the window
+  const playhead = props.playheadSec
+  if (playhead !== null && playhead !== undefined) {
+    const fraction = timeToFraction(playhead, win)
+    if (fraction >= 0 && fraction <= 1) {
+      const px = Math.round(plotX + fraction * plotW) + 0.5
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(px, plotY)
+      ctx.lineTo(px, plotY + plotH)
+      ctx.stroke()
+    }
+  }
 }
 
 function drawAxes(
@@ -235,6 +259,17 @@ function onWheel(aEvent: WheelEvent): void {
   view.value = zoomWindow(view.value, factor, anchor, duration.value)
 }
 
+function onClick(aEvent: MouseEvent): void {
+  if (props.seekable !== true || !hasAnalysis.value) return
+  const canvas = canvasEl.value
+  if (canvas === null) return
+  const plotW = plotColumns(canvas)
+  const fraction = (aEvent.offsetX - AXIS_MARGIN.left) / plotW
+  if (fraction < 0 || fraction > 1) return
+  const sec = fractionToTime(fraction, view.value)
+  emit('seek', Math.max(0, Math.min(duration.value, sec)))
+}
+
 async function openForPath(aFilePath: string | null): Promise<void> {
   await spec.close()
   if (aFilePath === null || aFilePath === '') {
@@ -268,6 +303,11 @@ watch([spec.tiles, spec.analysis], () => {
 watch(() => props.render, () => {
   scheduleDraw()
 }, { deep: true })
+
+// playhead position moves during playback -> redraw the overlay only (no refetch).
+watch(() => props.playheadSec, () => {
+  scheduleDraw()
+})
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
@@ -318,5 +358,9 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   min-height: 240px;
   width: 100%;
+}
+
+.spectrogram-view__canvas--seekable {
+  cursor: pointer;
 }
 </style>

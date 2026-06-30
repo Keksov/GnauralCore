@@ -136,7 +136,9 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   clamp + pyramid-tier; unit-tested 9/9). `SpectrogramView` toolbar (zoom in/out/fit +
   q-range pan) + cursor-anchored wheel-zoom; the visible window drives `setView` across
   pyramid tiers and positions tiles + the time ruler.
-- [ ] **U3.3 — Playhead sync** with transport (optional/non-blocking).
+- [x] **U3.3 — Playhead sync.** `SpectrogramView` draws a playhead at the transport
+  position (when in view) + click-to-seek (`playheadSec`/`seekable` props, `seek` emit);
+  wired in AudioPage to `displayedPositionSec`/`canSeek`/`handleSeek`. Phase 3 complete.
 
 **Phase 4 — Full parameter panel**
 - [ ] **U4.1 — Settings panel** exposing every backend parameter (DU4); bound to a pinia store.

@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   clampWindow,
+  fractionToTime,
   fullWindow,
   isFullWindow,
   MIN_WINDOW_SEC,
   panWindow,
+  timeToFraction,
   viewportZoomTier,
   zoomWindow,
 } from './spectrogram-viewport'
@@ -56,6 +58,22 @@ describe('panWindow (U3.2)', () => {
     const p = panWindow({ startSec: 7, endSec: 9 }, 5, 10)
     expect(p.endSec).toBeCloseTo(10, 6)
     expect(p.endSec - p.startSec).toBeCloseTo(2, 6)
+  })
+})
+
+describe('timeToFraction / fractionToTime (U3.3)', () => {
+  test('maps time within the window to a fraction and back', () => {
+    const w = { startSec: 2, endSec: 6 }
+    expect(timeToFraction(4, w)).toBeCloseTo(0.5, 9)
+    expect(timeToFraction(2, w)).toBeCloseTo(0, 9)
+    expect(timeToFraction(6, w)).toBeCloseTo(1, 9)
+    expect(fractionToTime(0.5, w)).toBeCloseTo(4, 9)
+  })
+
+  test('fraction is <0 / >1 outside the window (caller decides to hide)', () => {
+    const w = { startSec: 2, endSec: 6 }
+    expect(timeToFraction(0, w)).toBeLessThan(0)
+    expect(timeToFraction(8, w)).toBeGreaterThan(1)
   })
 })
 

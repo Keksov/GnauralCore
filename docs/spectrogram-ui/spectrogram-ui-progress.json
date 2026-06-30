@@ -183,11 +183,16 @@
       "id": "U3.3",
       "phase": 3,
       "title": "Playhead sync with audio playback (optional)",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U3.2"],
-      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/pages/AudioPage.vue"],
-      "verify": "a playhead overlay tracks the transport position during playback; seeking via the slider updates playback if wired. Non-blocking if transport integration is out of reach",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/composables/spectrogram-viewport.ts", "GnauralCore/ui/pages/AudioPage.vue"],
+      "verify": "a playhead overlay tracks the transport position during playback; seeking via click updates playback if wired",
+      "startedAt": "2026-06-29T16:10:00Z", "finishedAt": "2026-06-29T16:30:00Z", "blockedReason": null,
+      "evidence": [
+        "SpectrogramView gains playheadSec + seekable props and a `seek` emit: it draws a cyan playhead line at the transport position when inside the visible window (timeToFraction), redrawn (no refetch) as the position moves; clicking the plot (when seekable) maps x -> time (fractionToTime) and emits seek.",
+        "Wired in AudioPage to the existing transport: :playhead-sec=displayedPositionSec, :seekable=canSeek, @seek=handleSeek (the same handler the transport controls use -> audio_seek + optimistic local seek). Transport integration was available, so the optional step is fully wired.",
+        "Pure helpers timeToFraction/fractionToTime added to spectrogram-viewport.ts; bun viewport test 11/11. vue-tsc clean for the new code (only the pre-existing unrelated BodyMonitorCore error remains). PHASE 3 (navigation) complete."
+      ]
     },
     {
       "id": "U4.1",
@@ -255,6 +260,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-06-29T16:30:00Z", "step": "U3.3", "event": "done", "note": "Playhead overlay (timeToFraction) tracks displayedPositionSec; click-to-seek (fractionToTime) -> emit seek -> AudioPage handleSeek (audio_seek). Wired to the existing transport (canSeek). bun viewport 11/11; vue-tsc clean for new code. PHASE 3 (navigation) COMPLETE. Next U4.1 (full settings panel)." },
     { "ts": "2026-06-29T16:00:00Z", "step": "U3.2", "event": "done", "note": "DU6: no reusable scrubber -> built spectrogram-viewport.ts (window zoom/pan/clamp + viewportZoomTier) bun 9/9. SpectrogramView toolbar (zoom in/out/fit + q-range pan) + cursor-anchored wheel-zoom; visible window drives setView across pyramid tiers; tiles + time ruler positioned by the window. vue-tsc clean for new code. Next U3.3 (playhead, optional)." },
     { "ts": "2026-06-29T15:25:00Z", "step": "U3.1", "event": "done", "note": "spectrogram-axes.ts (frequencyAxisTicks from binFrequenciesHz = fscale-correct; timeAxisTicks niceStep; formatHz/formatTimeSec) bun 9/9. SpectrogramView reserves an axis margin and draws freq labels (left) + time ruler (bottom) around the plot rect; applyView sizes to the plot area. vue-tsc clean for new code. Next U3.2 (time slider + zoom/pan)." },
     { "ts": "2026-06-29T14:45:00Z", "step": "U2.3", "event": "done", "note": "Ported backend get_iscale (scale family lin/sqrt/cbrt/log/4thrt/5thrt + gain/drange/limit) + ValueToRgb palettes (intensity/rainbow + saturation) into spectrogram-render.ts for parity; tileToImage applies them per-pixel on linear tiles; SpectrogramView `render` prop -> deep-watch redraw with NO refetch (DU5). bun render 12/12; vue-tsc clean for new code. PHASE 2 (core rendering) COMPLETE. Next U3.1 (freq axis + time ruler)." },
