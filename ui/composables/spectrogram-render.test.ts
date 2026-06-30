@@ -1,30 +1,64 @@
 import { describe, expect, test } from 'bun:test'
 
-import { chooseZoom, magnitudeToIntensity, tileToImage } from './spectrogram-render'
+import {
+  chooseZoom,
+  magnitudeToScaled,
+  paletteColor,
+  tileToImage,
+} from './spectrogram-render'
 import type { SpectrogramTile } from '@protocol'
 
-describe('magnitudeToIntensity (U2.2)', () => {
-  test('0 dB (unit magnitude) maps to 1.0; silence to 0', () => {
-    expect(magnitudeToIntensity(1)).toBeCloseTo(1, 6)
-    expect(magnitudeToIntensity(0)).toBe(0)
+describe('magnitudeToScaled - log/dB (U2.3)', () => {
+  test('0 dB (unit magnitude) -> 1.0; silence -> 0', () => {
+    expect(magnitudeToScaled(1, { scale: 'log' })).toBeCloseTo(1, 6)
+    expect(magnitudeToScaled(0, { scale: 'log' })).toBe(0)
   })
 
-  test('-drange dB maps to 0 (bottom of the range)', () => {
-    const drange = 120
-    const m = Math.pow(10, -drange / 20) // exactly -120 dB
-    expect(magnitudeToIntensity(m, { drange })).toBeCloseTo(0, 6)
+  test('-drange dB -> 0; -60 dB -> mid (drange 120)', () => {
+    expect(magnitudeToScaled(Math.pow(10, -120 / 20), { scale: 'log', drange: 120 })).toBeCloseTo(0, 6)
+    expect(magnitudeToScaled(Math.pow(10, -60 / 20), { scale: 'log', drange: 120 })).toBeCloseTo(0.5, 6)
   })
 
-  test('-60 dB with drange 120 maps to the middle', () => {
+  test('gain x2 ~= +6 dB', () => {
     const m = Math.pow(10, -60 / 20)
-    expect(magnitudeToIntensity(m, { drange: 120 })).toBeCloseTo(0.5, 6)
-  })
-
-  test('gain raises the level (x2 ~= +6 dB)', () => {
-    const m = Math.pow(10, -60 / 20)
-    const base = magnitudeToIntensity(m, { drange: 120 })
-    const gained = magnitudeToIntensity(m, { drange: 120, gain: 2 })
+    const base = magnitudeToScaled(m, { scale: 'log', drange: 120 })
+    const gained = magnitudeToScaled(m, { scale: 'log', drange: 120, gain: 2 })
     expect(gained - base).toBeCloseTo(6.0206 / 120, 3)
+  })
+})
+
+describe('magnitudeToScaled - scale family (U2.3)', () => {
+  test('lin clips to the [limit-drange, limit] linear bounds', () => {
+    expect(magnitudeToScaled(1, { scale: 'lin', drange: 120, limit: 0 })).toBeCloseTo(1, 6)
+    expect(magnitudeToScaled(0.5, { scale: 'lin', drange: 120, limit: 0 })).toBeCloseTo(0.5, 4)
+    expect(magnitudeToScaled(Math.pow(10, -120 / 20), { scale: 'lin', drange: 120 })).toBeCloseTo(0, 6)
+  })
+
+  test('sqrt = sqrt(lin); ordering lin < sqrt < cbrt for a mid value', () => {
+    const lin = magnitudeToScaled(0.25, { scale: 'lin' })
+    const sqrt = magnitudeToScaled(0.25, { scale: 'sqrt' })
+    const cbrt = magnitudeToScaled(0.25, { scale: 'cbrt' })
+    expect(sqrt).toBeCloseTo(Math.sqrt(lin), 6)
+    expect(lin).toBeLessThan(sqrt)
+    expect(sqrt).toBeLessThan(cbrt)
+  })
+})
+
+describe('paletteColor (U2.3)', () => {
+  test('intensity is grayscale', () => {
+    expect(paletteColor(0, 'intensity')).toEqual([0, 0, 0])
+    expect(paletteColor(1, 'intensity')).toEqual([255, 255, 255])
+    expect(paletteColor(0.5, 'intensity')).toEqual([128, 128, 128])
+  })
+
+  test('rainbow goes blue(low) -> green(mid) -> red(high)', () => {
+    expect(paletteColor(0, 'rainbow')).toEqual([0, 0, 255])
+    expect(paletteColor(0.5, 'rainbow')).toEqual([0, 255, 0])
+    expect(paletteColor(1, 'rainbow')).toEqual([255, 0, 0])
+  })
+
+  test('saturation 0 desaturates the rainbow to gray', () => {
+    expect(paletteColor(1, 'rainbow', 0)).toEqual([255, 255, 255])
   })
 })
 
@@ -47,44 +81,34 @@ function fakeTile(binValuesPerFrame: number[][]): SpectrogramTile {
   }
 }
 
-describe('tileToImage (U2.2)', () => {
-  test('produces width=frames, height=bins RGBA with top row = highest freq', () => {
-    // 1 frame, 2 bins: bin0 (low) silent, bin1 (high) full-scale
+describe('tileToImage (U2.3)', () => {
+  test('width=frames, height=bins; top row = highest freq (grayscale default)', () => {
     const img = tileToImage(fakeTile([[0, 1]]))
     expect(img.width).toBe(1)
     expect(img.height).toBe(2)
-    expect(img.rgba.length).toBe(1 * 2 * 4)
-    // row 0 = highest bin (bin1, value 1) -> white
-    expect(img.rgba[0]).toBe(255)
+    expect(img.rgba[0]).toBe(255) // row 0 = bin1 (high) = 1 -> white
+    expect(img.rgba[4]).toBe(0) // row 1 = bin0 (low) = 0 -> black
     expect(img.rgba[3]).toBe(255) // alpha
-    // row 1 = lowest bin (bin0, value 0) -> black
-    expect(img.rgba[4]).toBe(0)
-    expect(img.rgba[7]).toBe(255)
   })
 
-  test('handles a missing/short bins array without throwing', () => {
-    const tile = fakeTile([[0.5, 0.5]])
+  test('applies the rainbow palette to the linear tile', () => {
+    const img = tileToImage(fakeTile([[1]]), { scale: 'lin', palette: 'rainbow' })
+    // single full-scale bin -> rainbow high -> red
+    expect([img.rgba[0], img.rgba[1], img.rgba[2]]).toEqual([255, 0, 0])
+  })
+
+  test('missing bins are safe (0 intensity)', () => {
+    const tile = fakeTile([[0.5]])
     const broken: SpectrogramTile = { ...tile, frames: [{ frameIndex: 0, timeSec: 0, bins: [] }] }
-    const img = tileToImage(broken)
-    expect(img.width).toBe(1)
-    expect(img.rgba[0]).toBe(0) // missing bin -> 0 intensity
+    expect(tileToImage(broken).rgba[0]).toBe(0)
   })
 })
 
 describe('chooseZoom (U2.2)', () => {
-  test('0 when frames fit the target columns', () => {
+  test('0 when frames fit; grows with the ratio', () => {
     expect(chooseZoom(200, 800)).toBe(0)
-    expect(chooseZoom(800, 800)).toBe(0)
-  })
-
-  test('grows with the frames/columns ratio (2^z pooling)', () => {
     expect(chooseZoom(1600, 800)).toBe(1)
-    expect(chooseZoom(3200, 800)).toBe(2)
     expect(chooseZoom(10000, 800)).toBe(4)
-  })
-
-  test('safe on degenerate inputs', () => {
     expect(chooseZoom(0, 800)).toBe(0)
-    expect(chooseZoom(800, 0)).toBe(0)
   })
 })

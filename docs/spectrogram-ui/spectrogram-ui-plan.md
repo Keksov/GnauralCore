@@ -120,8 +120,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   [spectrogram-render.ts](../../ui/composables/spectrogram-render.ts) (unit-tested 9/9);
   fscale-correct via `binFrequenciesHz`; replaces the Goertzel path; AudioPage bound to
   `displayFilePath`. (Axis labels/ruler → U3.1; full palettes/transforms → U2.3.)
-- [ ] **U2.3 — Palettes + client value transform.** scale/gain/drange/limit/saturation/
-  palette applied live on linear tiles.
+- [x] **U2.3 — Palettes + client value transform.** [spectrogram-render.ts](../../ui/composables/spectrogram-render.ts)
+  ports the backend get_iscale (scale family + gain/drange/limit) + ValueToRgb palettes
+  (intensity/rainbow + saturation) for parity; `SpectrogramView` gains a `render` prop applied
+  live on cached linear tiles (deep-watch redraw, no refetch — DU5). Unit-tested 12/12.
+  Phase 2 (core rendering) complete; the settings UI that drives it is U4.1.
 
 **Phase 3 — Navigation**
 - [ ] **U3.1 — Frequency axis + time ruler** (the chrome the backend omits).

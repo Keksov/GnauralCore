@@ -14,7 +14,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
-import { chooseZoom, tileToImage } from '../composables/spectrogram-render'
+import { chooseZoom, tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 
 // U2.2: render SpectrumCore worker tiles on a canvas (replaces the old client-side
 // Goertzel path). The frequency axis is fscale-correct by construction -- the
@@ -24,6 +24,9 @@ import { chooseZoom, tileToImage } from '../composables/spectrogram-render'
 
 interface Props {
   filePath: string | null
+  /** Client-side render transform (scale/gain/drange/limit/palette/saturation),
+      applied live on the cached linear tiles -- no worker re-analysis (DU5). */
+  render?: Partial<SpectrogramRenderOptions>
 }
 
 const props = defineProps<Props>()
@@ -68,7 +71,7 @@ function draw(): void {
 
   ctx.imageSmoothingEnabled = true
   for (const tile of tiles) {
-    const image = tileToImage(tile)
+    const image = tileToImage(tile, props.render)
     if (image.width === 0 || image.height === 0) continue
     const off = getOffscreen(image.width, image.height)
     const offCtx = off.getContext('2d')
@@ -123,6 +126,12 @@ watch(() => props.filePath, (value) => {
 watch([spec.tiles, spec.analysis], () => {
   scheduleDraw()
 })
+
+// render-only transform changes (scale/gain/drange/limit/palette/saturation):
+// redraw the cached tiles, no refetch (DU5).
+watch(() => props.render, () => {
+  scheduleDraw()
+}, { deep: true })
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
