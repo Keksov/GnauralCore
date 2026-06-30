@@ -131,8 +131,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   (fscale-correct freq ticks from `binFrequenciesHz`, nice-step time ticks, `formatHz`/
   `formatTimeSec`; unit-tested 9/9); `SpectrogramView` reserves an axis margin and draws the
   freq labels (left) + time ruler (bottom) around the plot rect.
-- [ ] **U3.2 — Time slider + zoom/pan.** Evaluate/reuse the schedule-player slider (DU6);
-  drive get-tile by (timeStart,timeEnd,zoom) across pyramid tiers.
+- [x] **U3.2 — Time slider + zoom/pan.** No reusable scrubber existed (DU6) → built
+  [spectrogram-viewport.ts](../../ui/composables/spectrogram-viewport.ts) (window zoom/pan/
+  clamp + pyramid-tier; unit-tested 9/9). `SpectrogramView` toolbar (zoom in/out/fit +
+  q-range pan) + cursor-anchored wheel-zoom; the visible window drives `setView` across
+  pyramid tiers and positions tiles + the time ruler.
 - [ ] **U3.3 — Playhead sync** with transport (optional/non-blocking).
 
 **Phase 4 — Full parameter panel**

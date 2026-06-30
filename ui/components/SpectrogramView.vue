@@ -1,37 +1,61 @@
 <template>
   <div class="spectrogram-view">
+    <div class="spectrogram-view__toolbar">
+      <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" aria-label="Zoom in" @click="zoomIn" />
+      <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" aria-label="Zoom out" @click="zoomOut" />
+      <q-btn dense flat round size="sm" icon="fit_screen" :disable="!hasAnalysis || isFull" aria-label="Fit to clip" @click="resetView" />
+      <q-range
+        v-if="hasAnalysis"
+        v-model="rangeModel"
+        :min="0"
+        :max="duration"
+        :step="rangeStep"
+        :left-label-value="formatTimeSec(rangeModel.min)"
+        :right-label-value="formatTimeSec(rangeModel.max)"
+        label
+        dense
+        class="spectrogram-view__range col"
+      />
+    </div>
     <canvas
       ref="canvasEl"
       class="spectrogram-view__canvas"
       role="img"
       :aria-label="t('audio.spectrogramCanvasLabel')"
+      @wheel.prevent="onWheel"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
-import { chooseZoom, tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
+import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import {
   formatHz,
   formatTimeSec,
   frequencyAxisTicks,
   timeAxisTicks,
 } from '../composables/spectrogram-axes'
+import {
+  clampWindow,
+  fullWindow,
+  isFullWindow,
+  MIN_WINDOW_SEC,
+  viewportZoomTier,
+  zoomWindow,
+  type TimeWindow,
+} from '../composables/spectrogram-viewport'
 
-// U2.2: render SpectrumCore worker tiles on a canvas (replaces the old client-side
-// Goertzel path). The frequency axis is fscale-correct by construction -- the
-// worker returns display bins already mapped per fscale (binFrequenciesHz), so we
-// draw them in order. Intensity/palette transforms are basic here; U2.3 adds the
-// full scale family + palettes, U3.1 adds the axis/ruler chrome.
+// Render SpectrumCore worker tiles on a canvas with axis chrome (U2.2/U2.3/U3.1)
+// and time zoom/pan (U3.2). The visible window drives the worker get-tile via the
+// composable; the frequency axis is fscale-correct (worker binFrequenciesHz).
 
 interface Props {
   filePath: string | null
-  /** Client-side render transform (scale/gain/drange/limit/palette/saturation),
-      applied live on the cached linear tiles -- no worker re-analysis (DU5). */
+  /** Client-side render transform applied live on the cached linear tiles (DU5). */
   render?: Partial<SpectrogramRenderOptions>
 }
 
@@ -46,6 +70,23 @@ const AXIS_MARGIN = { left: 46, right: 8, top: 6, bottom: 18 }
 let renderFrameId = 0
 let resizeObserver: ResizeObserver | null = null
 let offscreen: HTMLCanvasElement | null = null
+
+const view = ref<TimeWindow>({ startSec: 0, endSec: 0 })
+
+const hasAnalysis = computed(() => spec.analysis.value !== null)
+const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
+const isFull = computed(() => isFullWindow(view.value, duration.value))
+const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
+const rangeModel = computed({
+  get: () => ({ min: view.value.startSec, max: view.value.endSec }),
+  set: (value: { min: number; max: number }) => {
+    view.value = clampWindow({ startSec: value.min, endSec: value.max }, duration.value)
+  },
+})
+
+function plotColumns(canvas: HTMLCanvasElement): number {
+  return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
+}
 
 function getOffscreen(aWidth: number, aHeight: number): HTMLCanvasElement {
   if (offscreen === null) {
@@ -81,6 +122,15 @@ function draw(): void {
   const plotW = Math.max(1, cssWidth - AXIS_MARGIN.left - AXIS_MARGIN.right)
   const plotH = Math.max(1, cssHeight - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
 
+  const win = view.value
+  const winStart = win.startSec
+  const winWidth = Math.max(MIN_WINDOW_SEC, win.endSec - win.startSec)
+  const secPerFrame = analysis.durationSec / analysis.frameCount
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(plotX, plotY, plotW, plotH)
+  ctx.clip()
   ctx.imageSmoothingEnabled = true
   for (const tile of tiles) {
     const image = tileToImage(tile, props.render)
@@ -89,12 +139,15 @@ function draw(): void {
     const offCtx = off.getContext('2d')
     if (offCtx === null) continue
     offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
-    const x = plotX + (tile.frameStart / analysis.frameCount) * plotW
-    const w = (tile.frameCount / analysis.frameCount) * plotW
+    const tileStartSec = tile.frameStart * secPerFrame
+    const tileWidthSec = tile.frameCount * secPerFrame
+    const x = plotX + ((tileStartSec - winStart) / winWidth) * plotW
+    const w = (tileWidthSec / winWidth) * plotW
     ctx.drawImage(off, 0, 0, image.width, image.height, x, plotY, Math.ceil(w) + 1, plotH)
   }
+  ctx.restore()
 
-  drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], analysis.durationSec)
+  drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], win.startSec, win.endSec)
 }
 
 function drawAxes(
@@ -104,13 +157,13 @@ function drawAxes(
   plotW: number,
   plotH: number,
   binFrequenciesHz: readonly number[],
-  durationSec: number,
+  timeStartSec: number,
+  timeEndSec: number,
 ): void {
   ctx.font = '10px sans-serif'
   ctx.strokeStyle = '#334155'
   ctx.lineWidth = 1
 
-  // frequency axis (left, fscale-correct via the tile's binFrequenciesHz)
   ctx.fillStyle = '#94a3b8'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
@@ -123,10 +176,9 @@ function drawAxes(
     ctx.fillText(formatHz(tick.value), plotX - 5, y)
   }
 
-  // time axis (bottom)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  for (const tick of timeAxisTicks(0, durationSec, 6)) {
+  for (const tick of timeAxisTicks(timeStartSec, timeEndSec, 6)) {
     const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
     ctx.beginPath()
     ctx.moveTo(x, plotY + plotH)
@@ -148,17 +200,39 @@ function applyView(): void {
   const analysis = spec.analysis.value
   const canvas = canvasEl.value
   if (analysis === null || canvas === null) return
-  const columns = Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const columns = plotColumns(canvas)
   const viewBinCount = Math.max(
     16,
     Math.min(MAX_VIEW_BINS, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom),
   )
   spec.setView({
-    timeStartSec: 0,
-    timeEndSec: analysis.durationSec,
-    zoom: chooseZoom(analysis.frameCount, columns),
+    timeStartSec: view.value.startSec,
+    timeEndSec: view.value.endSec,
+    zoom: viewportZoomTier(view.value, analysis.durationSec, analysis.frameCount, columns),
     viewBinCount,
   })
+}
+
+function zoomIn(): void {
+  view.value = zoomWindow(view.value, 0.5, 0.5, duration.value)
+}
+
+function zoomOut(): void {
+  view.value = zoomWindow(view.value, 2, 0.5, duration.value)
+}
+
+function resetView(): void {
+  view.value = fullWindow(duration.value)
+}
+
+function onWheel(aEvent: WheelEvent): void {
+  if (!hasAnalysis.value) return
+  const canvas = canvasEl.value
+  if (canvas === null) return
+  const plotW = plotColumns(canvas)
+  const anchor = Math.min(1, Math.max(0, (aEvent.offsetX - AXIS_MARGIN.left) / plotW))
+  const factor = aEvent.deltaY < 0 ? 0.8 : 1.25
+  view.value = zoomWindow(view.value, factor, anchor, duration.value)
 }
 
 async function openForPath(aFilePath: string | null): Promise<void> {
@@ -168,7 +242,8 @@ async function openForPath(aFilePath: string | null): Promise<void> {
     return
   }
   try {
-    await spec.open({ filePath: aFilePath, window: 2048, hop: 512 })
+    const info = await spec.open({ filePath: aFilePath, window: 2048, hop: 512 })
+    view.value = fullWindow(info.durationSec)
     applyView()
   } catch {
     // surfaced via spec.error
@@ -179,12 +254,17 @@ watch(() => props.filePath, (value) => {
   void openForPath(value)
 })
 
+// view window changed (zoom/pan) -> refetch tiles for the new range (composable
+// debounces + caches + cancels stale).
+watch(view, () => {
+  applyView()
+}, { deep: true })
+
 watch([spec.tiles, spec.analysis], () => {
   scheduleDraw()
 })
 
-// render-only transform changes (scale/gain/drange/limit/palette/saturation):
-// redraw the cached tiles, no refetch (DU5).
+// render-only transform changes redraw cached tiles, no refetch (DU5).
 watch(() => props.render, () => {
   scheduleDraw()
 }, { deep: true })
@@ -214,15 +294,29 @@ onBeforeUnmount(() => {
 .spectrogram-view {
   background: #0f172a;
   border-radius: 12px;
+  display: flex;
+  flex-direction: column;
   min-height: 280px;
   overflow: hidden;
   width: 100%;
 }
 
+.spectrogram-view__toolbar {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 0;
+}
+
+.spectrogram-view__range {
+  margin-left: 12px;
+}
+
 .spectrogram-view__canvas {
   display: block;
-  height: 100%;
-  min-height: 280px;
+  flex: 1 1 auto;
+  min-height: 240px;
   width: 100%;
 }
 </style>

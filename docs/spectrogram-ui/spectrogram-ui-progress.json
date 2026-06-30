@@ -168,11 +168,16 @@
       "id": "U3.2",
       "phase": 3,
       "title": "Time slider + zoom/pan",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U3.1"],
-      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/components (slider)"],
-      "verify": "evaluate the schedule-player time slider for reuse (DU6); reuse or adapt; zoom/pan over time drives get-tile by (timeStart,timeEnd,zoom) across pyramid tiers; smooth at multiple zooms",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["GnauralCore/ui/composables/spectrogram-viewport.ts", "GnauralCore/ui/composables/spectrogram-viewport.test.ts", "GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "zoom/pan over time drives get-tile by (timeStart,timeEnd,zoom) across pyramid tiers; smooth at multiple zooms",
+      "startedAt": "2026-06-29T15:35:00Z", "finishedAt": "2026-06-29T16:00:00Z", "blockedReason": null,
+      "evidence": [
+        "DU6 evaluated: there is NO reusable scrubber (GnauralTransportControls is play/pause/export only), so a dedicated viewport was built. Pure spectrogram-viewport.ts: TimeWindow + fullWindow/clampWindow/zoomWindow(anchored)/panWindow/isFullWindow/viewportZoomTier (pyramid tier from the visible frame span via chooseZoom). bun test 9/9.",
+        "SpectrogramView now holds a visible `view` window: a toolbar (zoom in/out/fit + a q-range over [0,duration] for pan/window) plus wheel-zoom anchored at the cursor. Tiles + the time ruler are positioned/labelled by the visible window; a watch on `view` calls setView(window, viewportZoomTier(...)) so zoom/pan re-fetch the right pyramid tier (composable debounces + caches + cancels stale). The plot is clipped to its rect.",
+        "Gates: vue-tsc clean for the new code (only the pre-existing unrelated BodyMonitorCore error remains); bun viewport 9/9. Smoothness at multiple zooms is manual/non-blocking (DU8)."
+      ]
     },
     {
       "id": "U3.3",
@@ -250,6 +255,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-06-29T16:00:00Z", "step": "U3.2", "event": "done", "note": "DU6: no reusable scrubber -> built spectrogram-viewport.ts (window zoom/pan/clamp + viewportZoomTier) bun 9/9. SpectrogramView toolbar (zoom in/out/fit + q-range pan) + cursor-anchored wheel-zoom; visible window drives setView across pyramid tiers; tiles + time ruler positioned by the window. vue-tsc clean for new code. Next U3.3 (playhead, optional)." },
     { "ts": "2026-06-29T15:25:00Z", "step": "U3.1", "event": "done", "note": "spectrogram-axes.ts (frequencyAxisTicks from binFrequenciesHz = fscale-correct; timeAxisTicks niceStep; formatHz/formatTimeSec) bun 9/9. SpectrogramView reserves an axis margin and draws freq labels (left) + time ruler (bottom) around the plot rect; applyView sizes to the plot area. vue-tsc clean for new code. Next U3.2 (time slider + zoom/pan)." },
     { "ts": "2026-06-29T14:45:00Z", "step": "U2.3", "event": "done", "note": "Ported backend get_iscale (scale family lin/sqrt/cbrt/log/4thrt/5thrt + gain/drange/limit) + ValueToRgb palettes (intensity/rainbow + saturation) into spectrogram-render.ts for parity; tileToImage applies them per-pixel on linear tiles; SpectrogramView `render` prop -> deep-watch redraw with NO refetch (DU5). bun render 12/12; vue-tsc clean for new code. PHASE 2 (core rendering) COMPLETE. Next U3.1 (freq axis + time ruler)." },
     { "ts": "2026-06-29T14:10:00Z", "step": "U2.2", "event": "done", "note": "SpectrogramView.vue rewritten to a worker-backed canvas renderer (useSpectrogram + tileToImage RGBA + drawImage; chooseZoom; fscale-correct via binFrequenciesHz); removed the Goertzel/AudioBuffer path; AudioPage bound to displayFilePath. Pure spectrogram-render.ts (intensity/tileToImage/chooseZoom) bun 9/9. vue-tsc clean for new code; end-to-end visual is manual (DU8). Next U2.3 (palettes + client value transform)." },
