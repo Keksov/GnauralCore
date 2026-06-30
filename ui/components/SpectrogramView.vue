@@ -15,6 +15,12 @@ import { useI18n } from 'vue-i18n'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { chooseZoom, tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
+import {
+  formatHz,
+  formatTimeSec,
+  frequencyAxisTicks,
+  timeAxisTicks,
+} from '../composables/spectrogram-axes'
 
 // U2.2: render SpectrumCore worker tiles on a canvas (replaces the old client-side
 // Goertzel path). The frequency axis is fscale-correct by construction -- the
@@ -36,6 +42,7 @@ const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spec = useSpectrogram()
 
 const MAX_VIEW_BINS = 512
+const AXIS_MARGIN = { left: 46, right: 8, top: 6, bottom: 18 }
 let renderFrameId = 0
 let resizeObserver: ResizeObserver | null = null
 let offscreen: HTMLCanvasElement | null = null
@@ -69,6 +76,11 @@ function draw(): void {
   const tiles = spec.tiles.value
   if (analysis === null || analysis.frameCount <= 0 || tiles.length === 0) return
 
+  const plotX = AXIS_MARGIN.left
+  const plotY = AXIS_MARGIN.top
+  const plotW = Math.max(1, cssWidth - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const plotH = Math.max(1, cssHeight - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
+
   ctx.imageSmoothingEnabled = true
   for (const tile of tiles) {
     const image = tileToImage(tile, props.render)
@@ -77,9 +89,50 @@ function draw(): void {
     const offCtx = off.getContext('2d')
     if (offCtx === null) continue
     offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
-    const x = (tile.frameStart / analysis.frameCount) * cssWidth
-    const w = (tile.frameCount / analysis.frameCount) * cssWidth
-    ctx.drawImage(off, 0, 0, image.width, image.height, x, 0, Math.ceil(w) + 1, cssHeight)
+    const x = plotX + (tile.frameStart / analysis.frameCount) * plotW
+    const w = (tile.frameCount / analysis.frameCount) * plotW
+    ctx.drawImage(off, 0, 0, image.width, image.height, x, plotY, Math.ceil(w) + 1, plotH)
+  }
+
+  drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], analysis.durationSec)
+}
+
+function drawAxes(
+  ctx: CanvasRenderingContext2D,
+  plotX: number,
+  plotY: number,
+  plotW: number,
+  plotH: number,
+  binFrequenciesHz: readonly number[],
+  durationSec: number,
+): void {
+  ctx.font = '10px sans-serif'
+  ctx.strokeStyle = '#334155'
+  ctx.lineWidth = 1
+
+  // frequency axis (left, fscale-correct via the tile's binFrequenciesHz)
+  ctx.fillStyle = '#94a3b8'
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  for (const tick of frequencyAxisTicks(binFrequenciesHz, 6)) {
+    const y = Math.min(plotY + plotH - 1, Math.max(plotY + 5, plotY + tick.position * plotH))
+    ctx.beginPath()
+    ctx.moveTo(plotX - 3, y)
+    ctx.lineTo(plotX, y)
+    ctx.stroke()
+    ctx.fillText(formatHz(tick.value), plotX - 5, y)
+  }
+
+  // time axis (bottom)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  for (const tick of timeAxisTicks(0, durationSec, 6)) {
+    const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
+    ctx.beginPath()
+    ctx.moveTo(x, plotY + plotH)
+    ctx.lineTo(x, plotY + plotH + 3)
+    ctx.stroke()
+    ctx.fillText(formatTimeSec(tick.value), x, plotY + plotH + 4)
   }
 }
 
@@ -95,8 +148,11 @@ function applyView(): void {
   const analysis = spec.analysis.value
   const canvas = canvasEl.value
   if (analysis === null || canvas === null) return
-  const columns = Math.max(1, Math.floor(canvas.clientWidth))
-  const viewBinCount = Math.max(16, Math.min(MAX_VIEW_BINS, Math.floor(canvas.clientHeight)))
+  const columns = Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const viewBinCount = Math.max(
+    16,
+    Math.min(MAX_VIEW_BINS, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom),
+  )
   spec.setView({
     timeStartSec: 0,
     timeEndSec: analysis.durationSec,

@@ -153,11 +153,16 @@
       "id": "U3.1",
       "phase": 3,
       "title": "Frequency axis + time ruler (chrome)",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U2.2"],
-      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue"],
-      "verify": "frequency axis labels honour fscale; time ruler labels; legend/units. The chrome SpectrumCore intentionally omitted is rendered here",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["GnauralCore/ui/composables/spectrogram-axes.ts", "GnauralCore/ui/composables/spectrogram-axes.test.ts", "GnauralCore/ui/components/SpectrogramView.vue"],
+      "verify": "frequency axis labels honour fscale; time ruler labels; the chrome SpectrumCore intentionally omitted is rendered here",
+      "startedAt": "2026-06-29T15:00:00Z", "finishedAt": "2026-06-29T15:25:00Z", "blockedReason": null,
+      "evidence": [
+        "spectrogram-axes.ts (pure): frequencyAxisTicks samples the tile's binFrequenciesHz (fscale-correct by construction; tick0 = top/highest), timeAxisTicks uses niceStep (1/2/5 x 10^k) over the visible range, formatHz (440 / 4.4k / 12k) + formatTimeSec (2.50s / 1:05). bun test 9/9.",
+        "SpectrogramView now reserves an axis margin (left 46 / bottom 18 / top 6 / right 8): the spectrogram draws into the plot rect, frequency labels + ticks render down the left (fscale-aware), time labels + ticks along the bottom. applyView() now sizes columns/viewBinCount to the plot area (not the full canvas).",
+        "Gates: vue-tsc clean for the new code (only the pre-existing unrelated BodyMonitorCore error remains); bun axes 9/9. Visual placement is manual/non-blocking (DU8)."
+      ]
     },
     {
       "id": "U3.2",
@@ -245,6 +250,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-06-29T15:25:00Z", "step": "U3.1", "event": "done", "note": "spectrogram-axes.ts (frequencyAxisTicks from binFrequenciesHz = fscale-correct; timeAxisTicks niceStep; formatHz/formatTimeSec) bun 9/9. SpectrogramView reserves an axis margin and draws freq labels (left) + time ruler (bottom) around the plot rect; applyView sizes to the plot area. vue-tsc clean for new code. Next U3.2 (time slider + zoom/pan)." },
     { "ts": "2026-06-29T14:45:00Z", "step": "U2.3", "event": "done", "note": "Ported backend get_iscale (scale family lin/sqrt/cbrt/log/4thrt/5thrt + gain/drange/limit) + ValueToRgb palettes (intensity/rainbow + saturation) into spectrogram-render.ts for parity; tileToImage applies them per-pixel on linear tiles; SpectrogramView `render` prop -> deep-watch redraw with NO refetch (DU5). bun render 12/12; vue-tsc clean for new code. PHASE 2 (core rendering) COMPLETE. Next U3.1 (freq axis + time ruler)." },
     { "ts": "2026-06-29T14:10:00Z", "step": "U2.2", "event": "done", "note": "SpectrogramView.vue rewritten to a worker-backed canvas renderer (useSpectrogram + tileToImage RGBA + drawImage; chooseZoom; fscale-correct via binFrequenciesHz); removed the Goertzel/AudioBuffer path; AudioPage bound to displayFilePath. Pure spectrogram-render.ts (intensity/tileToImage/chooseZoom) bun 9/9. vue-tsc clean for new code; end-to-end visual is manual (DU8). Next U2.3 (palettes + client value transform)." },
     { "ts": "2026-06-29T13:35:00Z", "step": "U2.1", "event": "done", "note": "useSpectrogram composable + pure tiling/LRU core (spectrogram-tiles, bun 9/9) + WS transport (sendSpectrogram/onSpectrogram; spectrogram types via @protocol). open/reconfigure + setView debounced refetch + viewSeq cancellation + client cache. vue-tsc clean for new code (1 pre-existing unrelated BodyMonitor error); server tsc 0; bun 25/25. Next U2.2 (canvas renderer)." },

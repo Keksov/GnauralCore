@@ -127,7 +127,10 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   Phase 2 (core rendering) complete; the settings UI that drives it is U4.1.
 
 **Phase 3 — Navigation**
-- [ ] **U3.1 — Frequency axis + time ruler** (the chrome the backend omits).
+- [x] **U3.1 — Frequency axis + time ruler.** [spectrogram-axes.ts](../../ui/composables/spectrogram-axes.ts)
+  (fscale-correct freq ticks from `binFrequenciesHz`, nice-step time ticks, `formatHz`/
+  `formatTimeSec`; unit-tested 9/9); `SpectrogramView` reserves an axis margin and draws the
+  freq labels (left) + time ruler (bottom) around the plot rect.
 - [ ] **U3.2 — Time slider + zoom/pan.** Evaluate/reuse the schedule-player slider (DU6);
   drive get-tile by (timeStart,timeEnd,zoom) across pyramid tiers.
 - [ ] **U3.3 — Playhead sync** with transport (optional/non-blocking).
