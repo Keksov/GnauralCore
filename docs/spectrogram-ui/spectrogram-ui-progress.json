@@ -259,11 +259,16 @@
       "id": "U5.2",
       "phase": 5,
       "title": "Area selection -> area-query overlay",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U5.1"],
-      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue"],
+      "artifacts": ["GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/composables/spectrogram-axes.ts"],
       "verify": "drag-select a time/frequency region -> worker area-query -> peak/mean stats overlay; selection maps correctly under zoom/pan and fscale",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "startedAt": "2026-07-01T09:30:00Z", "finishedAt": "2026-07-01T09:55:00Z", "blockedReason": null,
+      "evidence": [
+        "Drag on the plot (pointerdown/move/up, >4px threshold distinguishes drag from a seek click via suppressClick) selects a time/freq rectangle. On release, areaQueryBounds maps the two corners -> {timeStart/End, freqStart/End} (fscale-aware via binFrequenciesHz) and the worker area-query runs; the readout shows peak freq @ time + cell count.",
+        "Selection is stored in DATA space (time + top-fraction) so it stays correct under zoom/pan/resize: draw() maps it back to pixels via timeToFraction(view) each frame; cyan fill+border.",
+        "Pure areaQueryBounds added to spectrogram-axes.ts (orders time, maps both fractions to freq bounds); bun axes 13/13. vue-tsc 0 errors."
+      ]
     },
     {
       "id": "U5.3",
@@ -281,6 +286,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-07-01T09:55:00Z", "step": "U5.2", "event": "done", "note": "Drag-select rectangle (data-space, zoom/pan-stable) -> areaQueryBounds (fscale-aware) -> worker area-query -> peak/cells readout; drag vs seek-click guarded by threshold+suppressClick. areaQueryBounds bun-tested (axes 13/13). vue-tsc 0. Next U5.3 (i18n/a11y/final acceptance)." },
     { "ts": "2026-07-01T09:20:00Z", "step": "U5.1", "event": "done", "note": "Hover readout via throttled point-query: cursor -> time (fractionToTime) + freq (frequencyAtFraction over binFrequenciesHz), shows worker cell frameTimeSec/binHz/displayDb. composable gains pointQuery/areaQuery (requestId-correlated). bun axes 11/11; vue-tsc 0. Next U5.2 (area select -> area-query)." },
     { "ts": "2026-06-29T18:50:00Z", "step": "U4.3", "event": "done", "note": "capability-coverage.md matrix (every DU4 option -> control -> apply class) + coverage test (18 keys). Presets Audacity (log/log) + ffmpeg (lin/sqrt) via SPECTROGRAM_PRESETS + store.applyPreset + panel menu. bun ui suite 52/0; vue-tsc 0. PHASE 4 (settings panel) COMPLETE -- DU4 hard-acceptance met. Next U5.1 (hover readout)." },
     { "ts": "2026-06-29T18:20:00Z", "step": "U4.2", "event": "done", "note": "Apply semantics: render-only live (render prop), reconfigure debounced 150ms (analysis prop). Persistence: store loads/saves localStorage via pure mergeStoredSettings (validates types/enums). bun settings 7/7; vue-tsc 0. Next U4.3 (coverage matrix + presets)." },

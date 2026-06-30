@@ -16,7 +16,10 @@
         dense
         class="spectrogram-view__range col"
       />
-      <div v-if="hover !== null" class="spectrogram-view__readout">
+      <div v-if="areaResult !== null" class="spectrogram-view__readout">
+        sel peak {{ formatHz(areaResult.peakFreqHz) }} @ {{ formatTimeSec(areaResult.peakTimeSec) }} · {{ areaResult.cellCount }} cells
+      </div>
+      <div v-else-if="hover !== null" class="spectrogram-view__readout">
         {{ formatTimeSec(hover.timeSec) }} · {{ formatHz(hover.freqHz) }} Hz · {{ hover.db.toFixed(1) }} dB
       </div>
     </div>
@@ -28,7 +31,9 @@
       :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
   </div>
@@ -37,11 +42,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SpectrogramAnalysisParams } from '@protocol'
+import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import {
+  areaQueryBounds,
   formatHz,
   formatTimeSec,
   frequencyAtFraction,
@@ -182,6 +188,20 @@ function draw(): void {
       ctx.stroke()
     }
   }
+
+  // area selection rectangle (U5.2), mapped to the current view + display bins
+  const sel = selection.value
+  if (sel !== null) {
+    const sx0 = plotX + clamp01(timeToFraction(sel.timeStartSec, win)) * plotW
+    const sx1 = plotX + clamp01(timeToFraction(sel.timeEndSec, win)) * plotW
+    const sy0 = plotY + sel.topLo * plotH
+    const sy1 = plotY + sel.topHi * plotH
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.15)'
+    ctx.fillRect(sx0, sy0, sx1 - sx0, sy1 - sy0)
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(sx0 + 0.5, sy0 + 0.5, Math.max(0, sx1 - sx0 - 1), Math.max(0, sy1 - sy0 - 1))
+  }
 }
 
 function drawAxes(
@@ -270,25 +290,72 @@ function onWheel(aEvent: WheelEvent): void {
 }
 
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
+const selection = ref<{ timeStartSec: number; timeEndSec: number; topLo: number; topHi: number } | null>(null)
+const areaResult = ref<SpectrogramAreaResult | null>(null)
 let lastHoverTs = 0
+interface DragStart { x: number; y: number; timeSec: number; topFraction: number }
+let dragStart: DragStart | null = null
+let dragging = false
+let suppressClick = false
+
+const clamp01 = (aValue: number): number => (aValue < 0 ? 0 : aValue > 1 ? 1 : aValue)
+
+function plotFractions(aEvent: PointerEvent): { xFraction: number; yTopFraction: number } | null {
+  const canvas = canvasEl.value
+  if (canvas === null) return null
+  const plotW = plotColumns(canvas)
+  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
+  return {
+    xFraction: (aEvent.offsetX - AXIS_MARGIN.left) / plotW,
+    yTopFraction: (aEvent.offsetY - AXIS_MARGIN.top) / plotH,
+  }
+}
+
+function onPointerDown(aEvent: PointerEvent): void {
+  if (!hasAnalysis.value) return
+  const f = plotFractions(aEvent)
+  if (f === null || f.xFraction < 0 || f.xFraction > 1 || f.yTopFraction < 0 || f.yTopFraction > 1) return
+  dragStart = {
+    x: aEvent.offsetX,
+    y: aEvent.offsetY,
+    timeSec: fractionToTime(clamp01(f.xFraction), view.value),
+    topFraction: clamp01(f.yTopFraction),
+  }
+  dragging = false
+  areaResult.value = null
+  selection.value = null
+}
 
 function onPointerMove(aEvent: PointerEvent): void {
   if (!hasAnalysis.value) return
-  const canvas = canvasEl.value
-  if (canvas === null) return
-  const plotW = plotColumns(canvas)
-  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
-  const xFraction = (aEvent.offsetX - AXIS_MARGIN.left) / plotW
-  const yTopFraction = (aEvent.offsetY - AXIS_MARGIN.top) / plotH
-  if (xFraction < 0 || xFraction > 1 || yTopFraction < 0 || yTopFraction > 1) {
+  const f = plotFractions(aEvent)
+  if (f === null) return
+
+  if (dragStart !== null) {
+    if (!dragging && Math.hypot(aEvent.offsetX - dragStart.x, aEvent.offsetY - dragStart.y) < 4) return
+    dragging = true
+    hover.value = null
+    const timeNow = fractionToTime(clamp01(f.xFraction), view.value)
+    const topNow = clamp01(f.yTopFraction)
+    selection.value = {
+      timeStartSec: Math.min(dragStart.timeSec, timeNow),
+      timeEndSec: Math.max(dragStart.timeSec, timeNow),
+      topLo: Math.min(dragStart.topFraction, topNow),
+      topHi: Math.max(dragStart.topFraction, topNow),
+    }
+    scheduleDraw()
+    return
+  }
+
+  if (f.xFraction < 0 || f.xFraction > 1 || f.yTopFraction < 0 || f.yTopFraction > 1) {
     hover.value = null
     return
   }
   const now = performance.now()
   if (now - lastHoverTs < 60) return // throttle point-query
   lastHoverTs = now
-  const timeSec = fractionToTime(xFraction, view.value)
-  const freqHz = frequencyAtFraction(yTopFraction, spec.tiles.value[0]?.binFrequenciesHz ?? [])
+  const timeSec = fractionToTime(f.xFraction, view.value)
+  const freqHz = frequencyAtFraction(f.yTopFraction, spec.tiles.value[0]?.binFrequenciesHz ?? [])
   void spec.pointQuery(timeSec, freqHz).then((point) => {
     if (point !== null) {
       hover.value = { timeSec: point.frameTimeSec, freqHz: point.binHz, db: point.displayDb }
@@ -296,11 +363,34 @@ function onPointerMove(aEvent: PointerEvent): void {
   })
 }
 
+function onPointerUp(): void {
+  if (dragStart !== null && dragging && selection.value !== null) {
+    const binFreqs = spec.tiles.value[0]?.binFrequenciesHz ?? []
+    const bounds = areaQueryBounds(
+      { timeSec: selection.value.timeStartSec, topFraction: selection.value.topLo },
+      { timeSec: selection.value.timeEndSec, topFraction: selection.value.topHi },
+      binFreqs,
+    )
+    void spec
+      .areaQuery(bounds.timeStartSec, bounds.timeEndSec, bounds.freqStartHz, bounds.freqEndHz)
+      .then((area) => {
+        areaResult.value = area
+      })
+    suppressClick = true // a drag isn't a seek click
+  }
+  dragStart = null
+  dragging = false
+}
+
 function onPointerLeave(): void {
   hover.value = null
 }
 
 function onClick(aEvent: MouseEvent): void {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
   if (props.seekable !== true || !hasAnalysis.value) return
   const canvas = canvasEl.value
   if (canvas === null) return

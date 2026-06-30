@@ -45,6 +45,35 @@ export function frequencyAtFraction(
   return aBinFrequenciesHz[binIndex] ?? 0
 }
 
+export interface SpectrogramSelectionPoint {
+  readonly timeSec: number
+  /** Vertical fraction from the top (0 = highest freq). */
+  readonly topFraction: number
+}
+
+export interface SpectrogramAreaBounds {
+  readonly timeStartSec: number
+  readonly timeEndSec: number
+  readonly freqStartHz: number
+  readonly freqEndHz: number
+}
+
+/** Ordered area-query bounds from two drag points (U5.2), fscale-aware on Y. */
+export function areaQueryBounds(
+  aP0: SpectrogramSelectionPoint,
+  aP1: SpectrogramSelectionPoint,
+  aBinFrequenciesHz: readonly number[],
+): SpectrogramAreaBounds {
+  const f0 = frequencyAtFraction(aP0.topFraction, aBinFrequenciesHz)
+  const f1 = frequencyAtFraction(aP1.topFraction, aBinFrequenciesHz)
+  return {
+    timeStartSec: Math.min(aP0.timeSec, aP1.timeSec),
+    timeEndSec: Math.max(aP0.timeSec, aP1.timeSec),
+    freqStartHz: Math.min(f0, f1),
+    freqEndHz: Math.max(f0, f1),
+  }
+}
+
 /** A "nice" round step (1/2/5 x 10^k) for ~targetTicks divisions of a range. */
 export function niceStep(aRange: number, aTargetTicks: number): number {
   if (aRange <= 0) return 0

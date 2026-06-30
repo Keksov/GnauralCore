@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  areaQueryBounds,
   formatHz,
   formatTimeSec,
   frequencyAtFraction,
@@ -69,6 +70,29 @@ describe('niceStep + timeAxisTicks (U3.1)', () => {
 
   test('empty/degenerate range -> no ticks', () => {
     expect(timeAxisTicks(5, 5, 6)).toEqual([])
+  })
+})
+
+describe('areaQueryBounds (U5.2)', () => {
+  const bins = [0, 100, 200, 300, 400] // ascending; bin0 = lowest
+
+  test('orders time + maps both fractions to frequency bounds', () => {
+    // p0 lower-left-ish (later time, near bottom), p1 (earlier time, near top)
+    const bounds = areaQueryBounds(
+      { timeSec: 3, topFraction: 1 }, // bottom -> 0 Hz
+      { timeSec: 1, topFraction: 0 }, // top -> 400 Hz
+      bins,
+    )
+    expect(bounds.timeStartSec).toBe(1)
+    expect(bounds.timeEndSec).toBe(3)
+    expect(bounds.freqStartHz).toBe(0)
+    expect(bounds.freqEndHz).toBe(400)
+  })
+
+  test('mid-range fractions', () => {
+    const bounds = areaQueryBounds({ timeSec: 0, topFraction: 0.25 }, { timeSec: 2, topFraction: 0.75 }, bins)
+    expect(bounds.freqStartHz).toBe(100) // topFraction 0.75 -> bin1 = 100
+    expect(bounds.freqEndHz).toBe(300) // topFraction 0.25 -> bin3 = 300
   })
 })
 
