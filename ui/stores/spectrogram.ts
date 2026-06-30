@@ -4,8 +4,10 @@ import { defineStore } from 'pinia'
 import {
   DEFAULT_SPECTROGRAM_SETTINGS,
   mergeStoredSettings,
+  presetSettings,
   toAnalysisParams,
   toRenderOptions,
+  type SpectrogramPresetName,
   type SpectrogramSettings,
 } from '../composables/spectrogram-settings'
 
@@ -49,5 +51,12 @@ export const useSpectrogramStore = defineStore('spectrogram', () => {
     Object.assign(settings, DEFAULT_SPECTROGRAM_SETTINGS)
   }
 
-  return { settings, renderOptions, analysisParams, reset }
+  function applyPreset(aName: SpectrogramPresetName): void {
+    const preset = presetSettings(aName)
+    if (preset !== null) {
+      Object.assign(settings, preset)
+    }
+  }
+
+  return { settings, renderOptions, analysisParams, reset, applyPreset }
 })

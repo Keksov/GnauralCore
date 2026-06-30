@@ -229,11 +229,16 @@
       "id": "U4.3",
       "phase": 4,
       "title": "Capability-coverage check + Audacity/ffmpeg presets",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U4.2"],
-      "artifacts": ["GnauralCore/ui (presets)", "docs/spectrogram-ui/capability-coverage.md"],
-      "verify": "every SpectrumCore option (DU4) reachable from the UI (coverage matrix doc + a test asserting the option set); Audacity-default and ffmpeg-showspectrumpic-default presets selectable",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["docs/spectrogram-ui/capability-coverage.md", "GnauralCore/ui/composables/spectrogram-settings.ts", "GnauralCore/ui/stores/spectrogram.ts", "GnauralCore/ui/components/SpectrogramSettingsPanel.vue"],
+      "verify": "every SpectrumCore option (DU4) reachable from the UI (coverage matrix doc + a test asserting the option set); Audacity + ffmpeg presets selectable",
+      "startedAt": "2026-06-29T18:30:00Z", "finishedAt": "2026-06-29T18:50:00Z", "blockedReason": null,
+      "evidence": [
+        "capability-coverage.md: a matrix mapping every DU4 capability -> setting key -> UI control -> apply class (render vs reconfigure), with the out-of-scope raster-only options noted. A unit test asserts the settings object exposes exactly the 18 DU4 keys (coverage gate).",
+        "Presets: SPECTROGRAM_PRESETS (Audacity = log/log/hann/drange80; ffmpeg = lin/sqrt/hann/overlap0/drange120) + presetSettings(); store.applyPreset(name); panel 'Presets' dropdown. Both presets round-trip through mergeStoredSettings (valid). Tested (names, validity, character).",
+        "Gates: bun ui spectrogram suite 52 pass / 0 fail; vue-tsc 0 errors. PHASE 4 (settings panel) complete -- full backend capability set reachable + presets (DU4 hard-acceptance met)."
+      ]
     },
     {
       "id": "U5.1",
@@ -271,6 +276,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-06-29T18:50:00Z", "step": "U4.3", "event": "done", "note": "capability-coverage.md matrix (every DU4 option -> control -> apply class) + coverage test (18 keys). Presets Audacity (log/log) + ffmpeg (lin/sqrt) via SPECTROGRAM_PRESETS + store.applyPreset + panel menu. bun ui suite 52/0; vue-tsc 0. PHASE 4 (settings panel) COMPLETE -- DU4 hard-acceptance met. Next U5.1 (hover readout)." },
     { "ts": "2026-06-29T18:20:00Z", "step": "U4.2", "event": "done", "note": "Apply semantics: render-only live (render prop), reconfigure debounced 150ms (analysis prop). Persistence: store loads/saves localStorage via pure mergeStoredSettings (validates types/enums). bun settings 7/7; vue-tsc 0. Next U4.3 (coverage matrix + presets)." },
     { "ts": "2026-06-29T17:45:00Z", "step": "U4.1", "event": "done", "note": "Full settings panel + pinia store: spectrogram-settings.ts (DU4 option lists + render/analysis mappers, bun 4/4), stores/spectrogram.ts, SpectrogramSettingsPanel.vue. AudioPage drives view analysis (reconfigure-on-change) + render (live); frequencyGain added to render path (per-bin). vue-tsc 0 errors (UI fully clean); bun ui suite 46/0. Apply-semantics/persistence = U4.2; coverage/presets = U4.3." },
     { "ts": "2026-06-29T16:30:00Z", "step": "U3.3", "event": "done", "note": "Playhead overlay (timeToFraction) tracks displayedPositionSec; click-to-seek (fractionToTime) -> emit seek -> AudioPage handleSeek (audio_seek). Wired to the existing transport (canSeek). bun viewport 11/11; vue-tsc clean for new code. PHASE 3 (navigation) COMPLETE. Next U4.1 (full settings panel)." },

@@ -1,5 +1,21 @@
 <template>
   <div class="spectrogram-settings">
+    <div class="spectrogram-settings__presets">
+      <q-btn-dropdown dense flat no-caps icon="tune" label="Presets" class="spectrogram-settings__field">
+        <q-list dense>
+          <q-item
+            v-for="preset in presets"
+            :key="preset.name"
+            clickable
+            v-close-popup
+            @click="store.applyPreset(preset.name)"
+          >
+            <q-item-section>{{ preset.label }}</q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
+    </div>
+
     <div class="spectrogram-settings__group">
       <div class="spectrogram-settings__title">Analysis</div>
       <q-select v-model="s.window" :options="windowSizes" label="Window" dense outlined emit-value map-options class="spectrogram-settings__field" />
@@ -41,6 +57,7 @@ import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_PALETTES,
+  SPECTROGRAM_PRESETS,
   SPECTROGRAM_SCALES,
   SPECTROGRAM_WINDOW_SIZES,
   SPECTROGRAM_WIN_FUNCS,
@@ -59,6 +76,7 @@ const fscales = [...SPECTROGRAM_FSCALES]
 const channelModes = [...SPECTROGRAM_CHANNEL_MODES]
 const scales = [...SPECTROGRAM_SCALES]
 const palettes = [...SPECTROGRAM_PALETTES]
+const presets = [...SPECTROGRAM_PRESETS]
 
 interface SliderSpec {
   readonly key: keyof Pick<SpectrogramSettings, 'gain' | 'frequencyGain' | 'drange' | 'limit' | 'saturation' | 'overlap'>

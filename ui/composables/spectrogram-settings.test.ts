@@ -7,7 +7,9 @@ import {
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_PALETTES,
   SPECTROGRAM_SCALES,
+  SPECTROGRAM_PRESETS,
   SPECTROGRAM_WIN_FUNCS,
+  presetSettings,
   toAnalysisParams,
   toRenderOptions,
 } from './spectrogram-settings'
@@ -25,6 +27,34 @@ describe('option lists cover the full backend capability set (DU4) (U4.1)', () =
     expect(SPECTROGRAM_FSCALES).toEqual(['lin', 'log', 'mel', 'bark', 'erb', 'period'])
     expect(SPECTROGRAM_SCALES).toEqual(['lin', 'sqrt', 'cbrt', 'log', '4thrt', '5thrt'])
     expect(SPECTROGRAM_PALETTES).toEqual(['intensity', 'rainbow'])
+  })
+})
+
+describe('capability coverage + presets (U4.3)', () => {
+  test('settings expose every DU4 capability (all keys present)', () => {
+    expect(Object.keys(DEFAULT_SPECTROGRAM_SETTINGS).sort()).toEqual(
+      [
+        'channel', 'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'hop', 'limit',
+        'mode', 'overlap', 'palette', 'saturation', 'scale', 'startHz', 'stopHz',
+        'window', 'winFunc', 'zeroPaddingFactor',
+      ].sort(),
+    )
+  })
+
+  test('Audacity + ffmpeg presets exist and are valid settings', () => {
+    expect(SPECTROGRAM_PRESETS.map((p) => p.name)).toEqual(['audacity', 'ffmpeg'])
+    for (const preset of SPECTROGRAM_PRESETS) {
+      // a valid settings object round-trips unchanged through the persistence validator
+      expect(mergeStoredSettings(preset.settings)).toEqual(preset.settings)
+    }
+  })
+
+  test('preset character: ffmpeg=lin/sqrt, audacity=log/log', () => {
+    expect(presetSettings('ffmpeg')?.fscale).toBe('lin')
+    expect(presetSettings('ffmpeg')?.scale).toBe('sqrt')
+    expect(presetSettings('audacity')?.fscale).toBe('log')
+    expect(presetSettings('audacity')?.scale).toBe('log')
+    expect(presetSettings('audacity' as never)).not.toBeNull()
   })
 })
 

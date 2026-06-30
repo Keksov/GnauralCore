@@ -77,6 +77,51 @@ export const SPECTROGRAM_SCALES: readonly SpectrogramScale[] = [
 export const SPECTROGRAM_CHANNEL_MODES: readonly SpectrogramChannelMode[] = ['combined', 'separate']
 export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = ['intensity', 'rainbow']
 
+export type SpectrogramPresetName = 'audacity' | 'ffmpeg'
+
+export interface SpectrogramPreset {
+  readonly name: SpectrogramPresetName
+  readonly label: string
+  readonly settings: SpectrogramSettings
+}
+
+/** Selectable presets (U4.3): approximate the two reference tools' defaults. */
+export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
+  {
+    name: 'audacity',
+    label: 'Audacity',
+    settings: {
+      ...DEFAULT_SPECTROGRAM_SETTINGS,
+      window: 2048,
+      winFunc: 'hann',
+      fscale: 'log',
+      scale: 'log',
+      data: 'magnitude',
+      drange: 80,
+      palette: 'intensity',
+    },
+  },
+  {
+    name: 'ffmpeg',
+    label: 'ffmpeg showspectrumpic',
+    settings: {
+      ...DEFAULT_SPECTROGRAM_SETTINGS,
+      window: 2048,
+      winFunc: 'hann',
+      fscale: 'lin',
+      scale: 'sqrt',
+      data: 'magnitude',
+      overlap: 0,
+      drange: 120,
+      palette: 'intensity',
+    },
+  },
+]
+
+export function presetSettings(aName: SpectrogramPresetName): SpectrogramSettings | null {
+  return SPECTROGRAM_PRESETS.find((preset) => preset.name === aName)?.settings ?? null
+}
+
 /**
  * Merge a parsed (untrusted, e.g. localStorage) value over the defaults, keeping
  * only known keys with valid types/enums. Used for settings persistence (U4.2).

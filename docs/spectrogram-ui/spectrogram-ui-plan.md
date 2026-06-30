@@ -150,8 +150,9 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
 - [x] **U4.2 — Apply semantics + persistence.** render-only (`render` prop) live, no refetch;
   reconfigure (`analysis` prop) re-analyses, **debounced 150ms**; settings persist to
   localStorage via the validated `mergeStoredSettings` (unit-tested).
-- [ ] **U4.3 — Capability-coverage + presets.** Coverage matrix (every option reachable) +
-  Audacity / ffmpeg default presets.
+- [x] **U4.3 — Capability-coverage + presets.** [capability-coverage.md](capability-coverage.md)
+  (DU4 matrix: every option → control → apply class) + a coverage test; Audacity + ffmpeg
+  presets (`SPECTROGRAM_PRESETS`, `store.applyPreset`, panel Presets menu). Phase 4 complete.
 
 **Phase 5 — Interaction + polish**
 - [ ] **U5.1 — Hover readout** (time/freq/intensity) via point-query (throttled).
