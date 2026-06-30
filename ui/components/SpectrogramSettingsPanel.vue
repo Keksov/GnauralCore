@@ -1,7 +1,7 @@
 <template>
   <div class="spectrogram-settings">
     <div class="spectrogram-settings__presets">
-      <q-btn-dropdown dense flat no-caps icon="tune" label="Presets" class="spectrogram-settings__field">
+      <q-btn-dropdown dense flat no-caps icon="tune" :label="t('audio.spectrogramPresets')" class="spectrogram-settings__field">
         <q-list dense>
           <q-item
             v-for="preset in presets"
@@ -17,7 +17,7 @@
     </div>
 
     <div class="spectrogram-settings__group">
-      <div class="spectrogram-settings__title">Analysis</div>
+      <div class="spectrogram-settings__title">{{ t('audio.spectrogramAnalysisGroup') }}</div>
       <q-select v-model="s.window" :options="windowSizes" label="Window" dense outlined emit-value map-options class="spectrogram-settings__field" />
       <q-select v-model="s.zeroPaddingFactor" :options="zeroPadOptions" label="Zero-pad" dense outlined emit-value map-options class="spectrogram-settings__field" />
       <q-input v-model.number="s.hop" type="number" label="Hop" dense outlined class="spectrogram-settings__field" />
@@ -31,7 +31,7 @@
     </div>
 
     <div class="spectrogram-settings__group">
-      <div class="spectrogram-settings__title">Display</div>
+      <div class="spectrogram-settings__title">{{ t('audio.spectrogramDisplayGroup') }}</div>
       <q-select v-model="s.scale" :options="scales" label="Intensity scale" dense outlined class="spectrogram-settings__field" />
       <q-select v-model="s.palette" :options="palettes" label="Palette" dense outlined class="spectrogram-settings__field" />
 
@@ -45,12 +45,14 @@
     </div>
 
     <div class="spectrogram-settings__actions">
-      <q-btn flat dense no-caps label="Reset" icon="restart_alt" @click="store.reset()" />
+      <q-btn flat dense no-caps :label="t('audio.spectrogramReset')" icon="restart_alt" @click="store.reset()" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 import { useSpectrogramStore } from '../stores/spectrogram'
 import {
   SPECTROGRAM_CHANNEL_MODES,
@@ -65,6 +67,7 @@ import {
   type SpectrogramSettings,
 } from '../composables/spectrogram-settings'
 
+const { t } = useI18n()
 const store = useSpectrogramStore()
 const s = store.settings
 

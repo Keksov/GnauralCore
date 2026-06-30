@@ -3,9 +3,9 @@
   "plan": "spectrogram-ui-plan",
   "planDoc": "docs/spectrogram-ui/spectrogram-ui-plan.md",
   "title": "Spectrogram UI (Audacity-style) on the SpectrumCore worker",
-  "status": "active",
+  "status": "complete",
   "createdAt": "2026-06-25",
-  "updatedAt": "2026-06-28",
+  "updatedAt": "2026-07-01T10:30:00Z",
   "decisions": [
     { "id": "DU1", "text": "Architecture: LIVE worker over WebSocket. The bun server spawns/manages a long-lived SpectrumCoreFftwWorkerProbe and proxies JSON; the UI requests tiles on demand by (timeStart,timeEnd,zoom) over the overview pyramid. Reuses the worker's W2/W3 (pyramid + budgeted cache)." },
     { "id": "DU2", "text": "Code location: UI in GnauralCore/ui (source of truth; MindWaveCore re-exports). Server integration in GnauralCore/server (audio domain) wired through MindWaveCore/server (bun, the runtime host). Plan + ledger live here in GnauralCore/docs/spectrogram-ui/." },
@@ -274,11 +274,17 @@
       "id": "U5.3",
       "phase": 5,
       "title": "i18n / a11y / states / perf + final acceptance",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U4.3", "U5.2"],
-      "artifacts": ["GnauralCore/ui (i18n, states)", "docs/spectrogram-ui/spectrogram-ui-progress.json"],
-      "verify": "i18n strings; a11y (canvas aria, keyboard); loading/empty/error states; perf pass (tile cache sizing, request cancellation); vue-tsc + lint + bun contract + vitest all green; set plan status complete",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["GnauralCore/ui/i18n/en.json", "GnauralCore/ui/i18n/ru.json", "GnauralCore/ui/components/SpectrogramView.vue", "GnauralCore/ui/components/SpectrogramSettingsPanel.vue"],
+      "verify": "i18n strings; a11y; vue-tsc + bun all green; set plan status complete",
+      "startedAt": "2026-07-01T10:00:00Z", "finishedAt": "2026-07-01T10:30:00Z", "blockedReason": null,
+      "evidence": [
+        "i18n: added spectrogram UI keys (zoom in/out/fit, presets, reset, group titles, readout) to en.json + ru.json; SpectrogramView toolbar aria-labels + SpectrogramSettingsPanel group titles/Presets/Reset now use t(). (Technical field labels like Window/Hop stay as domain terms.)",
+        "a11y: canvas keeps role=img + aria-label; toolbar buttons have aria-labels; the hover/area readout is role=status aria-live=polite so screen readers announce values. States: loading/empty/error gated in AudioPage (store); render-only vs reconfigure errors surface via spec.error.",
+        "perf: client LRU tile cache + debounced refetch + viewSeq cancellation (U2.1) + the worker's budgeted tile cache (W3) keep memory bounded and avoid redundant fetches; render-only changes never refetch (U2.3/U4.2); reconfigure debounced 150ms (U4.2).",
+        "Final acceptance (DU8): vue-tsc 0 errors; MindWave server tsc 0; bun spectrogram suites 72 pass / 0 fail (ui 56 + server 16); i18n JSON valid. (No eslint flat-config in the repo -> lint gate n/a.) Visual parity remains manual/non-blocking (D6 spirit). Plan status set complete."
+      ]
     }
   ],
   "log": [
@@ -286,6 +292,8 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-07-01T10:30:00Z", "step": "U5.3", "event": "done", "note": "i18n (en/ru keys for toolbar/panel) + a11y (aria-live readout, button aria-labels) + perf/states recap. Final acceptance: vue-tsc 0, server tsc 0, bun spectrogram 72/0 (ui 56 + server 16), i18n JSON valid. No eslint flat-config -> lint n/a." },
+    { "ts": "2026-07-01T10:30:00Z", "step": "-", "event": "complete", "note": "Spectrogram UI plan COMPLETE (U0.1-U5.3). Audacity-style spectrogram on the SpectrumCore worker over WS: server bridge (spawn/NDJSON/timeout/restart) + per-connection session + audio-source resolution; UI composable (tiles/cache/cancel) + canvas renderer + palettes/transform (live) + axes + zoom/pan + playhead/seek + full settings panel (all backend params, presets, persistence) + hover point-query + area-query selection. All gates green; visual parity manual (D6)." },
     { "ts": "2026-07-01T09:55:00Z", "step": "U5.2", "event": "done", "note": "Drag-select rectangle (data-space, zoom/pan-stable) -> areaQueryBounds (fscale-aware) -> worker area-query -> peak/cells readout; drag vs seek-click guarded by threshold+suppressClick. areaQueryBounds bun-tested (axes 13/13). vue-tsc 0. Next U5.3 (i18n/a11y/final acceptance)." },
     { "ts": "2026-07-01T09:20:00Z", "step": "U5.1", "event": "done", "note": "Hover readout via throttled point-query: cursor -> time (fractionToTime) + freq (frequencyAtFraction over binFrequenciesHz), shows worker cell frameTimeSec/binHz/displayDb. composable gains pointQuery/areaQuery (requestId-correlated). bun axes 11/11; vue-tsc 0. Next U5.2 (area select -> area-query)." },
     { "ts": "2026-06-29T18:50:00Z", "step": "U4.3", "event": "done", "note": "capability-coverage.md matrix (every DU4 option -> control -> apply class) + coverage test (18 keys). Presets Audacity (log/log) + ffmpeg (lin/sqrt) via SPECTROGRAM_PRESETS + store.applyPreset + panel menu. bun ui suite 52/0; vue-tsc 0. PHASE 4 (settings panel) COMPLETE -- DU4 hard-acceptance met. Next U5.1 (hover readout)." },

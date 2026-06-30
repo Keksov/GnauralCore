@@ -1,9 +1,9 @@
 <template>
   <div class="spectrogram-view">
     <div class="spectrogram-view__toolbar">
-      <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" aria-label="Zoom in" @click="zoomIn" />
-      <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" aria-label="Zoom out" @click="zoomOut" />
-      <q-btn dense flat round size="sm" icon="fit_screen" :disable="!hasAnalysis || isFull" aria-label="Fit to clip" @click="resetView" />
+      <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomIn')" @click="zoomIn" />
+      <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomOut')" @click="zoomOut" />
+      <q-btn dense flat round size="sm" icon="fit_screen" :disable="!hasAnalysis || isFull" :aria-label="t('audio.spectrogramFit')" @click="resetView" />
       <q-range
         v-if="hasAnalysis"
         v-model="rangeModel"
@@ -16,10 +16,22 @@
         dense
         class="spectrogram-view__range col"
       />
-      <div v-if="areaResult !== null" class="spectrogram-view__readout">
+      <div
+        v-if="areaResult !== null"
+        class="spectrogram-view__readout"
+        role="status"
+        aria-live="polite"
+        :aria-label="t('audio.spectrogramReadout')"
+      >
         sel peak {{ formatHz(areaResult.peakFreqHz) }} @ {{ formatTimeSec(areaResult.peakTimeSec) }} · {{ areaResult.cellCount }} cells
       </div>
-      <div v-else-if="hover !== null" class="spectrogram-view__readout">
+      <div
+        v-else-if="hover !== null"
+        class="spectrogram-view__readout"
+        role="status"
+        aria-live="polite"
+        :aria-label="t('audio.spectrogramReadout')"
+      >
         {{ formatTimeSec(hover.timeSec) }} · {{ formatHz(hover.freqHz) }} Hz · {{ hover.db.toFixed(1) }} dB
       </div>
     </div>

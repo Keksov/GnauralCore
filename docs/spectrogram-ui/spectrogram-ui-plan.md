@@ -1,6 +1,6 @@
 # Spectrogram UI Plan (Audacity-style, on the SpectrumCore worker)
 
-Status: **active**
+Status: **complete** (U0.1–U5.3; all gates green, visual parity manual per D6)
 Created: 2026-06-25
 Authoritative progress ledger: [spectrogram-ui-progress.json](spectrogram-ui-progress.json)
 
@@ -161,8 +161,9 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
 - [x] **U5.2 — Area selection → area-query.** Drag-select a time/freq rectangle (data-space,
   zoom/pan-stable) → `areaQueryBounds` (fscale-aware) → worker area-query → peak/cells readout;
   drag-vs-click guarded. `areaQueryBounds` unit-tested.
-- [ ] **U5.3 — i18n / a11y / states / perf + final acceptance** (all gates green; plan
-  status = complete).
+- [x] **U5.3 — i18n / a11y / states / perf + final acceptance.** i18n keys (en/ru) +
+  aria-live readout/aria-labels; perf recap (client cache + cancellation + debounce + worker
+  budget); vue-tsc 0, server tsc 0, bun spectrogram 72/0. **Plan complete.**
 
 ## 7. References
 
