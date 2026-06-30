@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   formatHz,
   formatTimeSec,
+  frequencyAtFraction,
   frequencyAxisTicks,
   niceStep,
   timeAxisTicks,
@@ -29,6 +30,20 @@ describe('frequencyAxisTicks (U3.1)', () => {
 
   test('empty bins -> no ticks', () => {
     expect(frequencyAxisTicks([], 6)).toEqual([])
+  })
+})
+
+describe('frequencyAtFraction (U5.1 hover)', () => {
+  const bins = [0, 100, 200, 300, 400] // ascending; bin0 = lowest
+  test('top fraction = highest freq, bottom = lowest, mid = middle', () => {
+    expect(frequencyAtFraction(0, bins)).toBe(400) // top
+    expect(frequencyAtFraction(1, bins)).toBe(0) // bottom
+    expect(frequencyAtFraction(0.5, bins)).toBe(200) // middle
+  })
+  test('clamps out-of-range fractions; empty -> 0', () => {
+    expect(frequencyAtFraction(-1, bins)).toBe(400)
+    expect(frequencyAtFraction(2, bins)).toBe(0)
+    expect(frequencyAtFraction(0.5, [])).toBe(0)
   })
 })
 

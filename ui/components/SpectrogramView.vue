@@ -16,6 +16,9 @@
         dense
         class="spectrogram-view__range col"
       />
+      <div v-if="hover !== null" class="spectrogram-view__readout">
+        {{ formatTimeSec(hover.timeSec) }} · {{ formatHz(hover.freqHz) }} Hz · {{ hover.db.toFixed(1) }} dB
+      </div>
     </div>
     <canvas
       ref="canvasEl"
@@ -25,6 +28,8 @@
       :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @pointermove="onPointerMove"
+      @pointerleave="onPointerLeave"
     />
   </div>
 </template>
@@ -39,6 +44,7 @@ import { tileToImage, type SpectrogramRenderOptions } from '../composables/spect
 import {
   formatHz,
   formatTimeSec,
+  frequencyAtFraction,
   frequencyAxisTicks,
   timeAxisTicks,
 } from '../composables/spectrogram-axes'
@@ -263,6 +269,37 @@ function onWheel(aEvent: WheelEvent): void {
   view.value = zoomWindow(view.value, factor, anchor, duration.value)
 }
 
+const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
+let lastHoverTs = 0
+
+function onPointerMove(aEvent: PointerEvent): void {
+  if (!hasAnalysis.value) return
+  const canvas = canvasEl.value
+  if (canvas === null) return
+  const plotW = plotColumns(canvas)
+  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
+  const xFraction = (aEvent.offsetX - AXIS_MARGIN.left) / plotW
+  const yTopFraction = (aEvent.offsetY - AXIS_MARGIN.top) / plotH
+  if (xFraction < 0 || xFraction > 1 || yTopFraction < 0 || yTopFraction > 1) {
+    hover.value = null
+    return
+  }
+  const now = performance.now()
+  if (now - lastHoverTs < 60) return // throttle point-query
+  lastHoverTs = now
+  const timeSec = fractionToTime(xFraction, view.value)
+  const freqHz = frequencyAtFraction(yTopFraction, spec.tiles.value[0]?.binFrequenciesHz ?? [])
+  void spec.pointQuery(timeSec, freqHz).then((point) => {
+    if (point !== null) {
+      hover.value = { timeSec: point.frameTimeSec, freqHz: point.binHz, db: point.displayDb }
+    }
+  })
+}
+
+function onPointerLeave(): void {
+  hover.value = null
+}
+
 function onClick(aEvent: MouseEvent): void {
   if (props.seekable !== true || !hasAnalysis.value) return
   const canvas = canvasEl.value
@@ -384,6 +421,14 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__range {
   margin-left: 12px;
+}
+
+.spectrogram-view__readout {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-left: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .spectrogram-view__canvas {

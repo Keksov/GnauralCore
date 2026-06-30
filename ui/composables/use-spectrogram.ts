@@ -2,6 +2,8 @@ import { onScopeDispose, ref, shallowRef, type Ref } from 'vue'
 import type {
   SpectrogramAnalysisInfo,
   SpectrogramAnalysisParams,
+  SpectrogramAreaResult,
+  SpectrogramPointResult,
   SpectrogramServerMessage,
   SpectrogramTile,
 } from '@protocol'
@@ -46,6 +48,13 @@ export interface UseSpectrogram {
   open(aParams: SpectrogramAnalysisParams & { readonly filePath?: string }): Promise<SpectrogramAnalysisInfo>
   reconfigure(aParams: SpectrogramAnalysisParams): Promise<SpectrogramAnalysisInfo>
   setView(aView: SpectrogramView): void
+  pointQuery(aTimeSec: number, aFrequencyHz: number): Promise<SpectrogramPointResult | null>
+  areaQuery(
+    aTimeStartSec: number,
+    aTimeEndSec: number,
+    aFreqStartHz: number,
+    aFreqEndHz: number,
+  ): Promise<SpectrogramAreaResult | null>
   close(): Promise<void>
   dispose(): void
 }
@@ -240,6 +249,42 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     scheduleRefetch()
   }
 
+  async function pointQuery(
+    aTimeSec: number,
+    aFrequencyHz: number,
+  ): Promise<SpectrogramPointResult | null> {
+    if (analysisId === null) return null
+    const requestId = nextRequestId()
+    const resp = await sendControl(
+      { type: 'spectrogram:point-query', requestId, analysisId, timeSec: aTimeSec, frequencyHz: aFrequencyHz },
+      requestId,
+    ).catch(() => null)
+    return resp !== null && resp.type === 'spectrogram:point' ? resp.point : null
+  }
+
+  async function areaQuery(
+    aTimeStartSec: number,
+    aTimeEndSec: number,
+    aFreqStartHz: number,
+    aFreqEndHz: number,
+  ): Promise<SpectrogramAreaResult | null> {
+    if (analysisId === null) return null
+    const requestId = nextRequestId()
+    const resp = await sendControl(
+      {
+        type: 'spectrogram:area-query',
+        requestId,
+        analysisId,
+        timeStartSec: aTimeStartSec,
+        timeEndSec: aTimeEndSec,
+        freqStartHz: aFreqStartHz,
+        freqEndHz: aFreqEndHz,
+      },
+      requestId,
+    ).catch(() => null)
+    return resp !== null && resp.type === 'spectrogram:area' ? resp.area : null
+  }
+
   async function close(): Promise<void> {
     if (debounceTimer !== null) {
       clearTimeout(debounceTimer)
@@ -272,5 +317,5 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
 
   onScopeDispose(dispose)
 
-  return { analysis, tiles, loading, error, open, reconfigure, setView, close, dispose }
+  return { analysis, tiles, loading, error, open, reconfigure, setView, pointQuery, areaQuery, close, dispose }
 }

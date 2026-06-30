@@ -155,7 +155,9 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   presets (`SPECTROGRAM_PRESETS`, `store.applyPreset`, panel Presets menu). Phase 4 complete.
 
 **Phase 5 — Interaction + polish**
-- [ ] **U5.1 — Hover readout** (time/freq/intensity) via point-query (throttled).
+- [x] **U5.1 — Hover readout** (time/freq/intensity) via throttled worker point-query;
+  cursor → time (`fractionToTime`) + freq (`frequencyAtFraction`), readout shows the worker
+  cell (frameTimeSec/binHz/displayDb). `pointQuery`/`areaQuery` added to the composable.
 - [ ] **U5.2 — Area selection → area-query** (peak/mean overlay).
 - [ ] **U5.3 — i18n / a11y / states / perf + final acceptance** (all gates green; plan
   status = complete).

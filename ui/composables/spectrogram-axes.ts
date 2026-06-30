@@ -29,6 +29,22 @@ export function frequencyAxisTicks(
   return ticks
 }
 
+/**
+ * Frequency at a vertical fraction from the TOP of the plot (0 = top/highest,
+ * 1 = bottom/lowest), using the worker's display-bin frequencies. fscale-aware
+ * (binFrequenciesHz is already mapped). Used for the hover readout (U5.1).
+ */
+export function frequencyAtFraction(
+  aTopFraction: number,
+  aBinFrequenciesHz: readonly number[],
+): number {
+  const n = aBinFrequenciesHz.length
+  if (n === 0) return 0
+  const f = aTopFraction < 0 ? 0 : aTopFraction > 1 ? 1 : aTopFraction
+  const binIndex = Math.round((1 - f) * (n - 1))
+  return aBinFrequenciesHz[binIndex] ?? 0
+}
+
 /** A "nice" round step (1/2/5 x 10^k) for ~targetTicks divisions of a range. */
 export function niceStep(aRange: number, aTargetTicks: number): number {
   if (aRange <= 0) return 0
