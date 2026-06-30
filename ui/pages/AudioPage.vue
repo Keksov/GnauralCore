@@ -233,7 +233,7 @@
                       <div v-else-if="audio.spectrogramBuffer === null" class="audio-page__empty text-grey-7">
                         {{ noSpectrogramLabel }}
                       </div>
-                      <spectrogram-view v-else :audio-buffer="audio.spectrogramBuffer" />
+                      <spectrogram-view v-else :file-path="audio.displayFilePath" />
                     </div>
                   </q-tab-panel>
                 </q-tab-panels>

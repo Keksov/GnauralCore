@@ -115,8 +115,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   transport (`sendSpectrogram`/`onSpectrogram` added to the WS service; spectrogram types
   exposed via `@protocol`); pure tiling/LRU core
   [spectrogram-tiles.ts](../../ui/composables/spectrogram-tiles.ts) (unit-tested 9/9).
-- [ ] **U2.2 — Canvas tile renderer.** float → palette → ImageData; fscale-aware frequency
-  axis; replaces the Goertzel placeholder.
+- [x] **U2.2 — Canvas tile renderer.** [SpectrogramView.vue](../../ui/components/SpectrogramView.vue)
+  draws worker tiles (float → RGBA → `ImageData` → scaled `drawImage`) via the pure
+  [spectrogram-render.ts](../../ui/composables/spectrogram-render.ts) (unit-tested 9/9);
+  fscale-correct via `binFrequenciesHz`; replaces the Goertzel path; AudioPage bound to
+  `displayFilePath`. (Axis labels/ruler → U3.1; full palettes/transforms → U2.3.)
 - [ ] **U2.3 — Palettes + client value transform.** scale/gain/drange/limit/saturation/
   palette applied live on linear tiles.
 

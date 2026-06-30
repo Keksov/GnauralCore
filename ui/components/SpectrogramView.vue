@@ -13,175 +13,135 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { useSpectrogram } from '../composables/use-spectrogram'
+import { chooseZoom, tileToImage } from '../composables/spectrogram-render'
+
+// U2.2: render SpectrumCore worker tiles on a canvas (replaces the old client-side
+// Goertzel path). The frequency axis is fscale-correct by construction -- the
+// worker returns display bins already mapped per fscale (binFrequenciesHz), so we
+// draw them in order. Intensity/palette transforms are basic here; U2.3 adds the
+// full scale family + palettes, U3.1 adds the axis/ruler chrome.
+
 interface Props {
-  audioBuffer: AudioBuffer | null
+  filePath: string | null
 }
 
 const props = defineProps<Props>()
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const spec = useSpectrogram()
 
+const MAX_VIEW_BINS = 512
 let renderFrameId = 0
 let resizeObserver: ResizeObserver | null = null
+let offscreen: HTMLCanvasElement | null = null
 
-function mergeChannels(audioBuffer: AudioBuffer): Float32Array {
-  const sampleCount = audioBuffer.length
-  const channelCount = audioBuffer.numberOfChannels
-  const merged = new Float32Array(sampleCount)
-
-  for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
-    const channelData = audioBuffer.getChannelData(channelIndex)
-    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
-      merged[sampleIndex] += channelData[sampleIndex] / channelCount
-    }
+function getOffscreen(aWidth: number, aHeight: number): HTMLCanvasElement {
+  if (offscreen === null) {
+    offscreen = document.createElement('canvas')
   }
-
-  return merged
+  if (offscreen.width !== aWidth) offscreen.width = aWidth
+  if (offscreen.height !== aHeight) offscreen.height = aHeight
+  return offscreen
 }
 
-function getGoertzelMagnitude(
-  samples: Float32Array,
-  startIndex: number,
-  sampleCount: number,
-  normalizedFrequency: number,
-): number {
-  const clampedFrequency = Math.max(0, Math.min(0.5, normalizedFrequency))
-  const coefficient = 2 * Math.cos(2 * Math.PI * clampedFrequency)
-  let previousSample = 0
-  let previousPreviousSample = 0
-
-  for (let sampleOffset = 0; sampleOffset < sampleCount; sampleOffset += 1) {
-    const window = 0.5 - 0.5 * Math.cos((2 * Math.PI * sampleOffset) / (sampleCount - 1))
-    const currentSample = samples[startIndex + sampleOffset] * window
-      + coefficient * previousSample
-      - previousPreviousSample
-
-    previousPreviousSample = previousSample
-    previousSample = currentSample
-  }
-
-  return previousSample * previousSample
-    + previousPreviousSample * previousPreviousSample
-    - coefficient * previousSample * previousPreviousSample
-}
-
-function getSpectrogramColor(value: number): string {
-  const normalized = Math.max(0, Math.min(1, value))
-  const hue = 220 - normalized * 180
-  const saturation = 82
-  const lightness = 10 + normalized * 62
-  return `hsl(${hue} ${saturation}% ${lightness}%)`
-}
-
-function renderSpectrogram(): void {
+function draw(): void {
   const canvas = canvasEl.value
-  if (canvas === null) {
-    return
-  }
-
+  if (canvas === null) return
   const ctx = canvas.getContext('2d')
-  if (ctx === null) {
-    return
-  }
+  if (ctx === null) return
 
-  const width = Math.max(1, Math.floor(canvas.clientWidth))
-  const height = Math.max(1, Math.floor(canvas.clientHeight))
-  const pixelRatio = window.devicePixelRatio || 1
-
-  canvas.width = Math.max(1, Math.floor(width * pixelRatio))
-  canvas.height = Math.max(1, Math.floor(height * pixelRatio))
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-  ctx.clearRect(0, 0, width, height)
+  const cssWidth = Math.max(1, Math.floor(canvas.clientWidth))
+  const cssHeight = Math.max(1, Math.floor(canvas.clientHeight))
+  const dpr = window.devicePixelRatio || 1
+  canvas.width = Math.max(1, Math.floor(cssWidth * dpr))
+  canvas.height = Math.max(1, Math.floor(cssHeight * dpr))
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, cssWidth, cssHeight)
   ctx.fillStyle = '#0f172a'
-  ctx.fillRect(0, 0, width, height)
+  ctx.fillRect(0, 0, cssWidth, cssHeight)
 
-  if (props.audioBuffer === null || props.audioBuffer.length < 32) {
-    return
-  }
+  const analysis = spec.analysis.value
+  const tiles = spec.tiles.value
+  if (analysis === null || analysis.frameCount <= 0 || tiles.length === 0) return
 
-  const merged = mergeChannels(props.audioBuffer)
-  const sliceCount = Math.max(64, Math.min(width, 320))
-  const binCount = Math.max(48, Math.min(height, 112))
-  const windowSize = Math.min(1024, merged.length)
-  const maxStartIndex = Math.max(0, merged.length - windowSize)
-  const hopSize = sliceCount > 1 ? Math.max(1, Math.floor(maxStartIndex / (sliceCount - 1))) : 1
-  const minFrequency = 40
-  const maxFrequency = Math.max(minFrequency, Math.min(props.audioBuffer.sampleRate / 2, 16000))
-  const sliceWidth = width / sliceCount
-  const binHeight = height / binCount
-  const spectrogram: number[][] = []
-  let globalPeak = Number.MIN_VALUE
-
-  for (let sliceIndex = 0; sliceIndex < sliceCount; sliceIndex += 1) {
-    const startIndex = Math.min(sliceIndex * hopSize, maxStartIndex)
-    const row: number[] = []
-
-    for (let binIndex = 0; binIndex < binCount; binIndex += 1) {
-      const ratio = binCount === 1 ? 0 : binIndex / (binCount - 1)
-      const frequency = minFrequency * Math.pow(maxFrequency / minFrequency, ratio)
-      const magnitude = getGoertzelMagnitude(
-        merged,
-        startIndex,
-        windowSize,
-        frequency / props.audioBuffer.sampleRate,
-      )
-
-      row.push(magnitude)
-      globalPeak = Math.max(globalPeak, magnitude)
-    }
-
-    spectrogram.push(row)
-  }
-
-  const peak = globalPeak > 0 ? globalPeak : 1
-
-  for (let sliceIndex = 0; sliceIndex < spectrogram.length; sliceIndex += 1) {
-    const row = spectrogram[sliceIndex]
-    for (let binIndex = 0; binIndex < row.length; binIndex += 1) {
-      const normalized = Math.sqrt(row[binIndex] / peak)
-      const y = height - (binIndex + 1) * binHeight
-      ctx.fillStyle = getSpectrogramColor(normalized)
-      ctx.fillRect(sliceIndex * sliceWidth, y, Math.ceil(sliceWidth) + 1, Math.ceil(binHeight) + 1)
-    }
+  ctx.imageSmoothingEnabled = true
+  for (const tile of tiles) {
+    const image = tileToImage(tile)
+    if (image.width === 0 || image.height === 0) continue
+    const off = getOffscreen(image.width, image.height)
+    const offCtx = off.getContext('2d')
+    if (offCtx === null) continue
+    offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
+    const x = (tile.frameStart / analysis.frameCount) * cssWidth
+    const w = (tile.frameCount / analysis.frameCount) * cssWidth
+    ctx.drawImage(off, 0, 0, image.width, image.height, x, 0, Math.ceil(w) + 1, cssHeight)
   }
 }
 
-function scheduleRender(): void {
-  if (renderFrameId !== 0) {
-    cancelAnimationFrame(renderFrameId)
-  }
-
+function scheduleDraw(): void {
+  if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
   renderFrameId = requestAnimationFrame(() => {
     renderFrameId = 0
-    renderSpectrogram()
+    draw()
   })
 }
 
-watch(() => props.audioBuffer, () => {
-  scheduleRender()
+function applyView(): void {
+  const analysis = spec.analysis.value
+  const canvas = canvasEl.value
+  if (analysis === null || canvas === null) return
+  const columns = Math.max(1, Math.floor(canvas.clientWidth))
+  const viewBinCount = Math.max(16, Math.min(MAX_VIEW_BINS, Math.floor(canvas.clientHeight)))
+  spec.setView({
+    timeStartSec: 0,
+    timeEndSec: analysis.durationSec,
+    zoom: chooseZoom(analysis.frameCount, columns),
+    viewBinCount,
+  })
+}
+
+async function openForPath(aFilePath: string | null): Promise<void> {
+  await spec.close()
+  if (aFilePath === null || aFilePath === '') {
+    scheduleDraw()
+    return
+  }
+  try {
+    await spec.open({ filePath: aFilePath, window: 2048, hop: 512 })
+    applyView()
+  } catch {
+    // surfaced via spec.error
+  }
+}
+
+watch(() => props.filePath, (value) => {
+  void openForPath(value)
+})
+
+watch([spec.tiles, spec.analysis], () => {
+  scheduleDraw()
 })
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
     resizeObserver = new ResizeObserver(() => {
-      scheduleRender()
+      applyView()
+      scheduleDraw()
     })
     resizeObserver.observe(canvasEl.value)
   }
-
-  scheduleRender()
+  void openForPath(props.filePath)
 })
 
 onBeforeUnmount(() => {
-  if (renderFrameId !== 0) {
-    cancelAnimationFrame(renderFrameId)
-  }
-
+  if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
   if (resizeObserver !== null) {
     resizeObserver.disconnect()
     resizeObserver = null
   }
+  void spec.close()
 })
 </script>
 
