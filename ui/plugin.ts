@@ -1,4 +1,4 @@
-import type { BrowserMessage } from '@protocol'
+import type { BrowserMessage, SpectrogramClientMessage, SpectrogramServerMessage } from '@protocol'
 import type { InjectionKey, Plugin, Ref } from 'vue'
 
 export type GnauralConnectionState = 'connecting' | 'connected' | 'disconnected'
@@ -6,6 +6,10 @@ export type GnauralConnectionState = 'connecting' | 'connected' | 'disconnected'
 export interface GnauralWsService {
   readonly connectionState: Ref<GnauralConnectionState>
   send(message: BrowserMessage): boolean
+  /** Send a spectrogram client message (additive protocol, outside BrowserMessage). */
+  sendSpectrogram(message: SpectrogramClientMessage): boolean
+  /** Subscribe to spectrogram server messages; returns an unsubscribe fn. */
+  onSpectrogram(handler: (message: SpectrogramServerMessage) => void): () => void
 }
 
 export const GNAURAL_WS_KEY: InjectionKey<GnauralWsService> = Symbol('gnaural-ws')

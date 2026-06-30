@@ -105,11 +105,17 @@
       "id": "U2.1",
       "phase": 2,
       "title": "useSpectrogram composable (tile fetch + client cache)",
-      "status": "not-started",
+      "status": "done",
       "dependsOn": ["U1.3"],
-      "artifacts": ["GnauralCore/ui/composables/useSpectrogram.ts"],
-      "verify": "opens an analysis over WS; requests tiles for the visible (time-range, zoom); client-side tile cache; debounced refetch on view change; cancellation. vitest unit for the cache/refetch logic",
-      "startedAt": null, "finishedAt": null, "blockedReason": null, "evidence": []
+      "artifacts": ["GnauralCore/ui/composables/use-spectrogram.ts", "GnauralCore/ui/composables/spectrogram-tiles.ts", "GnauralCore/ui/composables/spectrogram-tiles.test.ts", "GnauralCore/ui/plugin.ts", "MindWaveCore/ui/services/ws.ts", "SharedPasCore/ts/protocol.ts"],
+      "verify": "opens an analysis over WS; requests tiles for the visible (time-range, zoom); client-side tile cache; debounced refetch on view change; cancellation. unit for the cache/refetch logic",
+      "startedAt": "2026-06-29T13:00:00Z", "finishedAt": "2026-06-29T13:35:00Z", "blockedReason": null,
+      "evidence": [
+        "Transport: spectrogram WS types are now reachable in the UI via @protocol (added `export * from ./spectrogram-protocol` to SharedPasCore/ts/protocol.ts; removed the now-redundant re-export in GnauralCore/server/protocol.ts). GnauralWsService (plugin.ts) + the host wsService (MindWave ui/services/ws.ts) gain sendSpectrogram(client msg) + onSpectrogram(handler) (the latter filters dispatch by the 'spectrogram:' type prefix and consumes).",
+        "Pure, Vue-free tiling/cache core in spectrogram-tiles.ts: tileKey, planVisibleTiles (fixed 256-frame aligned chunks over the visible time-range+zoom, clamped to frameCount), SpectrogramTileCache (LRU). bun test spectrogram-tiles.test.ts -> 9 pass / 29 expect (key stability, window coverage, last-tile clamp, zoom carry, empty/out-of-range, LRU eviction + MRU refresh).",
+        "use-spectrogram.ts composable: open/reconfigure (control req/resp by requestId; cache cleared on (re)analysis) + setView(timeRange,zoom,viewBinCount) with debounced refetch (default 80ms), client LRU tile cache, and cancellation via a monotonic viewSeq -- stale tile responses are still cached but never re-assemble the current view. Reactive analysis/tiles/loading/error; onScopeDispose cleanup.",
+        "Gates: vue-tsc clean for the new code (the one remaining vue-tsc error is a pre-existing, unrelated BodyMonitorCore EegSignalStyleListPanel typing issue; excluded *.test.ts from the UI tsconfig since those are bun tests). Server tsc 0 errors; bun spectrogram suites (server + ui tiles) 25 pass / 0 fail."
+      ]
     },
     {
       "id": "U2.2",
@@ -227,6 +233,7 @@
     { "ts": "2026-06-28T21:42:05Z", "step": "U0.2", "event": "done", "note": "Additive WS spectrogram protocol (SharedPasCore/ts/spectrogram-protocol.ts, re-exported) + spectrogram-bridge.ts skeleton (spawn worker, NDJSON FIFO, open->get-tile->close) + bun smoke (real worker on sine440 fixture: 2 pass/0 fail/14 expect) + tsc 0 errors. Stale cli/spec/ doc links repointed to spec/ post-restructure. Phase 0 complete; next U1.1 (process manager: id-correlation, timeout, crash-restart)." },
     { "ts": "2026-06-28T22:05:00Z", "step": "U1.1", "event": "done", "note": "SpectrogramWorkerManager: lazy (re)spawn, per-request timeout (poison-on-timeout to keep FIFO sane), crash detection+auto-restart, restart-loop guard, restart()/shutdown(); spawnSpectrogramWorker hardened (exited, stderr drain). Injectable spawn factory -> deterministic lifecycle tests (timeout/crash/restart/guard/shutdown) + real FIFO concurrent-ping & restart. bun 9 pass/0 fail/40 expect; tsc 0 errors. Next U1.2 (audio source resolution)." },
     { "ts": "2026-06-28T22:30:00Z", "step": "U1.2", "event": "done", "note": "SpectrogramAudioSource: wav pass-through; gnaural->temp WAV via the Gnaural render pipeline; flac unsupported (worker WAV-only; needs worker uos decode / server decode). Refcounted cache by (kind,path,mtime), cleanup on last release (temp kept for analysis lifetime), dispose() on shutdown. Injectable render/stat -> deterministic tests + real worker open-analysis on a rendered non-WAV source. bun 14 pass/0 fail; tsc 0 errors. Next U1.3 (WS endpoints + contract test)." },
+    { "ts": "2026-06-29T13:35:00Z", "step": "U2.1", "event": "done", "note": "useSpectrogram composable + pure tiling/LRU core (spectrogram-tiles, bun 9/9) + WS transport (sendSpectrogram/onSpectrogram; spectrogram types via @protocol). open/reconfigure + setView debounced refetch + viewSeq cancellation + client cache. vue-tsc clean for new code (1 pre-existing unrelated BodyMonitor error); server tsc 0; bun 25/25. Next U2.2 (canvas renderer)." },
     { "ts": "2026-06-28T23:05:00Z", "step": "U1.3", "event": "done", "note": "SpectrogramSession (per-connection router: open/reconfigure/get-tile/point/area/close -> worker; serialized; error-as-message) + transport wiring in MindWave ui-ws-handler (per-socket session, routed before isBrowserMessage, resolveAllowedAudioFilePath authorization, dispose on close) + additive protocol (filePath? + isSpectrogramClientMessage guard) + barrel exports. Real-worker contract test (open->tile->point->area->reconfigure->close). bun 16 pass/0 fail/82 expect; tsc 0 errors. PHASE 1 COMPLETE; next U2.1 (useSpectrogram composable)." }
   ]
 }

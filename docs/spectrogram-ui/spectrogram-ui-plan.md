@@ -110,8 +110,11 @@ the backend). The capability-coverage matrix (U4.3) is a hard acceptance item.
   bun contract test green ([spectrogram-session.test.ts](../../server/spectrogram-session.test.ts)).
 
 **Phase 2 — Core rendering**
-- [ ] **U2.1 — useSpectrogram composable.** Tile fetch for visible (time,zoom) + client
-  cache + debounced refetch + cancellation.
+- [x] **U2.1 — useSpectrogram composable.** [use-spectrogram.ts](../../ui/composables/use-spectrogram.ts)
+  (open/reconfigure + `setView` debounced refetch + cancellation via viewSeq) over the WS
+  transport (`sendSpectrogram`/`onSpectrogram` added to the WS service; spectrogram types
+  exposed via `@protocol`); pure tiling/LRU core
+  [spectrogram-tiles.ts](../../ui/composables/spectrogram-tiles.ts) (unit-tested 9/9).
 - [ ] **U2.2 — Canvas tile renderer.** float → palette → ImageData; fscale-aware frequency
   axis; replaces the Goertzel placeholder.
 - [ ] **U2.3 — Palettes + client value transform.** scale/gain/drange/limit/saturation/
