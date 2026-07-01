@@ -36,17 +36,20 @@ export interface SpectrogramSettings {
   readonly palette: SpectrogramPalette
 }
 
+// Defaults mirror Audacity's default spectrogram settings (Scale: Logarithmic,
+// 80..4000 Hz; Gain 0 dB, Range 120 dB, HF boost 0; FFT: Frequencies/magnitude,
+// window 2048 Hann, zero-padding factor 2; colour palette).
 export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   window: 2048,
-  zeroPaddingFactor: 1,
+  zeroPaddingFactor: 2,
   hop: 512,
   overlap: 0.75,
   channel: 0,
   winFunc: 'hann',
   data: 'magnitude',
   fscale: 'log',
-  startHz: 0,
-  stopHz: 0,
+  startHz: 80,
+  stopHz: 4000,
   mode: 'combined',
   scale: 'log',
   gain: 1,
@@ -54,7 +57,7 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   drange: 120,
   limit: 0,
   saturation: 1,
-  palette: 'intensity',
+  palette: 'rainbow',
 }
 
 // Full option lists (panel choices) mirroring the backend cli/worker contracts.
@@ -93,12 +96,15 @@ export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
     settings: {
       ...DEFAULT_SPECTROGRAM_SETTINGS,
       window: 2048,
+      zeroPaddingFactor: 2,
       winFunc: 'hann',
       fscale: 'log',
       scale: 'log',
       data: 'magnitude',
-      drange: 80,
-      palette: 'intensity',
+      startHz: 80,
+      stopHz: 4000,
+      drange: 120,
+      palette: 'rainbow',
     },
   },
   {
