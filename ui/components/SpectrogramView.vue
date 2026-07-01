@@ -48,6 +48,16 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
+    <div
+      v-if="isPreparing"
+      class="spectrogram-view__loading"
+      role="status"
+      aria-live="polite"
+      :aria-label="t('audio.spectrogramPreparing')"
+    >
+      <q-spinner-hourglass color="cyan-4" size="32px" />
+      <span class="spectrogram-view__loading-label">{{ t('audio.spectrogramPreparing') }}</span>
+    </div>
   </div>
 </template>
 
@@ -111,6 +121,7 @@ let offscreen: HTMLCanvasElement | null = null
 const view = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
+const isPreparing = computed(() => spec.loading.value)
 const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
 const isFull = computed(() => isFullWindow(view.value, duration.value))
 const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
@@ -510,7 +521,24 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 280px;
   overflow: hidden;
+  position: relative;
   width: 100%;
+}
+
+.spectrogram-view__loading {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  display: flex;
+  gap: 12px;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  z-index: 5;
+}
+
+.spectrogram-view__loading-label {
+  font-size: 13px;
 }
 
 .spectrogram-view__toolbar {

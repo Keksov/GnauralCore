@@ -98,6 +98,7 @@
     "spectrogramAnalysisGroup": "Анализ",
     "spectrogramDisplayGroup": "Отображение",
     "spectrogramReadout": "Показания спектрограммы",
+    "spectrogramPreparing": "Подготовка спектрограммы…",
     "spectrogramLoading": "Загрузка выбранного аудиофайла и расчёт спектрограммы...",
     "noSpectrogram": "Запустите локальное воспроизведение аудио, чтобы загрузить файл и построить спектрограмму.",
     "gnauralSpectrogramLoading": "Рендеринг и загрузка WAV для спектрограммы Gnaural...",

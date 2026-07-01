@@ -98,6 +98,7 @@
     "spectrogramAnalysisGroup": "Analysis",
     "spectrogramDisplayGroup": "Display",
     "spectrogramReadout": "Spectrogram readout",
+    "spectrogramPreparing": "Preparing spectrogram…",
     "spectrogramLoading": "Loading the selected audio file and computing the spectrogram...",
     "noSpectrogram": "Start local audio playback to load and analyze the selected file.",
     "gnauralSpectrogramLoading": "Rendering and loading the Gnaural spectrogram WAV...",
