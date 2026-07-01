@@ -58,6 +58,13 @@
       <q-spinner-hourglass color="cyan-4" size="32px" />
       <span class="spectrogram-view__loading-label">{{ t('audio.spectrogramPreparing') }}</span>
     </div>
+    <div
+      v-else-if="specError !== null"
+      class="spectrogram-view__error"
+      role="alert"
+    >
+      {{ specError }}
+    </div>
   </div>
 </template>
 
@@ -122,6 +129,7 @@ const view = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
 const isPreparing = computed(() => spec.loading.value)
+const specError = computed(() => spec.error.value)
 const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
 const isFull = computed(() => isFullWindow(view.value, duration.value))
 const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
@@ -163,7 +171,7 @@ function draw(): void {
 
   const analysis = spec.analysis.value
   const tiles = spec.tiles.value
-  if (analysis === null || analysis.frameCount <= 0 || tiles.length === 0) return
+  if (analysis === null || analysis.frameCount <= 0) return
 
   const plotX = AXIS_MARGIN.left
   const plotY = AXIS_MARGIN.top
@@ -175,25 +183,29 @@ function draw(): void {
   const winWidth = Math.max(MIN_WINDOW_SEC, win.endSec - win.startSec)
   const secPerFrame = analysis.durationSec / analysis.frameCount
 
-  ctx.save()
-  ctx.beginPath()
-  ctx.rect(plotX, plotY, plotW, plotH)
-  ctx.clip()
-  ctx.imageSmoothingEnabled = true
-  for (const tile of tiles) {
-    const image = tileToImage(tile, props.render)
-    if (image.width === 0 || image.height === 0) continue
-    const off = getOffscreen(image.width, image.height)
-    const offCtx = off.getContext('2d')
-    if (offCtx === null) continue
-    offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
-    const tileStartSec = tile.frameStart * secPerFrame
-    const tileWidthSec = tile.frameCount * secPerFrame
-    const x = plotX + ((tileStartSec - winStart) / winWidth) * plotW
-    const w = (tileWidthSec / winWidth) * plotW
-    ctx.drawImage(off, 0, 0, image.width, image.height, x, plotY, Math.ceil(w) + 1, plotH)
+  // Draw the tiles (if any). Axes are drawn regardless so an analysis with no tiles
+  // yet still shows the framed plot rather than a fully blank panel.
+  if (tiles.length > 0) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(plotX, plotY, plotW, plotH)
+    ctx.clip()
+    ctx.imageSmoothingEnabled = true
+    for (const tile of tiles) {
+      const image = tileToImage(tile, props.render)
+      if (image.width === 0 || image.height === 0) continue
+      const off = getOffscreen(image.width, image.height)
+      const offCtx = off.getContext('2d')
+      if (offCtx === null) continue
+      offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
+      const tileStartSec = tile.frameStart * secPerFrame
+      const tileWidthSec = tile.frameCount * secPerFrame
+      const x = plotX + ((tileStartSec - winStart) / winWidth) * plotW
+      const w = (tileWidthSec / winWidth) * plotW
+      ctx.drawImage(off, 0, 0, image.width, image.height, x, plotY, Math.ceil(w) + 1, plotH)
+    }
+    ctx.restore()
   }
-  ctx.restore()
 
   drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], win.startSec, win.endSec)
 
@@ -542,6 +554,20 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__loading-label {
   font-size: 13px;
+}
+
+.spectrogram-view__error {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fca5a5;
+  display: flex;
+  font-size: 13px;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: absolute;
+  text-align: center;
+  z-index: 6;
 }
 
 .spectrogram-view__toolbar {

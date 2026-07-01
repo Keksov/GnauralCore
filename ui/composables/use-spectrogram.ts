@@ -347,6 +347,8 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     }
     opening = false
     pendingTiles.clear()
+    // Drop the stale view so the next open's setView is never skipped by the no-op guard.
+    currentView = null
     updateLoading()
     if (analysisId === null) return
     const requestId = nextRequestId()
