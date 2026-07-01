@@ -1,5 +1,5 @@
 <template>
-  <div class="spectrogram-view">
+  <div class="spectrogram-view" :style="rootStyle">
     <div class="spectrogram-view__toolbar">
       <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomIn')" @click="zoomIn" />
       <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomOut')" @click="zoomOut" />
@@ -110,6 +110,8 @@ interface Props {
   playheadSec?: number | null
   /** When true, clicking the plot emits `seek` with the clicked time. */
   seekable?: boolean
+  /** Fixed track height in px (Audacity-like). When omitted the view flex-fills. */
+  height?: number
 }
 
 const props = defineProps<Props>()
@@ -130,6 +132,11 @@ const view = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const hasAnalysis = computed(() => spec.analysis.value !== null)
 const isPreparing = computed(() => spec.loading.value)
 const specError = computed(() => spec.error.value)
+const rootStyle = computed(() =>
+  props.height !== undefined && props.height > 0
+    ? { height: `${props.height}px`, minHeight: `${props.height}px` }
+    : {},
+)
 const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
 const isFull = computed(() => isFullWindow(view.value, duration.value))
 const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
@@ -593,7 +600,7 @@ onBeforeUnmount(() => {
 .spectrogram-view__canvas {
   display: block;
   flex: 1 1 auto;
-  min-height: 240px;
+  min-height: 0;
   width: 100%;
 }
 

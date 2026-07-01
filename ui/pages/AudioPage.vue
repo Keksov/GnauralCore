@@ -257,7 +257,7 @@
                       <div v-else-if="audio.spectrogramBuffer === null" class="audio-page__empty text-grey-7">
                         {{ noSpectrogramLabel }}
                       </div>
-                      <div v-else class="row no-wrap items-stretch" style="gap: 16px;">
+                      <div v-else class="row no-wrap items-start" style="gap: 16px;">
                         <spectrogram-view
                           class="col"
                           :file-path="audio.displayFilePath"
@@ -265,6 +265,7 @@
                           :render="spectrogramStore.renderOptions"
                           :playhead-sec="displayedPositionSec"
                           :seekable="canSeek"
+                          :height="spectrogramTrackHeight"
                           @seek="handleSeek"
                         />
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
@@ -311,6 +312,8 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
+// Audacity-like default spectrogram track height (per channel), in px (SF5.1).
+const SPECTROGRAM_TRACK_HEIGHT_DEFAULT = 260
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface GnauralEditorPanelHandle {
@@ -386,6 +389,7 @@ const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
+const spectrogramTrackHeight = ref(SPECTROGRAM_TRACK_HEIGHT_DEFAULT)
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
