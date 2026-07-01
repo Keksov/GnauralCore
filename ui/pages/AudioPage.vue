@@ -651,6 +651,16 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   audio.selectPath(path)
   syncRestoredTreeState()
 
+  // Selecting a local audio file (wav/flac) shows its spectrum right away: switch
+  // to the player's spectrogram view and decode the file without waiting for playback.
+  if (path !== null && isLocalAudioFileKind(nextFileKind)) {
+    activeContentTab.value = 'player'
+    activePlayerViewTab.value = 'spectrogram'
+    if (!shouldAutoPlay) {
+      void audio.ensureLocalAudioReady(path, nextFileKind)
+    }
+  }
+
   if (path === null || !audio.canStart || shouldAutoPlay === false) {
     return
   }

@@ -1013,6 +1013,7 @@ export const useAudioStore = defineStore('audio', () => {
     setClientError,
     queueLocalStartAfterRemoteStop,
     cancelPendingLocalStart,
+    ensureLocalAudioReady,
     startLocalPlayback,
     pauseLocalPlayback,
     resumeLocalPlayback,
