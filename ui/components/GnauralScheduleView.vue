@@ -2639,6 +2639,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  padding: 0 16px;
 }
 
 .gnaural-schedule-view__toolbar-leading {

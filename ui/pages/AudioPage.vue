@@ -3,9 +3,20 @@
     <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
-          <q-card-section>
-            <div class="text-h6">{{ t('audio.presetsTitle') }}</div>
-            <div class="text-caption text-grey-7">{{ t('audio.presetsSubtitle') }}</div>
+          <q-card-section class="audio-page__sidebar-header">
+            <div class="audio-page__sidebar-heading">
+              <div class="text-h6">{{ t('audio.presetsTitle') }}</div>
+              <div class="text-caption text-grey-7">{{ t('audio.presetsSubtitle') }}</div>
+            </div>
+            <q-btn
+              flat
+              round
+              dense
+              color="primary"
+              icon="close"
+              :aria-label="t('audio.filesHide')"
+              @click="closeFilesPanel"
+            />
           </q-card-section>
 
           <q-separator />
@@ -470,6 +481,10 @@ function toggleFilesPanel(): void {
   filesPanelOpen.value = !filesPanelOpen.value
 }
 
+function closeFilesPanel(): void {
+  filesPanelOpen.value = false
+}
+
 function collectDirectoryPaths(nodes: readonly PresetTreeNode[], result = new Set<string>()): Set<string> {
   for (const node of nodes) {
     if (!node.isDir) {
@@ -868,6 +883,17 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
 
 .audio-page__files-toggle {
   flex: 0 0 auto;
+}
+
+.audio-page__sidebar-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.audio-page__sidebar-heading {
+  min-width: 0;
 }
 
 .audio-page__files-toggle--active {
