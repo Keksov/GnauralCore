@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs"
-import { resolve } from "node:path"
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, join, resolve } from "node:path"
 import type { Subprocess } from "bun"
 
 /**
@@ -69,6 +69,56 @@ export const resolveSpectrogramWorkerExe = (aOptions: WorkerExeResolveOptions = 
     return bundled
   }
   return resolve(moduleDir, "..", "..", "SpectrumCore", "build", platformDir, exeName)
+}
+
+/** Worker JSON/stdio protocol version the server expects (worker packaging WP2.1). */
+export const SPECTROGRAM_WORKER_PROTOCOL = 1
+
+export interface WorkerBundleManifest {
+  readonly schemaVersion?: number
+  readonly platform?: string
+  readonly workerProtocol?: number
+  readonly generatedAtUtc?: string
+  readonly files?: ReadonlyArray<{ readonly name: string; readonly bytes: number; readonly sha256: string }>
+}
+
+/** Read the bundle manifest.json sitting next to the worker exe (null if absent/invalid). */
+export function readBundleManifest(aExePath: string): WorkerBundleManifest | null {
+  try {
+    const manifestPath = join(dirname(aExePath), "manifest.json")
+    if (!existsSync(manifestPath)) return null
+    return JSON.parse(readFileSync(manifestPath, "utf8")) as WorkerBundleManifest
+  } catch {
+    return null
+  }
+}
+
+export interface WorkerBundleCompat {
+  readonly ok: boolean
+  readonly reason?: string
+}
+
+/**
+ * Check the bundled worker's declared protocol against what the server expects.
+ * A missing manifest (dev / ENV worker) or a manifest without a version is treated
+ * as "not checkable" (ok) so dev flows keep working; only a present-but-mismatched
+ * version fails.
+ */
+export function checkBundleCompat(
+  aManifest: WorkerBundleManifest | null,
+  aExpected: number = SPECTROGRAM_WORKER_PROTOCOL,
+): WorkerBundleCompat {
+  if (aManifest === null) {
+    return { ok: true, reason: "no bundle manifest (dev/ENV worker); compatibility not checked" }
+  }
+  const got = aManifest.workerProtocol
+  if (typeof got !== "number") {
+    return { ok: true, reason: "bundle manifest has no workerProtocol; assuming compatible" }
+  }
+  if (got !== aExpected) {
+    return { ok: false, reason: `bundled worker protocol ${got} != expected ${aExpected}` }
+  }
+  return { ok: true }
 }
 
 export interface WorkerResponse {

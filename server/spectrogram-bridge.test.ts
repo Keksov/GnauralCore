@@ -2,7 +2,13 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, test } from "bun:test"
 
-import { resolveSpectrogramWorkerExe, smokeOpenAndGetTile, workerPlatformDir } from "./spectrogram-bridge"
+import {
+  checkBundleCompat,
+  resolveSpectrogramWorkerExe,
+  smokeOpenAndGetTile,
+  SPECTROGRAM_WORKER_PROTOCOL,
+  workerPlatformDir,
+} from "./spectrogram-bridge"
 
 // Dev fixture from the SpectrumCore tree (sibling repo).
 const FIXTURE_WAV = resolve(
@@ -43,6 +49,23 @@ describe("resolveSpectrogramWorkerExe precedence (WP1.1)", () => {
   test("falls back to the SpectrumCore dev build when no bundle", () => {
     const p = norm(resolveSpectrogramWorkerExe({ ...base, env: undefined, fileExists: () => false }))
     expect(p).toContain("SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe")
+  })
+})
+
+describe("checkBundleCompat (WP2.1)", () => {
+  test("null manifest (dev/ENV) is treated as compatible", () => {
+    expect(checkBundleCompat(null).ok).toBe(true)
+  })
+  test("matching workerProtocol is compatible", () => {
+    expect(checkBundleCompat({ workerProtocol: SPECTROGRAM_WORKER_PROTOCOL }).ok).toBe(true)
+  })
+  test("manifest without workerProtocol is assumed compatible", () => {
+    expect(checkBundleCompat({ platform: "win64" }).ok).toBe(true)
+  })
+  test("mismatched workerProtocol fails with a reason", () => {
+    const result = checkBundleCompat({ workerProtocol: SPECTROGRAM_WORKER_PROTOCOL + 1 })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toContain("!= expected")
   })
 })
 
