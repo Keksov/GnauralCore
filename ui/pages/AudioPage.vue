@@ -258,16 +258,40 @@
                         {{ noSpectrogramLabel }}
                       </div>
                       <div v-else class="row no-wrap items-start" style="gap: 16px;">
-                        <spectrogram-view
-                          class="col"
-                          :file-path="audio.displayFilePath"
-                          :analysis="spectrogramStore.analysisParams"
-                          :render="spectrogramStore.renderOptions"
-                          :playhead-sec="displayedPositionSec"
-                          :seekable="canSeek"
-                          v-model:height="spectrogramTrackHeight"
-                          @seek="handleSeek"
-                        />
+                        <div class="col column" style="gap: 8px; min-width: 0;">
+                          <template v-if="isSpectrogramStereo">
+                            <spectrogram-view
+                              :file-path="audio.displayFilePath"
+                              :analysis="spectrogramLeftAnalysis"
+                              :render="spectrogramStore.renderOptions"
+                              :playhead-sec="displayedPositionSec"
+                              :seekable="canSeek"
+                              label="L"
+                              v-model:height="spectrogramTrackHeight"
+                              @seek="handleSeek"
+                            />
+                            <spectrogram-view
+                              :file-path="audio.displayFilePath"
+                              :analysis="spectrogramRightAnalysis"
+                              :render="spectrogramStore.renderOptions"
+                              :playhead-sec="displayedPositionSec"
+                              :seekable="canSeek"
+                              label="R"
+                              v-model:height="spectrogramTrackHeight"
+                              @seek="handleSeek"
+                            />
+                          </template>
+                          <spectrogram-view
+                            v-else
+                            :file-path="audio.displayFilePath"
+                            :analysis="spectrogramStore.analysisParams"
+                            :render="spectrogramStore.renderOptions"
+                            :playhead-sec="displayedPositionSec"
+                            :seekable="canSeek"
+                            v-model:height="spectrogramTrackHeight"
+                            @seek="handleSeek"
+                          />
+                        </div>
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
                           <spectrogram-settings-panel />
                         </div>
@@ -638,6 +662,11 @@ const spectrogramLoadingLabel = computed(() => {
 const noSpectrogramLabel = computed(() => {
   return audio.displayMode === 'gnaural' ? t('audio.noGnauralSpectrogram') : t('audio.noSpectrogram')
 })
+
+const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
+
+const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
+const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 1 }))
 
 const showEmbeddedScheduleView = computed(() => {
   return audio.displayMode === 'gnaural'

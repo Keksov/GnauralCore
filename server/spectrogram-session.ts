@@ -193,9 +193,10 @@ export class SpectrogramSession {
   private readonly manager: SpectrogramWorkerManager
   private readonly audioSource: SpectrogramAudioSource
   private readonly ownsDependencies: boolean
-  private analysisId: string | undefined
-  private wavHandle: SpectrogramWavHandle | undefined
-  private currentParams: SpectrogramAnalysisParams = {}
+  // Multiple concurrent analyses per session (e.g. stereo L/R = one analysis per
+  // channel), keyed by the worker analysisId; each keeps its own source handle +
+  // params. The worker already multiplexes by analysisId; client messages carry it.
+  private readonly analyses = new Map<string, { wavHandle: SpectrogramWavHandle; params: SpectrogramAnalysisParams }>()
   private queue: Promise<unknown> = Promise.resolve()
   private disposed = false
 
@@ -246,7 +247,7 @@ export class SpectrogramSession {
       return {
         type: "spectrogram:error",
         requestId: aMessage.requestId,
-        analysisId: this.analysisId,
+        analysisId: (aMessage as { analysisId?: string }).analysisId,
         error: error instanceof Error ? error.message : String(error),
       }
     }
@@ -259,75 +260,81 @@ export class SpectrogramSession {
     return aResponse
   }
 
-  private async closeCurrentAnalysis(): Promise<void> {
-    if (this.analysisId !== undefined) {
-      await this.manager.send({ cmd: "close-analysis", analysisId: this.analysisId }).catch(() => undefined)
-      this.analysisId = undefined
+  private async closeAnalysis(aAnalysisId: string): Promise<void> {
+    const existing = this.analyses.get(aAnalysisId)
+    if (existing === undefined) {
+      return
     }
-  }
-
-  private async releaseSource(): Promise<void> {
-    if (this.wavHandle !== undefined) {
-      await this.wavHandle.release().catch(() => undefined)
-      this.wavHandle = undefined
-    }
+    this.analyses.delete(aAnalysisId)
+    await this.manager.send({ cmd: "close-analysis", analysisId: aAnalysisId }).catch(() => undefined)
+    await existing.wavHandle.release().catch(() => undefined)
   }
 
   private async onOpen(aMessage: SpectrogramOpenRequest): Promise<SpectrogramServerMessage> {
-    // One analysis per session: drop any previous analysis + source first.
-    await this.closeCurrentAnalysis()
-    await this.releaseSource()
-
+    // Concurrent analyses allowed (e.g. stereo L/R). Each open acquires its own
+    // source handle so per-analysis close/release is independent.
     const source = await this.resolveSource(aMessage)
-    this.wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind)
-    this.currentParams = pickParams(aMessage)
+    const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind)
+    const params = pickParams(aMessage)
 
     const analysisId = randomUUID()
-    const response = this.requireOk(
-      await this.manager.send({
-        cmd: "open-analysis",
-        analysisId,
-        input: this.wavHandle.wavPath,
-        ...toWorkerParams(this.currentParams),
-      }, OPEN_ANALYSIS_TIMEOUT_MS),
-      "open-analysis",
-    )
-    this.analysisId = analysisId
-    return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: toAnalysisInfo(analysisId, response) }
+    try {
+      const response = this.requireOk(
+        await this.manager.send({
+          cmd: "open-analysis",
+          analysisId,
+          input: wavHandle.wavPath,
+          ...toWorkerParams(params),
+        }, OPEN_ANALYSIS_TIMEOUT_MS),
+        "open-analysis",
+      )
+      this.analyses.set(analysisId, { wavHandle, params })
+      return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: toAnalysisInfo(analysisId, response) }
+    } catch (error) {
+      await wavHandle.release().catch(() => undefined)
+      throw error
+    }
   }
 
   private async onReconfigure(aMessage: SpectrogramReconfigureRequest): Promise<SpectrogramServerMessage> {
-    if (this.wavHandle === undefined) {
+    const existing = this.analyses.get(aMessage.analysisId)
+    if (existing === undefined) {
       throw new Error("no open analysis to reconfigure")
     }
     // The worker sets analysis params at open -> reconfigure is a close + reopen on
-    // the same source (kept acquired); crash-restart is transparent here because the
-    // manager respawns and we re-open below.
-    await this.closeCurrentAnalysis()
-    this.currentParams = { ...this.currentParams, ...pickParams(aMessage) }
+    // the same source (kept acquired), producing a new analysisId. crash-restart is
+    // transparent because the manager respawns and we re-open below.
+    await this.manager.send({ cmd: "close-analysis", analysisId: aMessage.analysisId }).catch(() => undefined)
+    this.analyses.delete(aMessage.analysisId)
+    const params = { ...existing.params, ...pickParams(aMessage) }
 
     const analysisId = randomUUID()
-    const response = this.requireOk(
-      await this.manager.send({
-        cmd: "open-analysis",
-        analysisId,
-        input: this.wavHandle.wavPath,
-        ...toWorkerParams(this.currentParams),
-      }, OPEN_ANALYSIS_TIMEOUT_MS),
-      "reconfigure (reopen)",
-    )
-    this.analysisId = analysisId
-    return {
-      type: "spectrogram:reconfigured",
-      requestId: aMessage.requestId,
-      analysis: toAnalysisInfo(analysisId, response),
+    try {
+      const response = this.requireOk(
+        await this.manager.send({
+          cmd: "open-analysis",
+          analysisId,
+          input: existing.wavHandle.wavPath,
+          ...toWorkerParams(params),
+        }, OPEN_ANALYSIS_TIMEOUT_MS),
+        "reconfigure (reopen)",
+      )
+      this.analyses.set(analysisId, { wavHandle: existing.wavHandle, params })
+      return {
+        type: "spectrogram:reconfigured",
+        requestId: aMessage.requestId,
+        analysis: toAnalysisInfo(analysisId, response),
+      }
+    } catch (error) {
+      await existing.wavHandle.release().catch(() => undefined)
+      throw error
     }
   }
 
   private async onGetTile(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:get-tile" }>,
   ): Promise<SpectrogramServerMessage> {
-    const analysisId = this.requireAnalysis()
+    const analysisId = this.requireAnalysis(aMessage.analysisId)
     const response = this.requireOk(
       await this.manager.send({
         cmd: "get-tile",
@@ -345,7 +352,7 @@ export class SpectrogramSession {
   private async onPointQuery(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:point-query" }>,
   ): Promise<SpectrogramServerMessage> {
-    const analysisId = this.requireAnalysis()
+    const analysisId = this.requireAnalysis(aMessage.analysisId)
     const response = this.requireOk(
       await this.manager.send({
         cmd: "point-query",
@@ -361,7 +368,7 @@ export class SpectrogramSession {
   private async onAreaQuery(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:area-query" }>,
   ): Promise<SpectrogramServerMessage> {
-    const analysisId = this.requireAnalysis()
+    const analysisId = this.requireAnalysis(aMessage.analysisId)
     const response = this.requireOk(
       await this.manager.send({
         cmd: "area-query",
@@ -379,17 +386,15 @@ export class SpectrogramSession {
   private async onClose(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:close" }>,
   ): Promise<SpectrogramServerMessage> {
-    const analysisId = this.analysisId ?? aMessage.analysisId
-    await this.closeCurrentAnalysis()
-    await this.releaseSource()
-    return { type: "spectrogram:closed", requestId: aMessage.requestId, analysisId }
+    await this.closeAnalysis(aMessage.analysisId)
+    return { type: "spectrogram:closed", requestId: aMessage.requestId, analysisId: aMessage.analysisId }
   }
 
-  private requireAnalysis(): string {
-    if (this.analysisId === undefined) {
+  private requireAnalysis(aAnalysisId: string): string {
+    if (!this.analyses.has(aAnalysisId)) {
       throw new Error("no active analysis; send spectrogram:open first")
     }
-    return this.analysisId
+    return aAnalysisId
   }
 
   /** Tear down on connection close: close the analysis, release the source, stop deps if owned. */
@@ -398,8 +403,9 @@ export class SpectrogramSession {
       return
     }
     this.disposed = true
-    await this.closeCurrentAnalysis()
-    await this.releaseSource()
+    for (const analysisId of [...this.analyses.keys()]) {
+      await this.closeAnalysis(analysisId)
+    }
     if (this.ownsDependencies) {
       await this.manager.shutdown().catch(() => undefined)
       await this.audioSource.dispose().catch(() => undefined)

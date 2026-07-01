@@ -1,6 +1,7 @@
 <template>
   <div class="spectrogram-view" :style="rootStyle">
     <div class="spectrogram-view__toolbar">
+      <span v-if="label" class="spectrogram-view__label">{{ label }}</span>
       <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomIn')" @click="zoomIn" />
       <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomOut')" @click="zoomOut" />
       <q-btn dense flat round size="sm" icon="fit_screen" :disable="!hasAnalysis || isFull" :aria-label="t('audio.spectrogramFit')" @click="resetView" />
@@ -124,6 +125,8 @@ interface Props {
   seekable?: boolean
   /** Fixed track height in px (Audacity-like). When omitted the view flex-fills. */
   height?: number
+  /** Short channel label shown in the toolbar (e.g. "L" / "R" for a stereo split). */
+  label?: string
 }
 
 const props = defineProps<Props>()
@@ -632,6 +635,13 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 4px 8px 0;
+}
+
+.spectrogram-view__label {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
 }
 
 .spectrogram-view__range {
