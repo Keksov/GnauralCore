@@ -278,9 +278,12 @@ function applyView(): void {
   const canvas = canvasEl.value
   if (analysis === null || canvas === null) return
   const columns = plotColumns(canvas)
+  // Round to a coarse step so small canvas-height jitter (layout settling, resize)
+  // doesn't keep changing viewBinCount -> tile keys -> refetch during the initial load.
+  const rawBins = Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom
   const viewBinCount = Math.max(
     16,
-    Math.min(MAX_VIEW_BINS, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom),
+    Math.min(MAX_VIEW_BINS, Math.round(rawBins / 32) * 32),
   )
   spec.setView({
     timeStartSec: view.value.startSec,

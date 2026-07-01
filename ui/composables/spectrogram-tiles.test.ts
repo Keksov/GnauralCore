@@ -104,3 +104,44 @@ describe('SpectrogramTileCache (U2.1)', () => {
     expect(cache.has('c')).toBe(true)
   })
 })
+
+describe('SpectrogramTileCache.getByTileIndex (SF2.1 binCount fallback)', () => {
+  test('finds a cached tile for the same (zoom, tileIndex) at any binCount', () => {
+    const cache = new SpectrogramTileCache<number>(8)
+    cache.set(tileKey('a', 0, 2, 128), 21) // tile 2 fetched at binCount 128
+    // exact 256-binCount tile not present -> fall back to the 128 one
+    expect(cache.get(tileKey('a', 0, 2, 256))).toBeUndefined()
+    expect(cache.getByTileIndex('a', 0, 2)).toBe(21)
+  })
+
+  test('prefers the most-recently-stored matching binCount', () => {
+    const cache = new SpectrogramTileCache<number>(8)
+    cache.set(tileKey('a', 0, 2, 128), 21)
+    cache.set(tileKey('a', 0, 2, 256), 22) // newer -> preferred
+    expect(cache.getByTileIndex('a', 0, 2)).toBe(22)
+  })
+
+  test('does not match a different analysis / zoom / tile index', () => {
+    const cache = new SpectrogramTileCache<number>(8)
+    cache.set(tileKey('a', 0, 2, 128), 21)
+    expect(cache.getByTileIndex('b', 0, 2)).toBeUndefined()
+    expect(cache.getByTileIndex('a', 1, 2)).toBeUndefined()
+    expect(cache.getByTileIndex('a', 0, 3)).toBeUndefined()
+    // guards the prefix boundary: tile 2 must not match a "t2..." like index 20
+    cache.set(tileKey('a', 0, 20, 128), 99)
+    expect(cache.getByTileIndex('a', 0, 2)).toBe(21)
+  })
+
+  test('all fetched tiles remain resolvable after a binCount change (only-last-frame regression)', () => {
+    const cache = new SpectrogramTileCache<number>(16)
+    // tiles 0..2 fetched at binCount 128 (before a resize)
+    cache.set(tileKey('a', 0, 0, 128), 100)
+    cache.set(tileKey('a', 0, 1, 128), 101)
+    cache.set(tileKey('a', 0, 2, 128), 102)
+    // after a resize the plan asks for binCount 256; every tile still resolves via fallback
+    const resolved = [0, 1, 2].map((idx) =>
+      cache.get(tileKey('a', 0, idx, 256)) ?? cache.getByTileIndex('a', 0, idx),
+    )
+    expect(resolved).toEqual([100, 101, 102])
+  })
+})

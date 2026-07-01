@@ -119,6 +119,24 @@ export class SpectrogramTileCache<T = SpectrogramTile> {
     return value
   }
 
+  /**
+   * Best cached tile for a `(analysisId, zoom, tileIndex)` regardless of the
+   * display-bin count. Lets the view keep rendering an already-fetched tile after
+   * the `viewBinCount` changed (e.g. a canvas resize) instead of dropping it until
+   * the exact-binCount tile arrives — otherwise only the newest tile shows. Prefers
+   * the most-recently-stored match (Map insertion order) and bumps it to MRU.
+   */
+  getByTileIndex(aAnalysisId: string, aZoom: number, aTileIndex: number): T | undefined {
+    const prefix = `${aAnalysisId}|z${aZoom}|t${aTileIndex}|b`
+    let match: string | undefined
+    for (const key of this.entries.keys()) {
+      if (key.startsWith(prefix)) {
+        match = key
+      }
+    }
+    return match === undefined ? undefined : this.get(match)
+  }
+
   set(aKey: string, aValue: T): void {
     if (this.entries.has(aKey)) {
       this.entries.delete(aKey)

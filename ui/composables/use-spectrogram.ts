@@ -116,7 +116,10 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     })
     const present: SpectrogramTile[] = []
     for (const r of reqs) {
-      const tile = cache.get(r.key)
+      // Exact match first; otherwise reuse any cached tile for the same
+      // (zoom, tileIndex) at a different viewBinCount so already-fetched tiles keep
+      // rendering across a binCount change instead of only the newest one showing.
+      const tile = cache.get(r.key) ?? cache.getByTileIndex(analysisId, r.zoom, r.tileIndex)
       if (tile !== undefined) present.push(tile)
     }
     tiles.value = present
@@ -134,9 +137,10 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       if (pending === undefined) return
       pendingTiles.delete(aMessage.requestId)
       cache.set(pending.key, aMessage.tile)
-      if (pending.seq === viewSeq) {
-        assembleVisibleTiles()
-      }
+      // Always re-assemble: a tile fetched under an earlier view/seq (e.g. before a
+      // canvas resize bumped viewBinCount) still belongs in the current plan via the
+      // binCount fallback, so it must persist rather than only the newest tile showing.
+      assembleVisibleTiles()
       updateLoading()
       return
     }
@@ -276,7 +280,22 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     }, debounceMs)
   }
 
+  function sameView(aA: SpectrogramView, aB: SpectrogramView): boolean {
+    return (
+      Math.abs(aA.timeStartSec - aB.timeStartSec) < 1e-6 &&
+      Math.abs(aA.timeEndSec - aB.timeEndSec) < 1e-6 &&
+      aA.zoom === aB.zoom &&
+      aA.viewBinCount === aB.viewBinCount
+    )
+  }
+
   function setView(aView: SpectrogramView): void {
+    // No-op on an unchanged view: redundant applyView() calls (e.g. the direct call
+    // plus the view watcher, or idempotent ResizeObserver ticks) would otherwise bump
+    // viewSeq and re-refetch, churning tiles during the initial load.
+    if (currentView !== null && sameView(currentView, aView)) {
+      return
+    }
     currentView = aView
     viewSeq += 1
     // show whatever is already cached for the new view immediately, then fetch gaps
