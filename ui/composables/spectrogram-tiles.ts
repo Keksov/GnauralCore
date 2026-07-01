@@ -70,13 +70,21 @@ export function planVisibleTiles(aOptions: PlanVisibleTilesOptions): Spectrogram
     return []
   }
 
-  const firstTile = Math.floor(firstFrame / tileFrames)
-  const lastTile = Math.floor(lastFrame / tileFrames)
+  // Each tile still emits ~tileFrames columns, but a tile covers 2^zoom full-res
+  // frames per column, so at higher zoom (zoomed-out view) a tile spans more of the
+  // timeline and the whole visible window needs far fewer tiles. Without this the
+  // full view of a long file plans hundreds of full-res tiles that overflow the LRU
+  // cache, so only the most-recent (rightmost) tiles survive to render.
+  const zoom = Math.max(0, Math.floor(aOptions.zoom))
+  const tileFullFrames = tileFrames * Math.pow(2, zoom)
+
+  const firstTile = Math.floor(firstFrame / tileFullFrames)
+  const lastTile = Math.floor(lastFrame / tileFullFrames)
 
   const requests: SpectrogramTileRequest[] = []
   for (let idx = firstTile; idx <= lastTile; idx++) {
-    const frameStart = idx * tileFrames
-    const frameCount = Math.min(tileFrames, total - frameStart)
+    const frameStart = idx * tileFullFrames
+    const frameCount = Math.min(tileFullFrames, total - frameStart)
     if (frameCount <= 0) {
       break
     }

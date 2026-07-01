@@ -46,6 +46,27 @@ describe('planVisibleTiles (U2.1)', () => {
     expect(tiles[3]?.frameCount).toBe(1000 - 768)
   })
 
+  test('scales tile span by 2^zoom so zoomed-out views need far fewer tiles (SF2.1)', () => {
+    // long analysis: 100 full-res tiles worth of frames
+    const long = {
+      analysisId: 'a',
+      frameCount: 256 * 100,
+      durationSec: 100,
+      viewBinCount: 256,
+      tileFrames: 256,
+    }
+    // zoom 0 (full res): 100 tiles across the whole file
+    const z0 = planVisibleTiles({ ...long, zoom: 0, timeStartSec: 0, timeEndSec: 100 })
+    expect(z0.length).toBe(100)
+    // zoom 3: each tile covers 256*8 full-res frames -> only 13 tiles (bounded, cache-safe)
+    const z3 = planVisibleTiles({ ...long, zoom: 3, timeStartSec: 0, timeEndSec: 100 })
+    expect(z3.length).toBe(13)
+    expect(z3[0]?.frameStart).toBe(0)
+    expect(z3[0]?.frameCount).toBe(256 * 8)
+    expect(z3[1]?.frameStart).toBe(256 * 8)
+    expect(z3[0]?.key).toBe('a|z3|t0|b256')
+  })
+
   test('carries the zoom into the requests + keys', () => {
     const tiles = planVisibleTiles({ ...base, zoom: 2, timeStartSec: 0, timeEndSec: 1 })
     expect(tiles[0]?.zoom).toBe(2)
