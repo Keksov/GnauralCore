@@ -121,6 +121,90 @@ export function checkBundleCompat(
   return { ok: true }
 }
 
+export type WorkerHealthStage = "ok" | "exe-missing" | "files-missing" | "incompatible" | "unreachable"
+
+export interface WorkerHealth {
+  readonly ok: boolean
+  readonly stage: WorkerHealthStage
+  readonly exePath: string
+  readonly message: string
+}
+
+export interface EvaluateWorkerBundleOptions {
+  readonly fileExists?: (aPath: string) => boolean
+  readonly manifest?: WorkerBundleManifest | null
+  readonly expectedProtocol?: number
+}
+
+/**
+ * Static (no-spawn) pre-flight for a resolved worker exe: exe present? bundled
+ * files present? protocol compatible? Pure/injectable for tests (WP2.2).
+ */
+export function evaluateWorkerBundle(
+  aExePath: string,
+  aOptions: EvaluateWorkerBundleOptions = {},
+): WorkerHealth {
+  const exists = aOptions.fileExists ?? existsSync
+  if (!exists(aExePath)) {
+    return {
+      ok: false,
+      stage: "exe-missing",
+      exePath: aExePath,
+      message: `worker exe not found at ${aExePath}; run SpectrumCore/scripts/bundle-worker.ps1 or set SPECTRUMCORE_WORKER_EXE`,
+    }
+  }
+  const manifest = aOptions.manifest !== undefined ? aOptions.manifest : readBundleManifest(aExePath)
+  if (manifest?.files !== undefined) {
+    const dir = dirname(aExePath)
+    const missing = manifest.files.filter((f) => !exists(join(dir, f.name))).map((f) => f.name)
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        stage: "files-missing",
+        exePath: aExePath,
+        message: `bundled worker is missing files: ${missing.join(", ")}; re-run bundle-worker.ps1`,
+      }
+    }
+  }
+  const compat = checkBundleCompat(manifest, aOptions.expectedProtocol)
+  if (!compat.ok) {
+    return { ok: false, stage: "incompatible", exePath: aExePath, message: compat.reason ?? "incompatible worker bundle" }
+  }
+  return { ok: true, stage: "ok", exePath: aExePath, message: "worker bundle looks valid" }
+}
+
+/**
+ * Runtime health-check (WP2.2): static evaluation, then spawn + `ping` to prove the
+ * worker actually starts and responds. Non-throwing; returns a WorkerHealth.
+ */
+export async function checkSpectrogramWorkerHealth(aOptions: {
+  readonly exePath?: string
+  readonly pingTimeoutMs?: number
+} = {}): Promise<WorkerHealth> {
+  const exePath = aOptions.exePath ?? resolveSpectrogramWorkerExe()
+  const pre = evaluateWorkerBundle(exePath)
+  if (!pre.ok) {
+    return pre
+  }
+  const manager = new SpectrogramWorkerManager({ exePath })
+  try {
+    const resp = await manager.send({ cmd: "ping" }, aOptions.pingTimeoutMs ?? 5000)
+    if (resp.ok === true) {
+      return { ok: true, stage: "ok", exePath, message: "worker reachable (ping ok)" }
+    }
+    return { ok: false, stage: "unreachable", exePath, message: `worker ping not-ok: ${resp.error ?? "unknown"}` }
+  } catch (error) {
+    return {
+      ok: false,
+      stage: "unreachable",
+      exePath,
+      message: `worker did not respond to ping: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  } finally {
+    await manager.shutdown().catch(() => undefined)
+  }
+}
+
 export interface WorkerResponse {
   readonly ok: boolean
   readonly cmd?: string

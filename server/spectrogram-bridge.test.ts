@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test"
 
 import {
   checkBundleCompat,
+  checkSpectrogramWorkerHealth,
+  evaluateWorkerBundle,
   resolveSpectrogramWorkerExe,
   smokeOpenAndGetTile,
   SPECTROGRAM_WORKER_PROTOCOL,
@@ -66,6 +68,57 @@ describe("checkBundleCompat (WP2.1)", () => {
     const result = checkBundleCompat({ workerProtocol: SPECTROGRAM_WORKER_PROTOCOL + 1 })
     expect(result.ok).toBe(false)
     expect(result.reason).toContain("!= expected")
+  })
+})
+
+describe("evaluateWorkerBundle (WP2.2)", () => {
+  const exe = "/app/vendor/spectrumcore/win64/SpectrumCoreFftwWorkerProbe.exe"
+
+  test("exe-missing when the file is absent", () => {
+    const h = evaluateWorkerBundle(exe, { fileExists: () => false, manifest: null })
+    expect(h.ok).toBe(false)
+    expect(h.stage).toBe("exe-missing")
+  })
+
+  test("files-missing when a manifest file is absent", () => {
+    const manifest = {
+      workerProtocol: SPECTROGRAM_WORKER_PROTOCOL,
+      files: [
+        { name: "SpectrumCoreFftwWorkerProbe.exe", bytes: 1, sha256: "a" },
+        { name: "libogg.dll", bytes: 1, sha256: "b" },
+      ],
+    }
+    const h = evaluateWorkerBundle(exe, { fileExists: (p) => !p.endsWith("libogg.dll"), manifest })
+    expect(h.stage).toBe("files-missing")
+    expect(h.message).toContain("libogg.dll")
+  })
+
+  test("incompatible when the protocol mismatches", () => {
+    const h = evaluateWorkerBundle(exe, {
+      fileExists: () => true,
+      manifest: { workerProtocol: SPECTROGRAM_WORKER_PROTOCOL + 1 },
+    })
+    expect(h.stage).toBe("incompatible")
+  })
+
+  test("ok when exe + files present and protocol matches", () => {
+    const h = evaluateWorkerBundle(exe, {
+      fileExists: () => true,
+      manifest: {
+        workerProtocol: SPECTROGRAM_WORKER_PROTOCOL,
+        files: [{ name: "SpectrumCoreFftwWorkerProbe.exe", bytes: 1, sha256: "a" }],
+      },
+    })
+    expect(h.ok).toBe(true)
+    expect(h.stage).toBe("ok")
+  })
+})
+
+describe("checkSpectrogramWorkerHealth real worker (WP2.2)", () => {
+  test.skipIf(!existsSync(resolveSpectrogramWorkerExe()))("spawns + pings the worker -> ok", async () => {
+    const health = await checkSpectrogramWorkerHealth()
+    expect(health.ok).toBe(true)
+    expect(health.stage).toBe("ok")
   })
 })
 
