@@ -827,7 +827,7 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: 16px;
+  padding: 0;
 }
 
 .audio-page__sidebar {
@@ -1053,7 +1053,7 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
 @media (max-width: 960px) {
   .audio-page__inner {
     flex-direction: column;
-    padding: 12px;
+    padding: 0;
   }
 
   .audio-page__sidebar {
