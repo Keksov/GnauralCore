@@ -485,6 +485,27 @@ function closeFilesPanel(): void {
   filesPanelOpen.value = false
 }
 
+// Opening the Spectrogram view for a selected local audio file that isn't decoded
+// yet prepares it (same non-playback decode as selecting from the tree), instead of
+// leaving the stale "start playback" message with nothing happening.
+function ensureSpectrogramPrepared(): void {
+  if (activePlayerViewTab.value !== 'spectrogram') {
+    return
+  }
+
+  const path = audio.selectedPath
+  const kind = audio.selectedFileKind
+  if (path === null || !isLocalAudioFileKind(kind)) {
+    return
+  }
+
+  if (audio.spectrogramBuffer !== null || audio.spectrogramLoading) {
+    return
+  }
+
+  void audio.ensureLocalAudioReady(path, kind)
+}
+
 function collectDirectoryPaths(nodes: readonly PresetTreeNode[], result = new Set<string>()): Set<string> {
   for (const node of nodes) {
     if (!node.isDir) {
@@ -873,6 +894,14 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
 
   activePlayerViewTab.value = isLocalAudioFileKind(displayMode) ? 'spectrogram' : 'main'
 })
+
+watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
+  if (activeContentTab.value !== 'player') {
+    return
+  }
+
+  ensureSpectrogramPrepared()
+}, { immediate: true })
 </script>
 
 <style scoped>
