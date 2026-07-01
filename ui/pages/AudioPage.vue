@@ -1,7 +1,7 @@
 <template>
   <q-page class="audio-page" :style-fn="pageStyle">
     <div class="audio-page__inner">
-      <div class="audio-page__sidebar">
+      <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
           <q-card-section>
             <div class="text-h6">{{ t('audio.presetsTitle') }}</div>
@@ -70,6 +70,19 @@
           </q-card-section>
 
           <div class="audio-page__tabs-bar">
+            <q-btn
+              flat
+              no-caps
+              color="primary"
+              icon="folder"
+              :label="t('audio.filesTab')"
+              class="audio-page__files-toggle"
+              :class="{ 'audio-page__files-toggle--active': filesPanelOpen }"
+              :aria-label="filesPanelOpen ? t('audio.filesHide') : t('audio.filesShow')"
+              :aria-expanded="filesPanelOpen"
+              aria-controls="audio-page-sidebar"
+              @click="toggleFilesPanel"
+            />
             <q-tabs
               v-model="activeContentTab"
               align="left"
@@ -286,6 +299,7 @@ import { useAudioStore } from '../stores/audio'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
+const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface GnauralEditorPanelHandle {
@@ -345,12 +359,22 @@ const loadStoredExpandedPaths = (): string[] => {
   }
 }
 
+function loadStoredFilesPanelOpen(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUDIO_FILES_PANEL_OPEN)
+    return raw === null ? true : raw === 'true'
+  } catch {
+    return true
+  }
+}
+
 const { t } = useI18n()
 const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
+const filesPanelOpen = ref(loadStoredFilesPanelOpen())
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
@@ -433,6 +457,18 @@ watch(expandedTreePaths, (value) => {
     // Ignore storage failures and keep the in-memory tree state working.
   }
 }, { deep: true, immediate: true })
+
+watch(filesPanelOpen, (value) => {
+  try {
+    localStorage.setItem(STORAGE_AUDIO_FILES_PANEL_OPEN, value ? 'true' : 'false')
+  } catch {
+    // Ignore storage failures and keep the in-memory panel state working.
+  }
+})
+
+function toggleFilesPanel(): void {
+  filesPanelOpen.value = !filesPanelOpen.value
+}
 
 function collectDirectoryPaths(nodes: readonly PresetTreeNode[], result = new Set<string>()): Set<string> {
   for (const node of nodes) {
@@ -823,11 +859,19 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
 .audio-page__inner {
   box-sizing: border-box;
   display: flex;
-  gap: 16px;
+  gap: 5px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
   padding: 0;
+}
+
+.audio-page__files-toggle {
+  flex: 0 0 auto;
+}
+
+.audio-page__files-toggle--active {
+  background: rgba(25, 118, 210, 0.12);
 }
 
 .audio-page__sidebar {
