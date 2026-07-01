@@ -2,7 +2,7 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, test } from "bun:test"
 
-import { resolveSpectrogramWorkerExe, smokeOpenAndGetTile } from "./spectrogram-bridge"
+import { resolveSpectrogramWorkerExe, smokeOpenAndGetTile, workerPlatformDir } from "./spectrogram-bridge"
 
 // Dev fixture from the SpectrumCore tree (sibling repo).
 const FIXTURE_WAV = resolve(
@@ -20,6 +20,40 @@ interface TileFrame {
   readonly timeSec: number
   readonly bins: readonly number[]
 }
+
+describe("resolveSpectrogramWorkerExe precedence (WP1.1)", () => {
+  const base = {
+    cwd: "/app/server",
+    moduleDir: "/repo/GnauralCore/server",
+    platformDir: "win64",
+    fileExists: () => false,
+  }
+  const norm = (aPath: string): string => aPath.replace(/\\/g, "/")
+
+  test("ENV override wins over everything", () => {
+    expect(resolveSpectrogramWorkerExe({ ...base, env: "C:/custom/worker.exe" })).toBe("C:/custom/worker.exe")
+    expect(resolveSpectrogramWorkerExe({ ...base, env: "   " })).not.toBe("   ") // blank env ignored
+  })
+
+  test("bundled copy is used when it exists", () => {
+    const p = norm(resolveSpectrogramWorkerExe({ ...base, env: undefined, fileExists: (x) => x.includes("vendor") }))
+    expect(p).toContain("vendor/spectrumcore/win64/SpectrumCoreFftwWorkerProbe.exe")
+  })
+
+  test("falls back to the SpectrumCore dev build when no bundle", () => {
+    const p = norm(resolveSpectrogramWorkerExe({ ...base, env: undefined, fileExists: () => false }))
+    expect(p).toContain("SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe")
+  })
+})
+
+describe("workerPlatformDir (WP1.1)", () => {
+  test("maps platform/arch to the bundle subdir", () => {
+    expect(workerPlatformDir("win32", "x64")).toBe("win64")
+    expect(workerPlatformDir("linux", "x64")).toBe("linux-x86_64")
+    expect(workerPlatformDir("darwin", "arm64")).toBe("macos-arm64")
+    expect(workerPlatformDir("darwin", "x64")).toBe("macos-x86_64")
+  })
+})
 
 describe("spectrogram-bridge skeleton (U0.2)", () => {
   test("resolves a worker exe path", () => {

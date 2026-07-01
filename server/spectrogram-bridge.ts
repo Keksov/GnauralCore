@@ -19,20 +19,56 @@ import type { Subprocess } from "bun"
  * The worker exe is located from config/ENV (dev-only, DU3).
  */
 
-const DEV_WORKER_RELATIVE = "../../SpectrumCore/build/win64/SpectrumCoreFftwWorkerProbe.exe"
+const WORKER_BASENAME = "SpectrumCoreFftwWorkerProbe"
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
 const DEFAULT_MAX_CONSECUTIVE_RESTARTS = 5
 
+/** Per-platform bundle subdir + exe name (worker packaging plan, WP-D2). */
+export function workerPlatformDir(
+  aPlatform: string = process.platform,
+  aArch: string = process.arch,
+): string {
+  if (aPlatform === "win32") return "win64"
+  if (aPlatform === "linux") return "linux-x86_64"
+  if (aPlatform === "darwin") return aArch === "arm64" ? "macos-arm64" : "macos-x86_64"
+  return `${aPlatform}-${aArch}`
+}
+
+function workerExeName(aPlatformDir: string): string {
+  return aPlatformDir.startsWith("win") ? `${WORKER_BASENAME}.exe` : WORKER_BASENAME
+}
+
+export interface WorkerExeResolveOptions {
+  readonly env?: string | undefined
+  readonly cwd?: string
+  readonly moduleDir?: string
+  readonly platformDir?: string
+  readonly fileExists?: (aPath: string) => boolean
+}
+
 /**
- * Locate the worker exe: `SPECTRUMCORE_WORKER_EXE` wins, otherwise fall back to
- * the sibling SpectrumCore dev build output (DU3 — dev-only; packaging later).
+ * Locate the worker exe (worker packaging plan, WP1.1). Precedence:
+ *   1. `SPECTRUMCORE_WORKER_EXE` (explicit override),
+ *   2. the bundled copy `<cwd>/vendor/spectrumcore/<platform>/<exe>` (prod / folder-copy),
+ *   3. the SpectrumCore dev build `<module>/../../SpectrumCore/build/<platform>/<exe>`.
+ * Options are injectable for tests.
  */
-export const resolveSpectrogramWorkerExe = (): string => {
-  const fromEnv = process.env.SPECTRUMCORE_WORKER_EXE
-  if (fromEnv !== undefined && fromEnv.trim() !== "") {
-    return fromEnv
+export const resolveSpectrogramWorkerExe = (aOptions: WorkerExeResolveOptions = {}): string => {
+  const env = aOptions.env ?? process.env.SPECTRUMCORE_WORKER_EXE
+  if (env !== undefined && env.trim() !== "") {
+    return env
   }
-  return resolve(import.meta.dir, DEV_WORKER_RELATIVE)
+  const exists = aOptions.fileExists ?? existsSync
+  const cwd = aOptions.cwd ?? process.cwd()
+  const moduleDir = aOptions.moduleDir ?? import.meta.dir
+  const platformDir = aOptions.platformDir ?? workerPlatformDir()
+  const exeName = workerExeName(platformDir)
+
+  const bundled = resolve(cwd, "vendor", "spectrumcore", platformDir, exeName)
+  if (exists(bundled)) {
+    return bundled
+  }
+  return resolve(moduleDir, "..", "..", "SpectrumCore", "build", platformDir, exeName)
 }
 
 export interface WorkerResponse {
