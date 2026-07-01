@@ -265,7 +265,7 @@
                           :render="spectrogramStore.renderOptions"
                           :playhead-sec="displayedPositionSec"
                           :seekable="canSeek"
-                          :height="spectrogramTrackHeight"
+                          v-model:height="spectrogramTrackHeight"
                           @seek="handleSeek"
                         />
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
@@ -312,8 +312,11 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
+const STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT = 'mindwave-audio-spectrogram-track-height'
 // Audacity-like default spectrogram track height (per channel), in px (SF5.1).
 const SPECTROGRAM_TRACK_HEIGHT_DEFAULT = 260
+const SPECTROGRAM_TRACK_HEIGHT_MIN = 120
+const SPECTROGRAM_TRACK_HEIGHT_MAX = 1200
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface GnauralEditorPanelHandle {
@@ -382,6 +385,19 @@ function loadStoredFilesPanelOpen(): boolean {
   }
 }
 
+function loadStoredSpectrogramTrackHeight(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT)
+    const value = raw === null ? Number.NaN : Number.parseInt(raw, 10)
+    if (!Number.isFinite(value)) {
+      return SPECTROGRAM_TRACK_HEIGHT_DEFAULT
+    }
+    return Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(SPECTROGRAM_TRACK_HEIGHT_MAX, value))
+  } catch {
+    return SPECTROGRAM_TRACK_HEIGHT_DEFAULT
+  }
+}
+
 const { t } = useI18n()
 const $q = useQuasar()
 const router = useRouter()
@@ -389,7 +405,7 @@ const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
-const spectrogramTrackHeight = ref(SPECTROGRAM_TRACK_HEIGHT_DEFAULT)
+const spectrogramTrackHeight = ref(loadStoredSpectrogramTrackHeight())
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
@@ -478,6 +494,14 @@ watch(filesPanelOpen, (value) => {
     localStorage.setItem(STORAGE_AUDIO_FILES_PANEL_OPEN, value ? 'true' : 'false')
   } catch {
     // Ignore storage failures and keep the in-memory panel state working.
+  }
+})
+
+watch(spectrogramTrackHeight, (value) => {
+  try {
+    localStorage.setItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT, String(Math.round(value)))
+  } catch {
+    // Ignore storage failures and keep the in-memory height working.
   }
 })
 

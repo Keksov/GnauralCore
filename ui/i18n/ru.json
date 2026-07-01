@@ -98,6 +98,7 @@
     "spectrogramAnalysisGroup": "Анализ",
     "spectrogramDisplayGroup": "Отображение",
     "spectrogramReadout": "Показания спектрограммы",
+    "spectrogramResizeHandle": "Потяните, чтобы изменить высоту трека",
     "spectrogramPreparing": "Подготовка спектрограммы…",
     "spectrogramLoading": "Загрузка выбранного аудиофайла и расчёт спектрограммы...",
     "noSpectrogram": "Выберите аудиофайл, чтобы посмотреть его спектр.",
