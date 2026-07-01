@@ -181,6 +181,13 @@ const toArea = (aAnalysisId: string, aResponse: WorkerResponse): SpectrogramArea
   peakFreqHz: numberOf(aResponse.peakFreqHz),
 })
 
+// Heavy worker ops on long files far exceed the manager's default 15s request
+// timeout (which poisons + restarts the worker on expiry): a full-file STFT
+// (open-analysis) and wide overview tiles (get-tile) can take tens of seconds.
+// Give them generous budgets so a large file doesn't time out and loop-restart.
+const OPEN_ANALYSIS_TIMEOUT_MS = 120_000
+const GET_TILE_TIMEOUT_MS = 60_000
+
 export class SpectrogramSession {
   private readonly resolveSource: SpectrogramSourceResolver
   private readonly manager: SpectrogramWorkerManager
@@ -282,7 +289,7 @@ export class SpectrogramSession {
         analysisId,
         input: this.wavHandle.wavPath,
         ...toWorkerParams(this.currentParams),
-      }),
+      }, OPEN_ANALYSIS_TIMEOUT_MS),
       "open-analysis",
     )
     this.analysisId = analysisId
@@ -306,7 +313,7 @@ export class SpectrogramSession {
         analysisId,
         input: this.wavHandle.wavPath,
         ...toWorkerParams(this.currentParams),
-      }),
+      }, OPEN_ANALYSIS_TIMEOUT_MS),
       "reconfigure (reopen)",
     )
     this.analysisId = analysisId
@@ -329,7 +336,7 @@ export class SpectrogramSession {
         timeEndSec: aMessage.timeEndSec,
         zoom: aMessage.zoom ?? 0,
         viewBinCount: aMessage.viewBinCount,
-      }),
+      }, GET_TILE_TIMEOUT_MS),
       "get-tile",
     )
     return { type: "spectrogram:tile", requestId: aMessage.requestId, tile: toTile(analysisId, response) }
