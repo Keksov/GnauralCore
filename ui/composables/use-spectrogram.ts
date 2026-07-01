@@ -79,11 +79,19 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
   let analysisId: string | null = null
   let currentView: SpectrogramView | null = null
   let viewSeq = 0
+  // True while the worker is opening/reconfiguring the analysis (the slow prepare
+  // step) until the following refetch starts fetching tiles. Keeps the loading
+  // indicator up for the whole prepare span, not just while tiles are pending.
+  let opening = false
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const pendingTiles = new Map<string, PendingTile>()
   const controlWaiters = new Map<string, (aMessage: SpectrogramServerMessage) => void>()
 
   function updateLoading(): void {
+    if (opening) {
+      loading.value = true
+      return
+    }
     let active = 0
     for (const p of pendingTiles.values()) {
       if (p.seq === viewSeq) active += 1
@@ -160,8 +168,17 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     aParams: SpectrogramAnalysisParams & { readonly filePath?: string },
   ): Promise<SpectrogramAnalysisInfo> {
     error.value = null
+    opening = true
+    updateLoading()
     const requestId = nextRequestId()
-    const resp = await sendControl({ type: 'spectrogram:open', requestId, ...aParams }, requestId)
+    let resp: SpectrogramServerMessage
+    try {
+      resp = await sendControl({ type: 'spectrogram:open', requestId, ...aParams }, requestId)
+    } catch (aError) {
+      opening = false
+      updateLoading()
+      throw aError
+    }
     if (resp.type === 'spectrogram:opened') {
       analysis.value = resp.analysis
       analysisId = resp.analysis.analysisId
@@ -171,6 +188,8 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       if (currentView !== null) scheduleRefetch()
       return resp.analysis
     }
+    opening = false
+    updateLoading()
     const message = resp.type === 'spectrogram:error' ? resp.error : 'spectrogram: open failed'
     error.value = message
     throw new Error(message)
@@ -179,11 +198,20 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
   async function reconfigure(aParams: SpectrogramAnalysisParams): Promise<SpectrogramAnalysisInfo> {
     if (analysisId === null) throw new Error('spectrogram: no open analysis to reconfigure')
     error.value = null
+    opening = true
+    updateLoading()
     const requestId = nextRequestId()
-    const resp = await sendControl(
-      { type: 'spectrogram:reconfigure', requestId, analysisId, ...aParams },
-      requestId,
-    )
+    let resp: SpectrogramServerMessage
+    try {
+      resp = await sendControl(
+        { type: 'spectrogram:reconfigure', requestId, analysisId, ...aParams },
+        requestId,
+      )
+    } catch (aError) {
+      opening = false
+      updateLoading()
+      throw aError
+    }
     if (resp.type === 'spectrogram:reconfigured') {
       analysis.value = resp.analysis
       analysisId = resp.analysis.analysisId
@@ -194,13 +222,21 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       if (currentView !== null) scheduleRefetch()
       return resp.analysis
     }
+    opening = false
+    updateLoading()
     const message = resp.type === 'spectrogram:error' ? resp.error : 'spectrogram: reconfigure failed'
     error.value = message
     throw new Error(message)
   }
 
   function refetch(): void {
-    if (analysisId === null || currentView === null || analysis.value === null) return
+    // The prepare (open/reconfigure) step is over once we start fetching tiles;
+    // from here loading reflects pending tiles.
+    opening = false
+    if (analysisId === null || currentView === null || analysis.value === null) {
+      updateLoading()
+      return
+    }
     const seq = viewSeq
     const view = currentView
     const reqs = planVisibleTiles({
@@ -290,7 +326,9 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       clearTimeout(debounceTimer)
       debounceTimer = null
     }
+    opening = false
     pendingTiles.clear()
+    updateLoading()
     if (analysisId === null) return
     const requestId = nextRequestId()
     const id = analysisId
