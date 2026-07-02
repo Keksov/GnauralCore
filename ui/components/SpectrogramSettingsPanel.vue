@@ -18,22 +18,22 @@
 
     <div class="spectrogram-settings__group">
       <div class="spectrogram-settings__title">{{ t('audio.spectrogramAnalysisGroup') }}</div>
-      <q-select v-model="s.window" :options="windowSizes" label="Window" dense outlined emit-value map-options class="spectrogram-settings__field" />
-      <q-select v-model="s.zeroPaddingFactor" :options="zeroPadOptions" label="Zero-pad" dense outlined emit-value map-options class="spectrogram-settings__field" />
-      <q-input v-model.number="s.hop" type="number" label="Hop" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.winFunc" :options="winFuncs" label="Window func" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.data" :options="dataModes" label="Data" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.fscale" :options="fscales" label="Freq scale" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.mode" :options="channelModes" label="Channel mode" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.channel" type="number" label="Channel" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.startHz" type="number" label="Start Hz" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.stopHz" type="number" label="Stop Hz (0 = Nyquist)" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.window" :options="windowSizes" :label="t('audio.spectrogramWindow')" dense outlined emit-value map-options class="spectrogram-settings__field" />
+      <q-select v-model="s.zeroPaddingFactor" :options="zeroPadOptions" :label="t('audio.spectrogramZeroPad')" dense outlined emit-value map-options class="spectrogram-settings__field" />
+      <q-input v-model.number="s.hop" type="number" :label="t('audio.spectrogramHop')" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.winFunc" :options="winFuncs" :label="t('audio.spectrogramWinFunc')" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.data" :options="dataModes" :label="t('audio.spectrogramDataMode')" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.fscale" :options="fscales" :label="t('audio.spectrogramFreqScale')" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.mode" :options="channelModes" :label="t('audio.spectrogramChannelMode')" dense outlined class="spectrogram-settings__field" />
+      <q-input v-model.number="s.channel" type="number" :label="t('audio.spectrogramChannel')" dense outlined class="spectrogram-settings__field" />
+      <q-input v-model.number="s.startHz" type="number" :label="t('audio.spectrogramStartHz')" dense outlined class="spectrogram-settings__field" />
+      <q-input v-model.number="s.stopHz" type="number" :label="t('audio.spectrogramStopHz')" dense outlined class="spectrogram-settings__field" />
     </div>
 
     <div class="spectrogram-settings__group">
       <div class="spectrogram-settings__title">{{ t('audio.spectrogramDisplayGroup') }}</div>
-      <q-select v-model="s.scale" :options="scales" label="Intensity scale" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.palette" :options="palettes" label="Palette" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.scale" :options="scales" :label="t('audio.spectrogramIntensityScale')" dense outlined class="spectrogram-settings__field" />
+      <q-select v-model="s.palette" :options="palettes" :label="t('audio.spectrogramPalette')" dense outlined class="spectrogram-settings__field" />
 
       <div v-for="slider in sliders" :key="slider.key" class="spectrogram-settings__slider">
         <div class="spectrogram-settings__slider-label">
@@ -51,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSpectrogramStore } from '../stores/spectrogram'
@@ -90,14 +91,14 @@ interface SliderSpec {
   readonly decimals: number
 }
 
-const sliders: readonly SliderSpec[] = [
-  { key: 'overlap', label: 'Overlap', min: 0, max: 0.95, step: 0.05, decimals: 2 },
-  { key: 'gain', label: 'Gain', min: 0.1, max: 8, step: 0.1, decimals: 1 },
-  { key: 'frequencyGain', label: 'Frequency gain (dB/dec)', min: -20, max: 20, step: 1, decimals: 0 },
-  { key: 'drange', label: 'Dynamic range (dB)', min: 20, max: 200, step: 5, decimals: 0 },
-  { key: 'limit', label: 'Limit (dB)', min: -60, max: 0, step: 1, decimals: 0 },
-  { key: 'saturation', label: 'Saturation', min: -10, max: 10, step: 0.5, decimals: 1 },
-]
+const sliders = computed<readonly SliderSpec[]>(() => [
+  { key: 'overlap', label: t('audio.spectrogramOverlap'), min: 0, max: 0.95, step: 0.05, decimals: 2 },
+  { key: 'gain', label: t('audio.spectrogramGain'), min: 0.1, max: 8, step: 0.1, decimals: 1 },
+  { key: 'frequencyGain', label: t('audio.spectrogramFrequencyGain'), min: -20, max: 20, step: 1, decimals: 0 },
+  { key: 'drange', label: t('audio.spectrogramDynamicRange'), min: 20, max: 200, step: 5, decimals: 0 },
+  { key: 'limit', label: t('audio.spectrogramLimit'), min: -60, max: 0, step: 1, decimals: 0 },
+  { key: 'saturation', label: t('audio.spectrogramSaturation'), min: -10, max: 10, step: 0.5, decimals: 1 },
+])
 </script>
 
 <style scoped>
