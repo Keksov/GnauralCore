@@ -301,6 +301,11 @@
                               @pointercancel="onSpectrogramBottomPointerUp"
                             />
                           </div>
+                          <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24) -->
+                          <spectrogram-minimap
+                            :duration-sec="spectrogramDuration"
+                            v-model:view="spectrogramView"
+                          />
                         </div>
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
                           <spectrogram-settings-panel />
@@ -411,6 +416,7 @@ const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/Gna
 const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
 const SpectrogramView = createAsyncAudioPanel(() => import('../components/SpectrogramView.vue'))
 const SpectrogramSettingsPanel = createAsyncAudioPanel(() => import('../components/SpectrogramSettingsPanel.vue'))
+const SpectrogramMinimap = defineAsyncComponent(() => import('../components/SpectrogramMinimap.vue'))
 
 const loadStoredExpandedPaths = (): string[] => {
   try {
@@ -726,6 +732,13 @@ const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisP
 // for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
 const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration ?? 0)
 const spectrogramHasView = computed(() => spectrogramShared.view.value !== null)
+// v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
+const spectrogramView = computed<TimeWindow | null>({
+  get: () => spectrogramShared.view.value,
+  set: (v) => {
+    if (v !== null) spectrogramShared.view.value = v
+  },
+})
 const spectrogramIsFull = computed(() =>
   spectrogramShared.view.value !== null &&
   isFullWindow(spectrogramShared.view.value, spectrogramDuration.value),

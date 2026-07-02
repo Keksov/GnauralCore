@@ -98,6 +98,7 @@
     "spectrogramAnalysisGroup": "Analysis",
     "spectrogramDisplayGroup": "Display",
     "spectrogramReadout": "Spectrogram readout",
+    "spectrogramTimespan": "Visible time range",
     "spectrogramResizeHandle": "Drag to resize the track height",
     "spectrogramPreparing": "Preparing spectrogram…",
     "spectrogramLoading": "Loading the selected audio file and computing the spectrogram...",

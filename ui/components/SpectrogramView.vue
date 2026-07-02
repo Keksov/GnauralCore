@@ -1,37 +1,5 @@
 <template>
   <div class="spectrogram-view" :style="rootStyle">
-    <div v-if="primary" class="spectrogram-view__toolbar">
-      <q-range
-        v-if="hasAnalysis"
-        v-model="rangeModel"
-        :min="0"
-        :max="duration"
-        :step="rangeStep"
-        :left-label-value="formatTimeSec(rangeModel.min)"
-        :right-label-value="formatTimeSec(rangeModel.max)"
-        label
-        dense
-        class="spectrogram-view__range col"
-      />
-      <div
-        v-if="areaResult !== null"
-        class="spectrogram-view__readout"
-        role="status"
-        aria-live="polite"
-        :aria-label="t('audio.spectrogramReadout')"
-      >
-        sel peak {{ formatHz(areaResult.peakFreqHz) }} @ {{ formatTimeSec(areaResult.peakTimeSec) }} · {{ areaResult.cellCount }} cells
-      </div>
-      <div
-        v-else-if="hover !== null"
-        class="spectrogram-view__readout"
-        role="status"
-        aria-live="polite"
-        :aria-label="t('audio.spectrogramReadout')"
-      >
-        {{ formatTimeSec(hover.timeSec) }} · {{ formatHz(hover.freqHz) }} Hz · {{ hover.db.toFixed(1) }} dB
-      </div>
-    </div>
     <canvas
       ref="canvasEl"
       class="spectrogram-view__canvas"
@@ -47,6 +15,17 @@
     />
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
+    <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar) -->
+    <div
+      v-if="tooltipText !== null && tooltipPos !== null"
+      class="spectrogram-view__tooltip"
+      :style="{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px` }"
+      role="status"
+      aria-live="polite"
+      :aria-label="t('audio.spectrogramReadout')"
+    >
+      {{ tooltipText }}
+    </div>
     <div
       v-if="isPreparing"
       class="spectrogram-view__loading"
@@ -83,7 +62,6 @@ import {
   timeAxisTicks,
 } from '../composables/spectrogram-axes'
 import {
-  clampWindow,
   fractionToTime,
   fullWindow,
   MIN_WINDOW_SEC,
@@ -177,13 +155,6 @@ const rootStyle = computed(() =>
     : {},
 )
 const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
-const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
-const rangeModel = computed({
-  get: () => ({ min: view.value.startSec, max: view.value.endSec }),
-  set: (value: { min: number; max: number }) => {
-    view.value = clampWindow({ startSec: value.min, endSec: value.max }, duration.value)
-  },
-})
 
 function plotColumns(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
@@ -379,6 +350,20 @@ function onWheel(aEvent: WheelEvent): void {
 }
 
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
+// SF-D25: cursor tooltip position (offset within the view) + text (area result on the
+// primary track, else the hover point).
+const tooltipPos = ref<{ x: number; y: number } | null>(null)
+const tooltipText = computed<string | null>(() => {
+  if (props.primary && areaResult.value !== null) {
+    const a = areaResult.value
+    return `sel peak ${formatHz(a.peakFreqHz)} @ ${formatTimeSec(a.peakTimeSec)} · ${a.cellCount} cells`
+  }
+  if (hover.value !== null) {
+    const h = hover.value
+    return `${formatTimeSec(h.timeSec)} · ${formatHz(h.freqHz)} Hz · ${h.db.toFixed(1)} dB`
+  }
+  return null
+})
 const internalSelection = ref<SpectrogramSelection | null>(null)
 // Shared area selection across stacked tracks (or per-view fallback).
 const selection = computed<SpectrogramSelection | null>({
@@ -428,6 +413,9 @@ function onPointerMove(aEvent: PointerEvent): void {
   const f = plotFractions(aEvent)
   if (f === null) return
 
+  // Track the cursor for the tooltip (offset a little so it doesn't sit under the pointer).
+  tooltipPos.value = { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 }
+
   if (dragStart !== null) {
     if (!dragging && Math.hypot(aEvent.offsetX - dragStart.x, aEvent.offsetY - dragStart.y) < 4) return
     dragging = true
@@ -446,6 +434,7 @@ function onPointerMove(aEvent: PointerEvent): void {
 
   if (f.xFraction < 0 || f.xFraction > 1 || f.yTopFraction < 0 || f.yTopFraction > 1) {
     hover.value = null
+    tooltipPos.value = null
     return
   }
   const now = performance.now()
@@ -492,6 +481,7 @@ function runAreaQuery(): void {
 
 function onPointerLeave(): void {
   hover.value = null
+  tooltipPos.value = null
 }
 
 function onClick(aEvent: MouseEvent): void {
@@ -660,14 +650,6 @@ onBeforeUnmount(() => {
   z-index: 6;
 }
 
-.spectrogram-view__toolbar {
-  align-items: center;
-  color: #94a3b8;
-  display: flex;
-  gap: 4px;
-  padding: 4px 8px 0;
-}
-
 /* SF10.2: channel label overlaid on the plot's top-left (same place for every track). */
 .spectrogram-view__label-overlay {
   background: rgba(15, 23, 42, 0.5);
@@ -683,16 +665,19 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-.spectrogram-view__range {
-  margin-left: 12px;
-}
-
-.spectrogram-view__readout {
+/* SF-D25: point/area readout tooltip anchored at the cursor. */
+.spectrogram-view__tooltip {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 4px;
+  color: #e2e8f0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  margin-left: 12px;
-  opacity: 0.85;
+  padding: 2px 6px;
+  pointer-events: none;
+  position: absolute;
   white-space: nowrap;
+  z-index: 7;
 }
 
 .spectrogram-view__canvas {
