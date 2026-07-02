@@ -350,6 +350,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import SpectrogramMinimap from '../components/SpectrogramMinimap.vue'
+import SpectrogramView from '../components/SpectrogramView.vue'
 import {
   fullWindow,
   isFullWindow,
@@ -415,7 +416,6 @@ function createAsyncAudioPanel(loader: AsyncComponentLoader<Component>) {
 
 const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/GnauralEditorPanel.vue'))
 const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
-const SpectrogramView = createAsyncAudioPanel(() => import('../components/SpectrogramView.vue'))
 const SpectrogramSettingsPanel = createAsyncAudioPanel(() => import('../components/SpectrogramSettingsPanel.vue'))
 
 const loadStoredExpandedPaths = (): string[] => {
