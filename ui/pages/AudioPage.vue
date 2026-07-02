@@ -960,13 +960,16 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
   activePlayerViewTab.value = isLocalAudioFileKind(displayMode) ? 'spectrogram' : 'main'
 })
 
+// SF8.3: build the spectrum only on an explicit user action -- switching to the
+// Спектрограмма view or selecting a file -- NOT on mount for a restored selection
+// (no `immediate`, so opening the Audio tab with a pre-selected file won't auto-build).
 watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   if (activeContentTab.value !== 'player') {
     return
   }
 
   ensureSpectrogramPrepared()
-}, { immediate: true })
+})
 </script>
 
 <style scoped>

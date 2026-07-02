@@ -315,7 +315,10 @@ function drawAxes(
   ctx.fillStyle = '#94a3b8'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
-  for (const tick of frequencyAxisTicks(binFrequenciesHz, 6)) {
+  // SF8.2: reveal more frequency levels as the track grows (like Audacity) -- ~1 label
+  // per 42px of plot height, clamped so short tracks stay readable.
+  const freqTickCount = Math.max(3, Math.min(20, Math.floor(plotH / 42)))
+  for (const tick of frequencyAxisTicks(binFrequenciesHz, freqTickCount)) {
     const y = Math.min(plotY + plotH - 1, Math.max(plotY + 5, plotY + tick.position * plotH))
     ctx.beginPath()
     ctx.moveTo(plotX - 3, y)
