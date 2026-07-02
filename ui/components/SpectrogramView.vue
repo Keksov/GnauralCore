@@ -653,7 +653,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .spectrogram-view {
   background: #0f172a;
-  border-radius: 12px;
   display: flex;
   flex-direction: column;
   min-height: 280px;
