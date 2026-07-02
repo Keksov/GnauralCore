@@ -9,6 +9,14 @@ export interface TimeWindow {
   readonly endSec: number
 }
 
+/** A spectrogram area selection: time span + top-fraction band [0..1] (0=top). */
+export interface SpectrogramSelection {
+  readonly timeStartSec: number
+  readonly timeEndSec: number
+  readonly topLo: number
+  readonly topHi: number
+}
+
 /** Smallest visible window (guards against zooming in to nothing). */
 export const MIN_WINDOW_SEC = 0.02
 

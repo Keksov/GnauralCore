@@ -255,7 +255,7 @@
                         {{ noSpectrogramLabel }}
                       </div>
                       <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
-                        <div class="col column" style="gap: 8px; min-width: 0;">
+                        <div class="col column" style="gap: 1px; min-width: 0;">
                           <template v-if="isSpectrogramStereo">
                             <spectrogram-view
                               :file-path="audio.displayFilePath"
@@ -264,6 +264,7 @@
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
                               label="L"
+                              :primary="true"
                               v-model:height="spectrogramTrackHeight"
                               @seek="handleSeek"
                             />
@@ -274,6 +275,7 @@
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
                               label="R"
+                              :primary="false"
                               v-model:height="spectrogramTrackHeight"
                               @seek="handleSeek"
                             />
@@ -285,6 +287,7 @@
                             :render="spectrogramStore.renderOptions"
                             :playhead-sec="displayedPositionSec"
                             :seekable="canSeek"
+                            :primary="true"
                             v-model:height="spectrogramTrackHeight"
                             @seek="handleSeek"
                           />
@@ -330,7 +333,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import type { SpectrogramSelection, TimeWindow } from '../composables/spectrogram-viewport'
 import { QSpinnerHourglass, useQuasar, type QTreeNode } from 'quasar'
 import type { AudioFileKind, PresetTreeNode } from '@protocol'
 import { useRouter } from 'vue-router'
@@ -438,6 +442,14 @@ const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
 const spectrogramTrackHeight = ref(loadStoredSpectrogramTrackHeight())
+// SF8.1: stacked spectrogram tracks (stereo L/R) share one time window + area
+// selection so they zoom/pan/select together; reset per file so a new file starts full.
+const spectrogramShared = {
+  view: ref<TimeWindow | null>(null),
+  selection: ref<SpectrogramSelection | null>(null),
+  commitSeq: ref(0),
+}
+provide('spectrogramShared', spectrogramShared)
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
@@ -672,6 +684,12 @@ const noSpectrogramLabel = computed(() => {
 })
 
 const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
+
+// Reset the shared spectrogram view/selection when the file changes (fresh full view).
+watch(() => audio.displayFilePath, () => {
+  spectrogramShared.view.value = null
+  spectrogramShared.selection.value = null
+})
 
 const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
 const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 1 }))

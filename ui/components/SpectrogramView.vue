@@ -1,6 +1,6 @@
 <template>
   <div class="spectrogram-view" :style="rootStyle">
-    <div class="spectrogram-view__toolbar">
+    <div v-if="primary" class="spectrogram-view__toolbar">
       <span v-if="label" class="spectrogram-view__label">{{ label }}</span>
       <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomIn')" @click="zoomIn" />
       <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomOut')" @click="zoomOut" />
@@ -49,6 +49,7 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
+    <span v-if="!primary && label" class="spectrogram-view__label-overlay">{{ label }}</span>
     <div
       v-if="isPreparing"
       class="spectrogram-view__loading"
@@ -82,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol'
 
@@ -105,6 +106,7 @@ import {
   timeToFraction,
   viewportZoomTier,
   zoomWindow,
+  type SpectrogramSelection,
   type TimeWindow,
 } from '../composables/spectrogram-viewport'
 
@@ -127,13 +129,25 @@ interface Props {
   height?: number
   /** Short channel label shown in the toolbar (e.g. "L" / "R" for a stereo split). */
   label?: string
+  /** First track of a stack: shows the control toolbar + area-query readout (SF8.1). */
+  primary?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { primary: true })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'update:height', px: number): void
 }>()
+
+// SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
+// zoom/pan/select together. AudioPage provides these reactive refs; standalone use
+// falls back to per-view internal state.
+interface SpectrogramSharedState {
+  readonly view: import('vue').Ref<TimeWindow | null>
+  readonly selection: import('vue').Ref<SpectrogramSelection | null>
+  readonly commitSeq: import('vue').Ref<number>
+}
+const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const MIN_TRACK_HEIGHT = 120
@@ -179,7 +193,15 @@ let renderFrameId = 0
 let resizeObserver: ResizeObserver | null = null
 let offscreen: HTMLCanvasElement | null = null
 
-const view = ref<TimeWindow>({ startSec: 0, endSec: 0 })
+const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
+// Shared time window across stacked tracks (or per-view fallback).
+const view = computed<TimeWindow>({
+  get: () => shared?.view.value ?? internalView.value,
+  set: (v) => {
+    if (shared) shared.view.value = v
+    else internalView.value = v
+  },
+})
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
 const isPreparing = computed(() => spec.loading.value)
@@ -388,7 +410,15 @@ function onWheel(aEvent: WheelEvent): void {
 }
 
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
-const selection = ref<{ timeStartSec: number; timeEndSec: number; topLo: number; topHi: number } | null>(null)
+const internalSelection = ref<SpectrogramSelection | null>(null)
+// Shared area selection across stacked tracks (or per-view fallback).
+const selection = computed<SpectrogramSelection | null>({
+  get: () => (shared ? shared.selection.value : internalSelection.value),
+  set: (s) => {
+    if (shared) shared.selection.value = s
+    else internalSelection.value = s
+  },
+})
 const areaResult = ref<SpectrogramAreaResult | null>(null)
 let lastHoverTs = 0
 interface DragStart { x: number; y: number; timeSec: number; topFraction: number }
@@ -463,21 +493,32 @@ function onPointerMove(aEvent: PointerEvent): void {
 
 function onPointerUp(): void {
   if (dragStart !== null && dragging && selection.value !== null) {
-    const binFreqs = spec.tiles.value[0]?.binFrequenciesHz ?? []
-    const bounds = areaQueryBounds(
-      { timeSec: selection.value.timeStartSec, topFraction: selection.value.topLo },
-      { timeSec: selection.value.timeEndSec, topFraction: selection.value.topHi },
-      binFreqs,
-    )
-    void spec
-      .areaQuery(bounds.timeStartSec, bounds.timeEndSec, bounds.freqStartHz, bounds.freqEndHz)
-      .then((area) => {
-        areaResult.value = area
-      })
+    // Commit: the primary track runs the area-query (SF8.1) for the shared selection.
+    if (shared) shared.commitSeq.value += 1
+    else runAreaQuery()
     suppressClick = true // a drag isn't a seek click
   }
   dragStart = null
   dragging = false
+}
+
+function runAreaQuery(): void {
+  const sel = selection.value
+  if (sel === null) {
+    areaResult.value = null
+    return
+  }
+  const binFreqs = spec.tiles.value[0]?.binFrequenciesHz ?? []
+  const bounds = areaQueryBounds(
+    { timeSec: sel.timeStartSec, topFraction: sel.topLo },
+    { timeSec: sel.timeEndSec, topFraction: sel.topHi },
+    binFreqs,
+  )
+  void spec
+    .areaQuery(bounds.timeStartSec, bounds.timeEndSec, bounds.freqStartHz, bounds.freqEndHz)
+    .then((area) => {
+      areaResult.value = area
+    })
 }
 
 function onPointerLeave(): void {
@@ -507,7 +548,11 @@ async function openForPath(aFilePath: string | null): Promise<void> {
   }
   try {
     const info = await spec.open({ filePath: aFilePath, ...(props.analysis ?? { window: 2048, hop: 512 }) })
-    view.value = fullWindow(info.durationSec)
+    // Initialize the (possibly shared) time window once per file; a sibling track that
+    // already set it wins so stacked tracks stay in sync (SF8.1).
+    if (shared === null || shared.view.value === null) {
+      view.value = fullWindow(info.durationSec)
+    }
     applyView()
   } catch {
     // surfaced via spec.error
@@ -532,11 +577,28 @@ watch(() => props.filePath, (value) => {
   void openForPath(value)
 })
 
-// view window changed (zoom/pan) -> refetch tiles for the new range (composable
-// debounces + caches + cancels stale).
+// view window changed (zoom/pan, possibly from a sibling track) -> refetch tiles for
+// the new range and redraw (axes/playhead/selection move even if tiles are cached).
 watch(view, () => {
   applyView()
+  scheduleDraw()
 }, { deep: true })
+
+// shared selection changed (from any track) -> redraw the rect on this track (SF8.1).
+watch(selection, () => {
+  scheduleDraw()
+}, { deep: true })
+
+// primary runs the area-query readout when any track commits a selection (SF8.1),
+// and clears it when the shared selection is cleared.
+if (shared !== null) {
+  watch(() => shared.commitSeq.value, () => {
+    if (props.primary) runAreaQuery()
+  })
+  watch(() => shared.selection.value, (sel) => {
+    if (props.primary && sel === null) areaResult.value = null
+  })
+}
 
 watch([spec.tiles, spec.analysis], () => {
   scheduleDraw()
@@ -643,6 +705,21 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 700;
   padding: 0 4px;
+}
+
+/* SF8.1: channel label for non-primary tracks (no toolbar) -- overlaid on the plot. */
+.spectrogram-view__label-overlay {
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 3px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  left: 50px;
+  padding: 0 4px;
+  pointer-events: none;
+  position: absolute;
+  top: 4px;
+  z-index: 4;
 }
 
 .spectrogram-view__range {
