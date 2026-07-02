@@ -248,16 +248,13 @@
                       </div>
 
                       <div class="text-subtitle2 q-mb-sm">{{ t('audio.spectrogramTitle') }}</div>
-                      <div v-if="audio.spectrogramLoading" class="audio-page__empty text-grey-7">
-                        {{ spectrogramLoadingLabel }}
-                      </div>
-                      <q-banner v-else-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
+                      <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
                         {{ audio.spectrogramError }}
                       </q-banner>
-                      <div v-else-if="audio.spectrogramBuffer === null" class="audio-page__empty text-grey-7">
+                      <div v-else-if="audio.spectrogramBuffer === null && !audio.spectrogramLoading" class="audio-page__empty text-grey-7">
                         {{ noSpectrogramLabel }}
                       </div>
-                      <div v-else class="row no-wrap items-start" style="gap: 16px;">
+                      <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
                         <div class="col column" style="gap: 8px; min-width: 0;">
                           <template v-if="isSpectrogramStereo">
                             <spectrogram-view
@@ -318,6 +315,17 @@
         </q-card>
       </div>
     </div>
+
+    <!-- SF7.1: small non-blocking load-progress dialog over the tracks screen. -->
+    <q-dialog :model-value="audio.spectrogramLoading" persistent no-focus>
+      <q-card class="audio-page__load-dialog">
+        <q-card-section class="row items-center no-wrap q-gutter-md">
+          <q-spinner-hourglass color="primary" size="28px" />
+          <div class="text-body2">{{ spectrogramLoadingLabel }}</div>
+        </q-card-section>
+        <q-linear-progress indeterminate color="primary" />
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -990,6 +998,12 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 
 .audio-page__sidebar-heading {
   min-width: 0;
+}
+
+.audio-page__load-dialog {
+  border-radius: 8px;
+  min-width: 320px;
+  overflow: hidden;
 }
 
 .audio-page__files-toggle--active {

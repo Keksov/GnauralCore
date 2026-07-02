@@ -349,13 +349,11 @@ function applyView(): void {
   const canvas = canvasEl.value
   if (analysis === null || canvas === null) return
   const columns = plotColumns(canvas)
-  // Round to a coarse step so small canvas-height jitter (layout settling, resize)
-  // doesn't keep changing viewBinCount -> tile keys -> refetch during the initial load.
-  const rawBins = Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom
-  const viewBinCount = Math.max(
-    16,
-    Math.min(MAX_VIEW_BINS, Math.round(rawBins / 32) * 32),
-  )
+  // SF7.2: viewBinCount is FIXED (decoupled from track height) so a height resize
+  // leaves the view (time window + zoom + viewBinCount) unchanged -> the setView
+  // no-op guard skips any refetch and the raster simply scales to the new height.
+  // (Width/time zoom still refetch via `columns`.)
+  const viewBinCount = MAX_VIEW_BINS
   spec.setView({
     timeStartSec: view.value.startSec,
     timeEndSec: view.value.endSec,
