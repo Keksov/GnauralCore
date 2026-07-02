@@ -260,6 +260,16 @@
                             <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
                             <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
                             <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
+                            <q-space />
+                            <q-btn
+                              dense flat round size="sm"
+                              icon="tune"
+                              :color="spectrogramSettingsOpen ? 'primary' : undefined"
+                              :aria-label="t('audio.spectrogramSettingsTitle')"
+                              aria-controls="spectrogram-settings-panel"
+                              :aria-expanded="spectrogramSettingsOpen"
+                              @click="toggleSpectrogramSettings"
+                            />
                           </div>
                           <div class="audio-page__spectrogram-stack">
                           <template v-for="(track, index) in spectrogramTracks" :key="track.key">
@@ -307,10 +317,40 @@
                             v-model:view="spectrogramView"
                           />
                         </div>
-                        <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
-                          <spectrogram-settings-panel />
-                        </div>
                       </div>
+
+                      <!-- SF3.1 (SF-D4/D5): settings panel as a toggleable overlay "Параметры" -->
+                      <transition name="spectrogram-settings-backdrop">
+                        <div
+                          v-if="spectrogramSettingsOpen"
+                          class="audio-page__spectrogram-settings-backdrop"
+                          aria-hidden="true"
+                          @click="closeSpectrogramSettings"
+                        />
+                      </transition>
+                      <transition name="spectrogram-settings-panel">
+                        <aside
+                          v-if="spectrogramSettingsOpen"
+                          id="spectrogram-settings-panel"
+                          class="audio-page__spectrogram-settings-panel"
+                          role="dialog"
+                          aria-modal="false"
+                          :aria-label="t('audio.spectrogramSettingsTitle')"
+                        >
+                          <div class="audio-page__spectrogram-settings-header">
+                            <div class="audio-page__spectrogram-settings-title">{{ t('audio.spectrogramSettingsTitle') }}</div>
+                            <q-btn
+                              flat round dense
+                              icon="close"
+                              :aria-label="t('audio.spectrogramSettingsClose')"
+                              @click="closeSpectrogramSettings"
+                            />
+                          </div>
+                          <div class="audio-page__spectrogram-settings-body">
+                            <spectrogram-settings-panel />
+                          </div>
+                        </aside>
+                      </transition>
                     </div>
                   </q-tab-panel>
                 </q-tab-panels>
@@ -757,6 +797,16 @@ function spectrogramFit(): void {
   spectrogramShared.view.value = fullWindow(spectrogramDuration.value)
 }
 
+// SF3.1 (SF-D4/D5): the settings panel is a toggleable overlay over the plot (no
+// main-content resize), opened from the common header; default closed.
+const spectrogramSettingsOpen = ref(false)
+function toggleSpectrogramSettings(): void {
+  spectrogramSettingsOpen.value = !spectrogramSettingsOpen.value
+}
+function closeSpectrogramSettings(): void {
+  spectrogramSettingsOpen.value = false
+}
+
 // SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
 interface SpectrogramTrack {
@@ -960,6 +1010,12 @@ function shouldIgnorePlayerHotkey(event: KeyboardEvent): boolean {
 }
 
 function handlePlayerKeyDown(event: KeyboardEvent): void {
+  // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
+  if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
+    event.preventDefault()
+    closeSpectrogramSettings()
+    return
+  }
   if (shouldIgnorePlayerHotkey(event)) {
     return
   }
@@ -1301,6 +1357,72 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 
 .audio-page__output-section--spectrogram {
   overflow: auto;
+  position: relative;
+}
+
+/* SF3.1 (SF-D4): settings overlay "Параметры" over the plot (no main-content resize). */
+.audio-page__spectrogram-settings-backdrop {
+  background: rgba(2, 6, 23, 0.45);
+  inset: 0;
+  position: absolute;
+  z-index: 20;
+}
+
+.audio-page__spectrogram-settings-panel {
+  background: #0f172a;
+  border-left: 1px solid rgba(148, 163, 184, 0.24);
+  bottom: 0;
+  box-shadow: -18px 0 40px rgba(2, 6, 23, 0.45);
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100% - 56px);
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 300px;
+  z-index: 30;
+}
+
+.audio-page__spectrogram-settings-header {
+  align-items: center;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 8px 10px 16px;
+}
+
+.audio-page__spectrogram-settings-title {
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.audio-page__spectrogram-settings-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+
+.spectrogram-settings-backdrop-enter-active,
+.spectrogram-settings-backdrop-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.spectrogram-settings-backdrop-enter-from,
+.spectrogram-settings-backdrop-leave-to {
+  opacity: 0;
+}
+
+.spectrogram-settings-panel-enter-active,
+.spectrogram-settings-panel-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.spectrogram-settings-panel-enter-from,
+.spectrogram-settings-panel-leave-to {
+  opacity: 0;
+  transform: translateX(24px);
 }
 
 .audio-page__schedule-view {

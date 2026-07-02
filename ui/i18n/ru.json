@@ -93,6 +93,8 @@
     "spectrogramZoomIn": "Приблизить",
     "spectrogramZoomOut": "Отдалить",
     "spectrogramFit": "Под клип",
+    "spectrogramSettingsTitle": "Параметры",
+    "spectrogramSettingsClose": "Закрыть параметры",
     "spectrogramPresets": "Пресеты",
     "spectrogramReset": "Сброс",
     "spectrogramAnalysisGroup": "Анализ",

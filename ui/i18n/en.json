@@ -93,6 +93,8 @@
     "spectrogramZoomIn": "Zoom in",
     "spectrogramZoomOut": "Zoom out",
     "spectrogramFit": "Fit to clip",
+    "spectrogramSettingsTitle": "Parameters",
+    "spectrogramSettingsClose": "Close parameters",
     "spectrogramPresets": "Presets",
     "spectrogramReset": "Reset",
     "spectrogramAnalysisGroup": "Analysis",
