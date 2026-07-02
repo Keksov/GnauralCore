@@ -111,13 +111,21 @@ interface Props {
   seekable?: boolean
   /** Fixed track height in px (Audacity-like). When omitted the view flex-fills. */
   height?: number
-  /** Short channel label shown in the toolbar (e.g. "L" / "R" for a stereo split). */
+  /** Short channel label shown as a top-left plot overlay (e.g. "L" / "R"). */
   label?: string
   /** First track of a stack: shows the control toolbar + area-query readout (SF8.1). */
   primary?: boolean
+  /** Draw the horizontal time ruler above the plot (first track of a stack) — SF10.3. */
+  showTimeAxisTop?: boolean
+  /** Draw the horizontal time ruler below the plot (last track of a stack) — SF10.3. */
+  showTimeAxisBottom?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { primary: true })
+const props = withDefaults(defineProps<Props>(), {
+  primary: true,
+  showTimeAxisTop: false,
+  showTimeAxisBottom: true,
+})
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
 }>()
@@ -139,7 +147,13 @@ const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spec = useSpectrogram()
 
 const MAX_VIEW_BINS = 512
-const AXIS_MARGIN = { left: 46, right: 8, top: 6, bottom: 18 }
+const AXIS_MARGIN = { left: 46, right: 8 }
+// SF10.3: vertical room for a time ruler (ticks + labels) on an edge that shows one,
+// vs a small plain margin on an edge that doesn't.
+const AXIS_TIME_MARGIN = 18
+const AXIS_PLAIN_MARGIN = 6
+const marginTop = (): number => (props.showTimeAxisTop ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
+const marginBottom = (): number => (props.showTimeAxisBottom ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 let renderFrameId = 0
 let resizeObserver: ResizeObserver | null = null
 let offscreen: HTMLCanvasElement | null = null
@@ -205,9 +219,9 @@ function draw(): void {
   if (analysis === null || analysis.frameCount <= 0) return
 
   const plotX = AXIS_MARGIN.left
-  const plotY = AXIS_MARGIN.top
+  const plotY = marginTop()
   const plotW = Math.max(1, cssWidth - AXIS_MARGIN.left - AXIS_MARGIN.right)
-  const plotH = Math.max(1, cssHeight - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
+  const plotH = Math.max(1, cssHeight - marginTop() - marginBottom())
 
   const win = view.value
   const winStart = win.startSec
@@ -299,15 +313,31 @@ function drawAxes(
     ctx.fillText(formatHz(tick.value), plotX - 5, y)
   }
 
+  // SF10.3: the time ruler is drawn only above the first track and below the last track
+  // (props.showTimeAxisTop / showTimeAxisBottom); middle tracks carry none.
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  for (const tick of timeAxisTicks(timeStartSec, timeEndSec, 6)) {
-    const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
-    ctx.beginPath()
-    ctx.moveTo(x, plotY + plotH)
-    ctx.lineTo(x, plotY + plotH + 3)
-    ctx.stroke()
-    ctx.fillText(formatTimeSec(tick.value), x, plotY + plotH + 4)
+  const ticks = timeAxisTicks(timeStartSec, timeEndSec, 6)
+  if (props.showTimeAxisBottom) {
+    ctx.textBaseline = 'top'
+    for (const tick of ticks) {
+      const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
+      ctx.beginPath()
+      ctx.moveTo(x, plotY + plotH)
+      ctx.lineTo(x, plotY + plotH + 3)
+      ctx.stroke()
+      ctx.fillText(formatTimeSec(tick.value), x, plotY + plotH + 4)
+    }
+  }
+  if (props.showTimeAxisTop) {
+    ctx.textBaseline = 'bottom'
+    for (const tick of ticks) {
+      const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
+      ctx.beginPath()
+      ctx.moveTo(x, plotY)
+      ctx.lineTo(x, plotY - 3)
+      ctx.stroke()
+      ctx.fillText(formatTimeSec(tick.value), x, plotY - 4)
+    }
   }
 }
 
@@ -371,10 +401,10 @@ function plotFractions(aEvent: PointerEvent): { xFraction: number; yTopFraction:
   const canvas = canvasEl.value
   if (canvas === null) return null
   const plotW = plotColumns(canvas)
-  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - AXIS_MARGIN.top - AXIS_MARGIN.bottom)
+  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - marginTop() - marginBottom())
   return {
     xFraction: (aEvent.offsetX - AXIS_MARGIN.left) / plotW,
-    yTopFraction: (aEvent.offsetY - AXIS_MARGIN.top) / plotH,
+    yTopFraction: (aEvent.offsetY - marginTop()) / plotH,
   }
 }
 

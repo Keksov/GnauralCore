@@ -271,6 +271,8 @@
                               :seekable="canSeek"
                               :label="track.label"
                               :primary="track.primary"
+                              :show-time-axis-top="index === 0"
+                              :show-time-axis-bottom="index === spectrogramTracks.length - 1"
                               :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
                             />
