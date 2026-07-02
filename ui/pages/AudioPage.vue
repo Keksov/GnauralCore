@@ -254,7 +254,14 @@
                         {{ noSpectrogramLabel }}
                       </div>
                       <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
-                        <div class="col column audio-page__spectrogram-stack" style="min-width: 0;">
+                        <div class="col column" style="min-width: 0;">
+                          <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
+                          <div class="audio-page__spectrogram-header">
+                            <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
+                            <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
+                            <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
+                          </div>
+                          <div class="audio-page__spectrogram-stack">
                           <template v-for="(track, index) in spectrogramTracks" :key="track.key">
                             <spectrogram-view
                               :file-path="audio.displayFilePath"
@@ -280,17 +287,18 @@
                               @pointercancel="onSpectrogramDividerPointerUp"
                             />
                           </template>
-                          <!-- SF9.3: bottom handle resizes ALL tracks uniformly (SF-D20) -->
-                          <div
-                            class="audio-page__spectrogram-bottom-handle"
-                            role="separator"
-                            aria-orientation="horizontal"
-                            :aria-label="t('audio.spectrogramResizeHandle')"
-                            @pointerdown="onSpectrogramBottomPointerDown"
-                            @pointermove="onSpectrogramBottomPointerMove"
-                            @pointerup="onSpectrogramBottomPointerUp"
-                            @pointercancel="onSpectrogramBottomPointerUp"
-                          />
+                            <!-- SF9.3: bottom handle resizes ALL tracks uniformly (SF-D20) -->
+                            <div
+                              class="audio-page__spectrogram-bottom-handle"
+                              role="separator"
+                              aria-orientation="horizontal"
+                              :aria-label="t('audio.spectrogramResizeHandle')"
+                              @pointerdown="onSpectrogramBottomPointerDown"
+                              @pointermove="onSpectrogramBottomPointerMove"
+                              @pointerup="onSpectrogramBottomPointerUp"
+                              @pointercancel="onSpectrogramBottomPointerUp"
+                            />
+                          </div>
                         </div>
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
                           <spectrogram-settings-panel />
@@ -334,7 +342,13 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
-import type { SpectrogramSelection, TimeWindow } from '../composables/spectrogram-viewport'
+import {
+  fullWindow,
+  isFullWindow,
+  zoomWindow,
+  type SpectrogramSelection,
+  type TimeWindow,
+} from '../composables/spectrogram-viewport'
 import { QSpinnerHourglass, useQuasar, type QTreeNode } from 'quasar'
 import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@protocol'
 import { useRouter } from 'vue-router'
@@ -704,6 +718,29 @@ watch(() => audio.displayFilePath, () => {
 
 const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
 const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 1 }))
+
+// SF10.1: the shared time window (provide/inject) is driven from the common header above
+// the stack. Duration comes from the decoded buffer (~ worker durationSec); good enough
+// for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
+const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration ?? 0)
+const spectrogramHasView = computed(() => spectrogramShared.view.value !== null)
+const spectrogramIsFull = computed(() =>
+  spectrogramShared.view.value !== null &&
+  isFullWindow(spectrogramShared.view.value, spectrogramDuration.value),
+)
+function spectrogramZoomIn(): void {
+  const v = spectrogramShared.view.value
+  if (v === null) return
+  spectrogramShared.view.value = zoomWindow(v, 0.5, 0.5, spectrogramDuration.value)
+}
+function spectrogramZoomOut(): void {
+  const v = spectrogramShared.view.value
+  if (v === null) return
+  spectrogramShared.view.value = zoomWindow(v, 2, 0.5, spectrogramDuration.value)
+}
+function spectrogramFit(): void {
+  spectrogramShared.view.value = fullWindow(spectrogramDuration.value)
+}
 
 // SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
@@ -1139,6 +1176,15 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   border-radius: 8px;
   min-width: 320px;
   overflow: hidden;
+}
+
+/* SF10.1: common header above the whole spectrogram stack (all control buttons here). */
+.audio-page__spectrogram-header {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  gap: 4px;
+  padding: 0 4px 4px;
 }
 
 /* SF9.2: 2px mutual-resize divider between adjacent spectrogram tracks (SF-D19). */

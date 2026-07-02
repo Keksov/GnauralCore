@@ -2,9 +2,6 @@
   <div class="spectrogram-view" :style="rootStyle">
     <div v-if="primary" class="spectrogram-view__toolbar">
       <span v-if="label" class="spectrogram-view__label">{{ label }}</span>
-      <q-btn dense flat round size="sm" icon="zoom_in" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomIn')" @click="zoomIn" />
-      <q-btn dense flat round size="sm" icon="zoom_out" :disable="!hasAnalysis" :aria-label="t('audio.spectrogramZoomOut')" @click="zoomOut" />
-      <q-btn dense flat round size="sm" icon="fit_screen" :disable="!hasAnalysis || isFull" :aria-label="t('audio.spectrogramFit')" @click="resetView" />
       <q-range
         v-if="hasAnalysis"
         v-model="rangeModel"
@@ -89,7 +86,6 @@ import {
   clampWindow,
   fractionToTime,
   fullWindow,
-  isFullWindow,
   MIN_WINDOW_SEC,
   timeToFraction,
   viewportZoomTier,
@@ -167,7 +163,6 @@ const rootStyle = computed(() =>
     : {},
 )
 const duration = computed(() => spec.analysis.value?.durationSec ?? 0)
-const isFull = computed(() => isFullWindow(view.value, duration.value))
 const rangeStep = computed(() => (duration.value > 0 ? Math.max(0.001, duration.value / 1000) : 0.01))
 const rangeModel = computed({
   get: () => ({ min: view.value.startSec, max: view.value.endSec }),
@@ -342,17 +337,6 @@ function applyView(): void {
   })
 }
 
-function zoomIn(): void {
-  view.value = zoomWindow(view.value, 0.5, 0.5, duration.value)
-}
-
-function zoomOut(): void {
-  view.value = zoomWindow(view.value, 2, 0.5, duration.value)
-}
-
-function resetView(): void {
-  view.value = fullWindow(duration.value)
-}
 
 function onWheel(aEvent: WheelEvent): void {
   if (!hasAnalysis.value) return
