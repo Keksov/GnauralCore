@@ -94,7 +94,8 @@ describe("SpectrogramSession contract (U1.3)", () => {
         })
         expect(closedMsg.type).toBe("spectrogram:closed")
 
-        // after close, querying must error (no active analysis)
+        // SF7.3: close keeps the analysis WARM (LRU) so returning to the file reuses
+        // it -> querying the just-closed analysis still succeeds until it is evicted.
         const afterClose = await session.handle({
           type: "spectrogram:get-tile",
           requestId: "r-after",
@@ -104,7 +105,36 @@ describe("SpectrogramSession contract (U1.3)", () => {
           zoom: 0,
           viewBinCount: 8,
         })
-        expect(afterClose.type).toBe("spectrogram:error")
+        expect(afterClose.type).toBe("spectrogram:tile")
+      } finally {
+        await session.dispose()
+      }
+    },
+  )
+
+  test.skipIf(!canRun)(
+    "SF7.3: reopening the same file+params reuses the warm (LRU) analysis",
+    async () => {
+      const session = new SpectrogramSession({ resolveSource: async () => wavSource })
+      try {
+        const first = await session.handle({ type: "spectrogram:open", requestId: "a", window: 2048, hop: 512 })
+        expect(first.type).toBe("spectrogram:opened")
+        if (first.type !== "spectrogram:opened") return
+
+        // Client switches away -> close keeps the analysis warm.
+        await session.handle({ type: "spectrogram:close", requestId: "a-c", analysisId: first.analysis.analysisId })
+
+        // Reopen same file+params -> reuse the same analysisId (no re-decode/re-open).
+        const second = await session.handle({ type: "spectrogram:open", requestId: "b", window: 2048, hop: 512 })
+        expect(second.type).toBe("spectrogram:opened")
+        if (second.type !== "spectrogram:opened") return
+        expect(second.analysis.analysisId).toBe(first.analysis.analysisId)
+
+        // Different params -> a distinct analysis (not reused).
+        const third = await session.handle({ type: "spectrogram:open", requestId: "c", window: 1024, hop: 512 })
+        expect(third.type).toBe("spectrogram:opened")
+        if (third.type !== "spectrogram:opened") return
+        expect(third.analysis.analysisId).not.toBe(first.analysis.analysisId)
       } finally {
         await session.dispose()
       }

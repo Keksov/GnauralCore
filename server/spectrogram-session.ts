@@ -188,15 +188,35 @@ const toArea = (aAnalysisId: string, aResponse: WorkerResponse): SpectrogramArea
 const OPEN_ANALYSIS_TIMEOUT_MS = 120_000
 const GET_TILE_TIMEOUT_MS = 60_000
 
+// SF7.3: keep recently-used analyses warm (LRU) so switching back to a file reuses
+// its open worker analysis (skips the ~seconds full-file decode). Since Opt C made
+// analyses lazy (samples-only, no giant matrix), a few kept warm are affordable.
+// Bounded by count AND kept-sample bytes (whichever hits first) to avoid OOM.
+const ANALYSIS_CACHE_MAX = 4
+const ANALYSIS_CACHE_BUDGET_BYTES = 1_500_000_000
+
+interface CachedAnalysis {
+  analysisId: string
+  key: string
+  filePath: string
+  fileKind: string
+  wavHandle: SpectrogramWavHandle
+  params: SpectrogramAnalysisParams
+  info: SpectrogramAnalysisInfo
+  sampleBytes: number
+  lastUse: number
+}
+
 export class SpectrogramSession {
   private readonly resolveSource: SpectrogramSourceResolver
   private readonly manager: SpectrogramWorkerManager
   private readonly audioSource: SpectrogramAudioSource
   private readonly ownsDependencies: boolean
   // Multiple concurrent analyses per session (e.g. stereo L/R = one analysis per
-  // channel), keyed by the worker analysisId; each keeps its own source handle +
-  // params. The worker already multiplexes by analysisId; client messages carry it.
-  private readonly analyses = new Map<string, { wavHandle: SpectrogramWavHandle; params: SpectrogramAnalysisParams }>()
+  // channel), keyed by the worker analysisId, kept warm as an LRU cache (SF7.3):
+  // spectrogram:close keeps the entry alive; eviction happens on open past the caps.
+  private readonly analyses = new Map<string, CachedAnalysis>()
+  private useSeq = 0
   private queue: Promise<unknown> = Promise.resolve()
   private disposed = false
 
@@ -270,13 +290,64 @@ export class SpectrogramSession {
     await existing.wavHandle.release().catch(() => undefined)
   }
 
+  private cacheKey(aFilePath: string, aFileKind: string, aParams: SpectrogramAnalysisParams): string {
+    return `${aFilePath} ${aFileKind} ${JSON.stringify(aParams)}`
+  }
+
+  private findByKey(aKey: string): CachedAnalysis | undefined {
+    for (const entry of this.analyses.values()) {
+      if (entry.key === aKey) {
+        return entry
+      }
+    }
+    return undefined
+  }
+
+  private estimateSampleBytes(aInfo: SpectrogramAnalysisInfo): number {
+    return Math.max(0, Math.round(aInfo.durationSec * aInfo.sampleRate) * 4)
+  }
+
+  /** Evict least-recently-used analyses past the count / byte caps (never aKeepId). */
+  private async evictLru(aKeepId: string): Promise<void> {
+    const overBudget = (): boolean => {
+      let total = 0
+      for (const entry of this.analyses.values()) {
+        total += entry.sampleBytes
+      }
+      return total > ANALYSIS_CACHE_BUDGET_BYTES
+    }
+    while ((this.analyses.size > ANALYSIS_CACHE_MAX || overBudget()) && this.analyses.size > 1) {
+      let victim: CachedAnalysis | undefined
+      for (const entry of this.analyses.values()) {
+        if (entry.analysisId === aKeepId) {
+          continue
+        }
+        if (victim === undefined || entry.lastUse < victim.lastUse) {
+          victim = entry
+        }
+      }
+      if (victim === undefined) {
+        break
+      }
+      await this.closeAnalysis(victim.analysisId)
+    }
+  }
+
   private async onOpen(aMessage: SpectrogramOpenRequest): Promise<SpectrogramServerMessage> {
+    const source = await this.resolveSource(aMessage)
+    const params = pickParams(aMessage)
+    const key = this.cacheKey(source.filePath, source.fileKind, params)
+
+    // SF7.3: reuse a warm analysis for the same file+params -> skip re-decode/re-open.
+    const cached = this.findByKey(key)
+    if (cached !== undefined) {
+      cached.lastUse = ++this.useSeq
+      return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: cached.info }
+    }
+
     // Concurrent analyses allowed (e.g. stereo L/R). Each open acquires its own
     // source handle so per-analysis close/release is independent.
-    const source = await this.resolveSource(aMessage)
     const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind)
-    const params = pickParams(aMessage)
-
     const analysisId = randomUUID()
     try {
       const response = this.requireOk(
@@ -288,8 +359,20 @@ export class SpectrogramSession {
         }, OPEN_ANALYSIS_TIMEOUT_MS),
         "open-analysis",
       )
-      this.analyses.set(analysisId, { wavHandle, params })
-      return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: toAnalysisInfo(analysisId, response) }
+      const info = toAnalysisInfo(analysisId, response)
+      this.analyses.set(analysisId, {
+        analysisId,
+        key,
+        filePath: source.filePath,
+        fileKind: source.fileKind,
+        wavHandle,
+        params,
+        info,
+        sampleBytes: this.estimateSampleBytes(info),
+        lastUse: ++this.useSeq,
+      })
+      await this.evictLru(analysisId)
+      return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: info }
     } catch (error) {
       await wavHandle.release().catch(() => undefined)
       throw error
@@ -319,11 +402,23 @@ export class SpectrogramSession {
         }, OPEN_ANALYSIS_TIMEOUT_MS),
         "reconfigure (reopen)",
       )
-      this.analyses.set(analysisId, { wavHandle: existing.wavHandle, params })
+      const info = toAnalysisInfo(analysisId, response)
+      this.analyses.set(analysisId, {
+        analysisId,
+        key: this.cacheKey(existing.filePath, existing.fileKind, params),
+        filePath: existing.filePath,
+        fileKind: existing.fileKind,
+        wavHandle: existing.wavHandle,
+        params,
+        info,
+        sampleBytes: this.estimateSampleBytes(info),
+        lastUse: ++this.useSeq,
+      })
+      await this.evictLru(analysisId)
       return {
         type: "spectrogram:reconfigured",
         requestId: aMessage.requestId,
-        analysis: toAnalysisInfo(analysisId, response),
+        analysis: info,
       }
     } catch (error) {
       await existing.wavHandle.release().catch(() => undefined)
@@ -386,14 +481,21 @@ export class SpectrogramSession {
   private async onClose(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:close" }>,
   ): Promise<SpectrogramServerMessage> {
-    await this.closeAnalysis(aMessage.analysisId)
+    // SF7.3: keep the analysis WARM (LRU) instead of freeing, so returning to this
+    // file reuses it. Eviction happens on later opens past the caps; dispose frees all.
+    const entry = this.analyses.get(aMessage.analysisId)
+    if (entry !== undefined) {
+      entry.lastUse = ++this.useSeq
+    }
     return { type: "spectrogram:closed", requestId: aMessage.requestId, analysisId: aMessage.analysisId }
   }
 
   private requireAnalysis(aAnalysisId: string): string {
-    if (!this.analyses.has(aAnalysisId)) {
+    const entry = this.analyses.get(aAnalysisId)
+    if (entry === undefined) {
       throw new Error("no active analysis; send spectrogram:open first")
     }
+    entry.lastUse = ++this.useSeq
     return aAnalysisId
   }
 
