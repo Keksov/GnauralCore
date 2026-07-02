@@ -2,7 +2,8 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, test } from "bun:test"
 
-import { resolveSpectrogramWorkerExe } from "./spectrogram-bridge"
+import { resolveSpectrogramWorkerExe, type SpectrogramWorkerManager } from "./spectrogram-bridge"
+import { SpectrogramAudioSource } from "./spectrogram-audio-source"
 import { SpectrogramSession, type SpectrogramResolvedSource } from "./spectrogram-session"
 import type { SpectrogramServerMessage, SpectrogramTile } from "./protocol"
 
@@ -140,6 +141,60 @@ describe("SpectrogramSession contract (U1.3)", () => {
       }
     },
   )
+
+  test("SF11.2: identical get-tile is served from the per-analysis cache (no worker recompute)", async () => {
+    let getTileCalls = 0
+    const mockManager = {
+      send: async (aCmd: Record<string, unknown>) => {
+        if (aCmd.cmd === "open-analysis") {
+          return {
+            ok: true, sampleRate: 44100, windowSize: 2048, hopSize: 512, fftLength: 2048,
+            zeroPaddingFactor: 1, binCount: 4, frameCount: 8, durationS: 1,
+            data: "magnitude", fscale: "log", scale: "log", startHz: 0, stopHz: 22050, mode: "combined",
+          }
+        }
+        if (aCmd.cmd === "get-tile") {
+          getTileCalls += 1
+          return {
+            ok: true, frameStart: 0, frameCount: 8, emittedFrameCount: 8, zoom: 0,
+            binStart: 0, binCount: 4, data: "magnitude", fscale: "log", viewStartHz: 0, viewStopHz: 22050,
+            binFrequenciesHz: [0, 100, 200, 300], frames: [{ frameIndex: 0, timeSec: 0, bins: [1, 2, 3, 4] }],
+          }
+        }
+        return { ok: true }
+      },
+      shutdown: async () => undefined,
+    }
+    const mockSource = {
+      acquire: async () => ({ wavPath: "/fake.wav", release: async () => undefined }),
+      dispose: async () => undefined,
+    }
+    const session = new SpectrogramSession({
+      resolveSource: async () => wavSource,
+      workerManager: mockManager as unknown as SpectrogramWorkerManager,
+      audioSource: mockSource as unknown as SpectrogramAudioSource,
+    })
+    try {
+      const opened = await session.handle({ type: "spectrogram:open", requestId: "o", window: 2048, hop: 512 })
+      expect(opened.type).toBe("spectrogram:opened")
+      if (opened.type !== "spectrogram:opened") return
+      const analysisId = opened.analysis.analysisId
+      const base = { type: "spectrogram:get-tile" as const, analysisId, timeStartSec: 0, timeEndSec: 0.5, zoom: 0, viewBinCount: 4 }
+
+      const t1 = await session.handle({ ...base, requestId: "t1" })
+      const t2 = await session.handle({ ...base, requestId: "t2" })
+      expect(t1.type).toBe("spectrogram:tile")
+      expect(t2.type).toBe("spectrogram:tile")
+      // Second identical request is served from cache -> the worker computed only once.
+      expect(getTileCalls).toBe(1)
+
+      // A different view range recomputes (cache miss).
+      await session.handle({ ...base, requestId: "t3", timeStartSec: 0.5, timeEndSec: 1 })
+      expect(getTileCalls).toBe(2)
+    } finally {
+      await session.dispose()
+    }
+  })
 
   test("get-tile before open returns an error message (no worker needed)", async () => {
     const session = new SpectrogramSession({

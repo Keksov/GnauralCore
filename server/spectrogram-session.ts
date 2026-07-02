@@ -195,6 +195,11 @@ const GET_TILE_TIMEOUT_MS = 60_000
 const ANALYSIS_CACHE_MAX = 4
 const ANALYSIS_CACHE_BUDGET_BYTES = 1_500_000_000
 
+// SF11.2: cache computed tiles per warm analysis so re-fetching an already-seen view
+// (returning to a file, or re-panning) skips the worker's on-demand STFT recompute
+// (Opt C is lazy -> every get-tile recomputes otherwise). Bounded per analysis.
+const TILE_CACHE_MAX_PER_ANALYSIS = 64
+
 interface CachedAnalysis {
   analysisId: string
   key: string
@@ -205,6 +210,8 @@ interface CachedAnalysis {
   info: SpectrogramAnalysisInfo
   sampleBytes: number
   lastUse: number
+  /** SF11.2: per-analysis computed-tile cache (insertion-order LRU). */
+  tiles: Map<string, SpectrogramTile>
 }
 
 export class SpectrogramSession {
@@ -370,6 +377,7 @@ export class SpectrogramSession {
         info,
         sampleBytes: this.estimateSampleBytes(info),
         lastUse: ++this.useSeq,
+        tiles: new Map(),
       })
       await this.evictLru(analysisId)
       return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: info }
@@ -413,6 +421,7 @@ export class SpectrogramSession {
         info,
         sampleBytes: this.estimateSampleBytes(info),
         lastUse: ++this.useSeq,
+        tiles: new Map(),
       })
       await this.evictLru(analysisId)
       return {
@@ -426,10 +435,30 @@ export class SpectrogramSession {
     }
   }
 
+  private tileCacheKey(
+    aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:get-tile" }>,
+  ): string {
+    const round = (aValue: number): number => Math.round(aValue * 1e6) / 1e6
+    return `${aMessage.zoom ?? 0}|${round(aMessage.timeStartSec)}|${round(aMessage.timeEndSec)}|${aMessage.viewBinCount}`
+  }
+
   private async onGetTile(
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:get-tile" }>,
   ): Promise<SpectrogramServerMessage> {
     const analysisId = this.requireAnalysis(aMessage.analysisId)
+    const entry = this.analyses.get(analysisId)
+    const tileKey = this.tileCacheKey(aMessage)
+
+    // SF11.2: serve an already-computed tile from the per-analysis cache (skips the
+    // worker's on-demand STFT recompute) -> returning to a file / re-panning is instant.
+    const cachedTile = entry?.tiles.get(tileKey)
+    if (cachedTile !== undefined) {
+      // Refresh LRU recency (Map keeps insertion order).
+      entry!.tiles.delete(tileKey)
+      entry!.tiles.set(tileKey, cachedTile)
+      return { type: "spectrogram:tile", requestId: aMessage.requestId, tile: cachedTile }
+    }
+
     const response = this.requireOk(
       await this.manager.send({
         cmd: "get-tile",
@@ -441,7 +470,17 @@ export class SpectrogramSession {
       }, GET_TILE_TIMEOUT_MS),
       "get-tile",
     )
-    return { type: "spectrogram:tile", requestId: aMessage.requestId, tile: toTile(analysisId, response) }
+    const tile = toTile(analysisId, response)
+    if (entry !== undefined) {
+      entry.tiles.set(tileKey, tile)
+      // Bound the cache: drop the oldest entries past the cap.
+      while (entry.tiles.size > TILE_CACHE_MAX_PER_ANALYSIS) {
+        const oldest = entry.tiles.keys().next().value
+        if (oldest === undefined) break
+        entry.tiles.delete(oldest)
+      }
+    }
+    return { type: "spectrogram:tile", requestId: aMessage.requestId, tile }
   }
 
   private async onPointQuery(
