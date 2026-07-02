@@ -1,7 +1,6 @@
 <template>
   <div class="spectrogram-view" :style="rootStyle">
     <div v-if="primary" class="spectrogram-view__toolbar">
-      <span v-if="label" class="spectrogram-view__label">{{ label }}</span>
       <q-range
         v-if="hasAnalysis"
         v-model="rangeModel"
@@ -46,7 +45,8 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
-    <span v-if="!primary && label" class="spectrogram-view__label-overlay">{{ label }}</span>
+    <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
+    <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
     <div
       v-if="isPreparing"
       class="spectrogram-view__loading"
@@ -638,14 +638,7 @@ onBeforeUnmount(() => {
   padding: 4px 8px 0;
 }
 
-.spectrogram-view__label {
-  color: #e2e8f0;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 0 4px;
-}
-
-/* SF8.1: channel label for non-primary tracks (no toolbar) -- overlaid on the plot. */
+/* SF10.2: channel label overlaid on the plot's top-left (same place for every track). */
 .spectrogram-view__label-overlay {
   background: rgba(15, 23, 42, 0.5);
   border-radius: 3px;
