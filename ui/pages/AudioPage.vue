@@ -254,42 +254,32 @@
                         {{ noSpectrogramLabel }}
                       </div>
                       <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
-                        <div class="col column" style="gap: 1px; min-width: 0;">
-                          <template v-if="isSpectrogramStereo">
+                        <div class="col column audio-page__spectrogram-stack" style="min-width: 0;">
+                          <template v-for="(track, index) in spectrogramTracks" :key="track.key">
                             <spectrogram-view
                               :file-path="audio.displayFilePath"
-                              :analysis="spectrogramLeftAnalysis"
+                              :analysis="track.analysis"
                               :render="spectrogramStore.renderOptions"
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
-                              label="L"
-                              :primary="true"
-                              v-model:height="spectrogramTrackHeight"
+                              :label="track.label"
+                              :primary="track.primary"
+                              :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
                             />
-                            <spectrogram-view
-                              :file-path="audio.displayFilePath"
-                              :analysis="spectrogramRightAnalysis"
-                              :render="spectrogramStore.renderOptions"
-                              :playhead-sec="displayedPositionSec"
-                              :seekable="canSeek"
-                              label="R"
-                              :primary="false"
-                              v-model:height="spectrogramTrackHeight"
-                              @seek="handleSeek"
+                            <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
+                            <div
+                              v-if="index < spectrogramTracks.length - 1"
+                              class="audio-page__spectrogram-divider"
+                              role="separator"
+                              aria-orientation="horizontal"
+                              :aria-label="t('audio.spectrogramResizeHandle')"
+                              @pointerdown="onSpectrogramDividerPointerDown($event, index)"
+                              @pointermove="onSpectrogramDividerPointerMove"
+                              @pointerup="onSpectrogramDividerPointerUp"
+                              @pointercancel="onSpectrogramDividerPointerUp"
                             />
                           </template>
-                          <spectrogram-view
-                            v-else
-                            :file-path="audio.displayFilePath"
-                            :analysis="spectrogramStore.analysisParams"
-                            :render="spectrogramStore.renderOptions"
-                            :playhead-sec="displayedPositionSec"
-                            :seekable="canSeek"
-                            :primary="true"
-                            v-model:height="spectrogramTrackHeight"
-                            @seek="handleSeek"
-                          />
                         </div>
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
                           <spectrogram-settings-panel />
@@ -335,7 +325,7 @@
 import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import type { SpectrogramSelection, TimeWindow } from '../composables/spectrogram-viewport'
 import { QSpinnerHourglass, useQuasar, type QTreeNode } from 'quasar'
-import type { AudioFileKind, PresetTreeNode } from '@protocol'
+import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@protocol'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
@@ -347,7 +337,9 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
-const STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT = 'mindwave-audio-spectrogram-track-height'
+// SF9.2: per-track heights (array) — Audacity-style independent track heights,
+// resized by a 2px mutual divider (SF-D19) and a uniform bottom handle (SF-D20).
+const STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHTS = 'mindwave-audio-spectrogram-track-heights'
 // Audacity-like default spectrogram track height (per channel), in px (SF5.1).
 const SPECTROGRAM_TRACK_HEIGHT_DEFAULT = 260
 const SPECTROGRAM_TRACK_HEIGHT_MIN = 120
@@ -420,16 +412,27 @@ function loadStoredFilesPanelOpen(): boolean {
   }
 }
 
-function loadStoredSpectrogramTrackHeight(): number {
+function clampTrackHeight(aValue: number): number {
+  return Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(SPECTROGRAM_TRACK_HEIGHT_MAX, Math.round(aValue)))
+}
+
+function loadStoredSpectrogramTrackHeights(): number[] {
   try {
-    const raw = localStorage.getItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT)
-    const value = raw === null ? Number.NaN : Number.parseInt(raw, 10)
-    if (!Number.isFinite(value)) {
-      return SPECTROGRAM_TRACK_HEIGHT_DEFAULT
-    }
-    return Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(SPECTROGRAM_TRACK_HEIGHT_MAX, value))
+    const raw = localStorage.getItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHTS)
+    if (raw === null) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is number => typeof v === 'number' && Number.isFinite(v)).map(clampTrackHeight)
   } catch {
-    return SPECTROGRAM_TRACK_HEIGHT_DEFAULT
+    return []
+  }
+}
+
+function persistSpectrogramTrackHeights(aHeights: readonly number[]): void {
+  try {
+    localStorage.setItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHTS, JSON.stringify(aHeights))
+  } catch {
+    // Ignore storage failures and keep the in-memory heights working.
   }
 }
 
@@ -440,7 +443,9 @@ const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
-const spectrogramTrackHeight = ref(loadStoredSpectrogramTrackHeight())
+// SF9.2: independent per-track heights; length is kept in sync with the track count
+// (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
+const spectrogramTrackHeights = ref<number[]>(loadStoredSpectrogramTrackHeights())
 // SF8.1: stacked spectrogram tracks (stereo L/R) share one time window + area
 // selection so they zoom/pan/select together; reset per file so a new file starts full.
 const spectrogramShared = {
@@ -540,13 +545,9 @@ watch(filesPanelOpen, (value) => {
   }
 })
 
-watch(spectrogramTrackHeight, (value) => {
-  try {
-    localStorage.setItem(STORAGE_AUDIO_SPECTROGRAM_TRACK_HEIGHT, String(Math.round(value)))
-  } catch {
-    // Ignore storage failures and keep the in-memory height working.
-  }
-})
+watch(spectrogramTrackHeights, (value) => {
+  persistSpectrogramTrackHeights(value)
+}, { deep: true })
 
 function toggleFilesPanel(): void {
   filesPanelOpen.value = !filesPanelOpen.value
@@ -692,6 +693,73 @@ watch(() => audio.displayFilePath, () => {
 
 const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
 const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 1 }))
+
+// SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
+// stack render (each track + a divider between adjacent tracks + a bottom handle).
+interface SpectrogramTrack {
+  readonly key: string
+  readonly analysis: SpectrogramAnalysisParams
+  readonly label?: string
+  readonly primary: boolean
+}
+const spectrogramTracks = computed<SpectrogramTrack[]>(() =>
+  isSpectrogramStereo.value
+    ? [
+        { key: 'L', analysis: spectrogramLeftAnalysis.value, label: 'L', primary: true },
+        { key: 'R', analysis: spectrogramRightAnalysis.value, label: 'R', primary: false },
+      ]
+    : [{ key: 'mono', analysis: spectrogramStore.analysisParams, primary: true }],
+)
+
+// Keep the per-track heights array length in sync with the track count; new tracks get
+// the first track's height (or the Audacity default), preserving existing sizes.
+watch(() => spectrogramTracks.value.length, (aCount) => {
+  const cur = spectrogramTrackHeights.value
+  if (cur.length === aCount) return
+  const base = cur[0] ?? SPECTROGRAM_TRACK_HEIGHT_DEFAULT
+  const next: number[] = []
+  for (let i = 0; i < aCount; i += 1) next.push(clampTrackHeight(cur[i] ?? base))
+  spectrogramTrackHeights.value = next
+}, { immediate: true })
+
+// --- Track resize: 2px mutual divider (SF-D19) + uniform bottom handle (SF-D20) ---
+let dividerIndex = -1
+let dividerStartY = 0
+let dividerTopStart = 0
+let dividerBottomStart = 0
+
+function onSpectrogramDividerPointerDown(aEvent: PointerEvent, aIndex: number): void {
+  const hs = spectrogramTrackHeights.value
+  if (aIndex < 0 || aIndex + 1 >= hs.length) return
+  dividerIndex = aIndex
+  dividerStartY = aEvent.clientY
+  dividerTopStart = hs[aIndex]
+  dividerBottomStart = hs[aIndex + 1]
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+}
+
+function onSpectrogramDividerPointerMove(aEvent: PointerEvent): void {
+  if (dividerIndex < 0) return
+  const total = dividerTopStart + dividerBottomStart
+  // Drag down -> the track above grows, the one below shrinks; combined height is fixed.
+  let top = dividerTopStart + (aEvent.clientY - dividerStartY)
+  top = Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(total - SPECTROGRAM_TRACK_HEIGHT_MIN, top))
+  const next = spectrogramTrackHeights.value.slice()
+  next[dividerIndex] = Math.round(top)
+  next[dividerIndex + 1] = Math.round(total - top)
+  spectrogramTrackHeights.value = next
+}
+
+function onSpectrogramDividerPointerUp(aEvent: PointerEvent): void {
+  if (dividerIndex < 0) return
+  dividerIndex = -1
+  try {
+    ;(aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId)
+  } catch {
+    // pointer capture may already be released
+  }
+}
 
 const showEmbeddedScheduleView = computed(() => {
   return audio.displayMode === 'gnaural'
@@ -1024,6 +1092,20 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   border-radius: 8px;
   min-width: 320px;
   overflow: hidden;
+}
+
+/* SF9.2: 2px mutual-resize divider between adjacent spectrogram tracks (SF-D19). */
+.audio-page__spectrogram-divider {
+  background: rgba(148, 163, 184, 0.35);
+  cursor: ns-resize;
+  flex: 0 0 auto;
+  height: 2px;
+  touch-action: none;
+  width: 100%;
+}
+
+.audio-page__spectrogram-divider:hover {
+  background: rgba(148, 163, 184, 0.7);
 }
 
 .audio-page__files-toggle--active {

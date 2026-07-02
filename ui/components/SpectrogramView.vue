@@ -67,18 +67,6 @@
     >
       {{ specError }}
     </div>
-    <div
-      v-if="height !== undefined"
-      class="spectrogram-view__resize-handle"
-      role="separator"
-      aria-orientation="horizontal"
-      :aria-label="t('audio.spectrogramResizeHandle')"
-      title=""
-      @pointerdown="onResizePointerDown"
-      @pointermove="onResizePointerMove"
-      @pointerup="onResizePointerUp"
-      @pointercancel="onResizePointerUp"
-    />
   </div>
 </template>
 
@@ -136,7 +124,6 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { primary: true })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
-  (event: 'update:height', px: number): void
 }>()
 
 // SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
@@ -150,40 +137,8 @@ interface SpectrogramSharedState {
 const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
-const MIN_TRACK_HEIGHT = 120
-const MAX_TRACK_HEIGHT = 1200
-let resizeStartY = 0
-let resizeStartHeight = 0
-let resizing = false
-
-function onResizePointerDown(aEvent: PointerEvent): void {
-  if (props.height === undefined) return
-  resizing = true
-  resizeStartY = aEvent.clientY
-  resizeStartHeight = props.height
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
-}
-
-function onResizePointerMove(aEvent: PointerEvent): void {
-  if (!resizing) return
-  const next = Math.max(
-    MIN_TRACK_HEIGHT,
-    Math.min(MAX_TRACK_HEIGHT, resizeStartHeight + (aEvent.clientY - resizeStartY)),
-  )
-  emit('update:height', Math.round(next))
-}
-
-function onResizePointerUp(aEvent: PointerEvent): void {
-  if (!resizing) return
-  resizing = false
-  try {
-    ;(aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId)
-  } catch {
-    // pointer capture may already be released
-  }
-}
-
+// SF9: track resize (mutual divider + uniform bottom handle) now lives in the AudioPage
+// stack (SF-D19/D20); this view just takes `height` as a plain prop.
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spec = useSpectrogram()
 
@@ -742,18 +697,5 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__canvas--seekable {
   cursor: pointer;
-}
-
-.spectrogram-view__resize-handle {
-  background: rgba(148, 163, 184, 0.14);
-  cursor: ns-resize;
-  flex: 0 0 auto;
-  height: 8px;
-  touch-action: none;
-  width: 100%;
-}
-
-.spectrogram-view__resize-handle:hover {
-  background: rgba(148, 163, 184, 0.4);
 }
 </style>
