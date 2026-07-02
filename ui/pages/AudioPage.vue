@@ -247,7 +247,6 @@
                         />
                       </div>
 
-                      <div class="text-subtitle2 q-mb-sm">{{ t('audio.spectrogramTitle') }}</div>
                       <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
                         {{ audio.spectrogramError }}
                       </q-banner>
