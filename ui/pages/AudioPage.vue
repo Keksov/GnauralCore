@@ -280,6 +280,17 @@
                               @pointercancel="onSpectrogramDividerPointerUp"
                             />
                           </template>
+                          <!-- SF9.3: bottom handle resizes ALL tracks uniformly (SF-D20) -->
+                          <div
+                            class="audio-page__spectrogram-bottom-handle"
+                            role="separator"
+                            aria-orientation="horizontal"
+                            :aria-label="t('audio.spectrogramResizeHandle')"
+                            @pointerdown="onSpectrogramBottomPointerDown"
+                            @pointermove="onSpectrogramBottomPointerMove"
+                            @pointerup="onSpectrogramBottomPointerUp"
+                            @pointercancel="onSpectrogramBottomPointerUp"
+                          />
                         </div>
                         <div style="flex: 0 0 264px; overflow-y: auto; max-height: 520px;">
                           <spectrogram-settings-panel />
@@ -761,6 +772,42 @@ function onSpectrogramDividerPointerUp(aEvent: PointerEvent): void {
   }
 }
 
+// SF9.3: the bottom handle (below the last track) resizes ALL tracks by the SAME
+// amount (equal delta), unlike the divider which is mutual (SF-D20).
+let bottomResizing = false
+let bottomStartY = 0
+let bottomStartHeights: number[] = []
+
+function onSpectrogramBottomPointerDown(aEvent: PointerEvent): void {
+  if (spectrogramTrackHeights.value.length === 0) return
+  bottomResizing = true
+  bottomStartY = aEvent.clientY
+  bottomStartHeights = spectrogramTrackHeights.value.slice()
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+}
+
+function onSpectrogramBottomPointerMove(aEvent: PointerEvent): void {
+  if (!bottomResizing) return
+  // Clamp the shared delta so no track leaves [MIN, MAX] — keeps the change equal.
+  const minH = Math.min(...bottomStartHeights)
+  const maxH = Math.max(...bottomStartHeights)
+  const lo = SPECTROGRAM_TRACK_HEIGHT_MIN - minH
+  const hi = SPECTROGRAM_TRACK_HEIGHT_MAX - maxH
+  const dy = Math.max(lo, Math.min(hi, aEvent.clientY - bottomStartY))
+  spectrogramTrackHeights.value = bottomStartHeights.map((h) => Math.round(h + dy))
+}
+
+function onSpectrogramBottomPointerUp(aEvent: PointerEvent): void {
+  if (!bottomResizing) return
+  bottomResizing = false
+  try {
+    ;(aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId)
+  } catch {
+    // pointer capture may already be released
+  }
+}
+
 const showEmbeddedScheduleView = computed(() => {
   return audio.displayMode === 'gnaural'
     && !audio.gnauralScheduleLoading
@@ -1106,6 +1153,20 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 
 .audio-page__spectrogram-divider:hover {
   background: rgba(148, 163, 184, 0.7);
+}
+
+/* SF9.3: bottom handle below the last track — uniform resize of all tracks (SF-D20). */
+.audio-page__spectrogram-bottom-handle {
+  background: rgba(148, 163, 184, 0.14);
+  cursor: ns-resize;
+  flex: 0 0 auto;
+  height: 8px;
+  touch-action: none;
+  width: 100%;
+}
+
+.audio-page__spectrogram-bottom-handle:hover {
+  background: rgba(148, 163, 184, 0.4);
 }
 
 .audio-page__files-toggle--active {
