@@ -155,6 +155,22 @@ export interface TileImage {
   readonly rgba: Uint8ClampedArray
 }
 
+// SF11.6: the worker sends the bin matrix as a base64 little-endian float32 blob
+// (row-major [frame][bin]). Decode once per tile object (memoized) for rendering.
+const decodedTileBins = new WeakMap<object, Float32Array>()
+function tileBinsFloat32(aTile: SpectrogramTile): Float32Array | null {
+  const b64 = aTile.binsB64
+  if (b64 === undefined || b64 === '') return null
+  const cached = decodedTileBins.get(aTile)
+  if (cached !== undefined) return cached
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const floats = new Float32Array(bytes.buffer, 0, Math.floor(binary.length / 4))
+  decodedTileBins.set(aTile, floats)
+  return floats
+}
+
 /**
  * Render one worker tile to an RGBA image (width = emitted frames/time, height =
  * display bins/frequency, top row = highest frequency), applying the client-side
@@ -165,18 +181,22 @@ export function tileToImage(
   aOptions: Partial<SpectrogramRenderOptions> = {},
 ): TileImage {
   const opts = resolveRenderOptions(aOptions)
-  const frames = aTile.frames
-  const width = frames.length
   const height = aTile.binCount
+  // SF11.6: prefer the base64 float32 blob; fall back to frames[].bins (legacy/tests).
+  const binsF32 = tileBinsFloat32(aTile)
+  const frames = aTile.frames
+  const width = binsF32 !== null ? aTile.emittedFrameCount : frames.length
   const rgba = new Uint8ClampedArray(Math.max(0, width * height) * 4)
 
   const binFrequenciesHz = aTile.binFrequenciesHz
   for (let x = 0; x < width; x++) {
-    const bins = frames[x]?.bins ?? []
+    const bins = binsF32 === null ? (frames[x]?.bins ?? []) : null
+    const rowBase = x * height
     for (let row = 0; row < height; row++) {
       const bin = height - 1 - row // top row = highest-frequency bin
       const factor = frequencyGainFactor(binFrequenciesHz[bin] ?? 0, opts.frequencyGain)
-      const scaled = magnitudeToScaled((bins[bin] ?? 0) * factor, opts)
+      const value = binsF32 !== null ? (binsF32[rowBase + bin] ?? 0) : (bins?.[bin] ?? 0)
+      const scaled = magnitudeToScaled(value * factor, opts)
       const [r, g, b] = paletteColor(scaled, opts.palette, opts.saturation)
       const offset = (row * width + x) * 4
       rgba[offset] = r

@@ -47,10 +47,12 @@ describe("SpectrogramSession contract (U1.3)", () => {
         expect(tileMsg.type).toBe("spectrogram:tile")
         if (tileMsg.type !== "spectrogram:tile") return
         const tile: SpectrogramTile = tileMsg.tile
-        expect(tile.frames.length).toBe(tile.emittedFrameCount)
-        expect(tile.frames.length).toBeGreaterThan(0)
+        expect(tile.emittedFrameCount).toBeGreaterThan(0)
         expect(tile.binFrequenciesHz.length).toBe(tile.binCount)
-        expect(tile.frames[0]?.bins.length).toBe(tile.binCount)
+        // SF11.6: bins arrive as a base64 float32 blob, row-major [frame][bin].
+        expect(typeof tile.binsB64).toBe("string")
+        const binBytes = Buffer.from(tile.binsB64 ?? "", "base64")
+        expect(binBytes.length).toBe(tile.emittedFrameCount * tile.binCount * 4)
 
         const pointMsg = await session.handle({
           type: "spectrogram:point-query",

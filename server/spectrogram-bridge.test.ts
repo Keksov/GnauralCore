@@ -23,11 +23,6 @@ const workerExe = resolveSpectrogramWorkerExe()
 // this test is portable, but run for real wherever the exe + fixture exist.
 const canRun = existsSync(workerExe) && existsSync(FIXTURE_WAV)
 
-interface TileFrame {
-  readonly frameIndex: number
-  readonly timeSec: number
-  readonly bins: readonly number[]
-}
 
 describe("resolveSpectrogramWorkerExe precedence (WP1.1)", () => {
   const base = {
@@ -149,17 +144,18 @@ describe("spectrogram-bridge skeleton (U0.2)", () => {
 
       expect(tile.ok).toBe(true)
       expect(tile.cmd).toBe("get-tile")
-      expect(Array.isArray(tile.frames)).toBe(true)
 
-      const frames = tile.frames as TileFrame[]
       const binCount = tile.binCount as number
       const binFrequenciesHz = tile.binFrequenciesHz as number[]
+      const emittedFrameCount = tile.emittedFrameCount as number
 
-      expect(frames.length).toBe(tile.emittedFrameCount as number)
-      expect(frames.length).toBeGreaterThan(0)
+      expect(emittedFrameCount).toBeGreaterThan(0)
       expect(Array.isArray(binFrequenciesHz)).toBe(true)
       expect(binFrequenciesHz.length).toBe(binCount)
-      expect(frames[0]?.bins.length).toBe(binCount)
+      // SF11.6: bins arrive as a base64 float32 blob, row-major [frame][bin].
+      expect(typeof tile.binsB64).toBe("string")
+      const binBytes = Buffer.from(tile.binsB64 as string, "base64")
+      expect(binBytes.length).toBe(emittedFrameCount * binCount * 4)
     },
   )
 })

@@ -142,6 +142,9 @@ const toTile = (aAnalysisId: string, aResponse: WorkerResponse): SpectrogramTile
     viewStartHz: numberOf(aResponse.viewStartHz),
     viewStopHz: numberOf(aResponse.viewStopHz),
     binFrequenciesHz: numberArrayOf(aResponse.binFrequenciesHz),
+    // SF11.6: the worker sends the bin matrix as a base64 float32 blob; pass it straight
+    // through (no per-value parse/stringify). frames[] is empty (metadata only).
+    binsB64: stringOf(aResponse.binsB64),
     frames: frames.map((frame) => ({
       frameIndex: numberOf(frame.frameIndex),
       timeSec: numberOf(frame.timeSec),
