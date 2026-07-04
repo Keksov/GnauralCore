@@ -16,31 +16,53 @@
       </q-btn-dropdown>
     </div>
 
-    <div class="spectrogram-settings__group">
-      <div class="spectrogram-settings__title">{{ t('audio.spectrogramAnalysisGroup') }}</div>
-      <q-select v-model="s.window" :options="windowSizes" :label="t('audio.spectrogramWindow')" dense outlined emit-value map-options class="spectrogram-settings__field" />
-      <q-select v-model="s.zeroPaddingFactor" :options="zeroPadOptions" :label="t('audio.spectrogramZeroPad')" dense outlined emit-value map-options class="spectrogram-settings__field" />
-      <q-input v-model.number="s.hop" type="number" :label="t('audio.spectrogramHop')" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.winFunc" :options="winFuncs" :label="t('audio.spectrogramWinFunc')" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.data" :options="dataModes" :label="t('audio.spectrogramDataMode')" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.fscale" :options="fscales" :label="t('audio.spectrogramFreqScale')" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.mode" :options="channelModes" :label="t('audio.spectrogramChannelMode')" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.channel" type="number" :label="t('audio.spectrogramChannel')" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.startHz" type="number" :label="t('audio.spectrogramStartHz')" dense outlined class="spectrogram-settings__field" />
-      <q-input v-model.number="s.stopHz" type="number" :label="t('audio.spectrogramStopHz')" dense outlined class="spectrogram-settings__field" />
-    </div>
+    <!-- SF13.1: Audacity-style groups (Масштаб / Цвет / FFT-фильтр). -->
+    <div v-for="group in groups" :key="group.key" class="spectrogram-settings__group">
+      <div class="spectrogram-settings__title">{{ group.title }}</div>
 
-    <div class="spectrogram-settings__group">
-      <div class="spectrogram-settings__title">{{ t('audio.spectrogramDisplayGroup') }}</div>
-      <q-select v-model="s.scale" :options="scales" :label="t('audio.spectrogramIntensityScale')" dense outlined class="spectrogram-settings__field" />
-      <q-select v-model="s.palette" :options="palettes" :label="t('audio.spectrogramPalette')" dense outlined class="spectrogram-settings__field" />
-
-      <div v-for="slider in sliders" :key="slider.key" class="spectrogram-settings__slider">
-        <div class="spectrogram-settings__slider-label">
-          <span>{{ slider.label }}</span>
-          <span class="text-grey-7">{{ Number(s[slider.key]).toFixed(slider.decimals) }}</span>
+      <div v-for="field in group.fields" :key="field.key" class="spectrogram-settings__field">
+        <div class="spectrogram-settings__label-row">
+          <span class="spectrogram-settings__label">{{ field.label }}</span>
+          <!-- SF13.3: per-parameter help. -->
+          <q-icon
+            name="help_outline"
+            size="15px"
+            class="spectrogram-settings__help"
+            :aria-label="t('audio.spectrogramHelpFor', { field: field.label })"
+            tabindex="0"
+          >
+            <q-menu anchor="bottom right" self="top right" max-width="280px">
+              <div class="spectrogram-settings__help-text">{{ field.help }}</div>
+            </q-menu>
+          </q-icon>
         </div>
-        <q-slider v-model="s[slider.key]" :min="slider.min" :max="slider.max" :step="slider.step" dense />
+
+        <q-select
+          v-if="field.kind === 'select'"
+          v-model="sVal[field.key]"
+          :options="field.options"
+          dense outlined emit-value map-options
+          class="spectrogram-settings__control"
+        />
+        <q-input
+          v-else-if="field.kind === 'number'"
+          v-model.number="sNum[field.key]"
+          type="number"
+          dense outlined
+          class="spectrogram-settings__control"
+        />
+        <template v-else>
+          <div class="spectrogram-settings__slider-value text-grey-7">
+            {{ Number(sNum[field.key]).toFixed(field.slider!.decimals) }}
+          </div>
+          <q-slider
+            v-model="sNum[field.key]"
+            :min="field.slider!.min"
+            :max="field.slider!.max"
+            :step="field.slider!.step"
+            dense
+          />
+        </template>
       </div>
     </div>
 
@@ -71,33 +93,90 @@ import {
 const { t } = useI18n()
 const store = useSpectrogramStore()
 const s = store.settings
-
-const windowSizes = SPECTROGRAM_WINDOW_SIZES.map((value) => ({ label: String(value), value }))
-const zeroPadOptions = SPECTROGRAM_ZERO_PADDING.map((value) => ({ label: `${value}x`, value }))
-const winFuncs = [...SPECTROGRAM_WIN_FUNCS]
-const dataModes = [...SPECTROGRAM_DATA_MODES]
-const fscales = [...SPECTROGRAM_FSCALES]
-const channelModes = [...SPECTROGRAM_CHANNEL_MODES]
-const scales = [...SPECTROGRAM_SCALES]
-const palettes = [...SPECTROGRAM_PALETTES]
+// Same reactive object, loosely typed for the data-driven v-models (the field kind
+// guarantees the runtime type; TS can't narrow s[field.key] from a dynamic key).
+const sNum = s as unknown as Record<string, number>
+const sVal = s as unknown as Record<string, string | number>
 const presets = [...SPECTROGRAM_PRESETS]
 
+type SelectableKey = keyof SpectrogramSettings
+
 interface SliderSpec {
-  readonly key: keyof Pick<SpectrogramSettings, 'gain' | 'frequencyGain' | 'drange' | 'limit' | 'saturation' | 'overlap'>
-  readonly label: string
   readonly min: number
   readonly max: number
   readonly step: number
   readonly decimals: number
 }
 
-const sliders = computed<readonly SliderSpec[]>(() => [
-  { key: 'overlap', label: t('audio.spectrogramOverlap'), min: 0, max: 0.95, step: 0.05, decimals: 2 },
-  { key: 'gain', label: t('audio.spectrogramGain'), min: 0.1, max: 8, step: 0.1, decimals: 1 },
-  { key: 'frequencyGain', label: t('audio.spectrogramFrequencyGain'), min: -20, max: 20, step: 1, decimals: 0 },
-  { key: 'drange', label: t('audio.spectrogramDynamicRange'), min: 20, max: 200, step: 5, decimals: 0 },
-  { key: 'limit', label: t('audio.spectrogramLimit'), min: -60, max: 0, step: 1, decimals: 0 },
-  { key: 'saturation', label: t('audio.spectrogramSaturation'), min: -10, max: 10, step: 0.5, decimals: 1 },
+// SF13.2: enum -> localized option {label,value}. `optionsKey` is the i18n namespace
+// holding one label per enum value (e.g. audio.spectrogramWinFuncOpt.hann).
+function enumOptions(aList: readonly string[], aOptionsKey: string): { label: string; value: string }[] {
+  return aList.map((v) => ({ label: t(`audio.${aOptionsKey}.${v}`), value: v }))
+}
+function numberOptions(aList: readonly number[], aSuffix = ''): { label: string; value: number }[] {
+  return aList.map((v) => ({ label: `${v}${aSuffix}`, value: v }))
+}
+
+interface Field {
+  readonly key: SelectableKey
+  readonly kind: 'select' | 'number' | 'slider'
+  readonly label: string
+  readonly help: string
+  readonly options?: { label: string; value: string | number }[]
+  readonly slider?: SliderSpec
+}
+interface Group {
+  readonly key: string
+  readonly title: string
+  readonly fields: Field[]
+}
+
+// helpers building a field with its localized label + help.
+const sel = (key: SelectableKey, labelKey: string, options: { label: string; value: string | number }[]): Field =>
+  ({ key, kind: 'select', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), options })
+const num = (key: SelectableKey, labelKey: string): Field =>
+  ({ key, kind: 'number', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`) })
+const sld = (key: SelectableKey, labelKey: string, slider: SliderSpec): Field =>
+  ({ key, kind: 'slider', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), slider })
+
+// SF13.1 + SF13.2: grouped, localized (reactive to locale via t()).
+const groups = computed<Group[]>(() => [
+  {
+    key: 'scale',
+    title: t('audio.spectrogramGroupScale'),
+    fields: [
+      sel('fscale', 'spectrogramFreqScale', enumOptions(SPECTROGRAM_FSCALES, 'spectrogramFscaleOpt')),
+      num('startHz', 'spectrogramStartHz'),
+      num('stopHz', 'spectrogramStopHz'),
+    ],
+  },
+  {
+    key: 'color',
+    title: t('audio.spectrogramGroupColor'),
+    fields: [
+      sel('scale', 'spectrogramIntensityScale', enumOptions(SPECTROGRAM_SCALES, 'spectrogramScaleOpt')),
+      sld('gain', 'spectrogramGain', { min: 0.1, max: 8, step: 0.1, decimals: 1 }),
+      sld('drange', 'spectrogramDynamicRange', { min: 20, max: 200, step: 5, decimals: 0 }),
+      sld('limit', 'spectrogramLimit', { min: -60, max: 0, step: 1, decimals: 0 }),
+      sld('frequencyGain', 'spectrogramFrequencyGain', { min: -20, max: 20, step: 1, decimals: 0 }),
+      sld('saturation', 'spectrogramSaturation', { min: -10, max: 10, step: 0.5, decimals: 1 }),
+      sel('palette', 'spectrogramPalette', enumOptions(SPECTROGRAM_PALETTES, 'spectrogramPaletteOpt')),
+    ],
+  },
+  {
+    key: 'fft',
+    title: t('audio.spectrogramGroupFft'),
+    fields: [
+      sel('data', 'spectrogramAlgorithm', enumOptions(SPECTROGRAM_DATA_MODES, 'spectrogramDataOpt')),
+      sel('window', 'spectrogramWindow', numberOptions(SPECTROGRAM_WINDOW_SIZES)),
+      sel('winFunc', 'spectrogramWinFunc', enumOptions(SPECTROGRAM_WIN_FUNCS, 'spectrogramWinFuncOpt')),
+      sel('zeroPaddingFactor', 'spectrogramZeroPad', numberOptions(SPECTROGRAM_ZERO_PADDING, 'x')),
+      num('hop', 'spectrogramHop'),
+      sld('overlap', 'spectrogramOverlap', { min: 0, max: 0.95, step: 0.05, decimals: 2 }),
+      sel('mode', 'spectrogramChannelMode', enumOptions(SPECTROGRAM_CHANNEL_MODES, 'spectrogramModeOpt')),
+      num('channel', 'spectrogramChannel'),
+    ],
+  },
 ])
 </script>
 
@@ -105,13 +184,13 @@ const sliders = computed<readonly SliderSpec[]>(() => [
 .spectrogram-settings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .spectrogram-settings__group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .spectrogram-settings__title {
@@ -121,16 +200,43 @@ const sliders = computed<readonly SliderSpec[]>(() => [
   text-transform: uppercase;
 }
 
-.spectrogram-settings__slider {
+.spectrogram-settings__field {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.spectrogram-settings__slider-label {
+.spectrogram-settings__label-row {
+  align-items: center;
   display: flex;
   font-size: 12px;
+  gap: 4px;
   justify-content: space-between;
+}
+
+.spectrogram-settings__label {
+  min-width: 0;
+}
+
+.spectrogram-settings__help {
+  cursor: help;
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+
+.spectrogram-settings__help:hover {
+  opacity: 1;
+}
+
+.spectrogram-settings__help-text {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 10px 12px;
+}
+
+.spectrogram-settings__slider-value {
+  font-size: 12px;
+  text-align: right;
 }
 
 .spectrogram-settings__actions {
