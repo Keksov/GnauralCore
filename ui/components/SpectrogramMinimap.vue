@@ -209,31 +209,24 @@ async function openForPath(aFilePath: string | null | undefined): Promise<void> 
   }
 }
 
-let reconfiguring = false
-async function reconfigureAnalysis(): Promise<void> {
-  if (props.analysis === undefined || spec.analysis.value === null || reconfiguring) return
-  reconfiguring = true
-  try {
-    await spec.reconfigure(props.analysis)
-    applyMinimapView()
-  } catch {
-    // surfaced via spec.error
-  } finally {
-    reconfiguring = false
-  }
-}
-
 watch(() => props.filePath, (value) => {
   void openForPath(value)
 })
 
-let reconfigureTimer: ReturnType<typeof setTimeout> | null = null
+// The minimap REUSES the primary track's analysis (same analysisId via the server's
+// warm-LRU key), so it must NOT reconfigure it — reconfigure is close+reopen-with-a-new-id
+// and the track owns that lifecycle; a second reconfigure of the now-deleted id throws
+// "no open analysis to reconfigure". Instead, on a params change (e.g. a preset switch)
+// re-OPEN with the new params: findByKey reuses the track's reconfigured analysis. A
+// slightly longer debounce than the track (150ms) lets the track reconfigure first so the
+// re-open reuses it rather than creating a duplicate.
+let reopenTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => props.analysis, () => {
-  if (reconfigureTimer !== null) clearTimeout(reconfigureTimer)
-  reconfigureTimer = setTimeout(() => {
-    reconfigureTimer = null
-    void reconfigureAnalysis()
-  }, 150)
+  if (reopenTimer !== null) clearTimeout(reopenTimer)
+  reopenTimer = setTimeout(() => {
+    reopenTimer = null
+    void openForPath(props.filePath)
+  }, 300)
 }, { deep: true })
 
 watch([spec.tiles, spec.analysis], () => scheduleDraw())
@@ -333,9 +326,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
-  if (reconfigureTimer !== null) {
-    clearTimeout(reconfigureTimer)
-    reconfigureTimer = null
+  if (reopenTimer !== null) {
+    clearTimeout(reopenTimer)
+    reopenTimer = null
   }
   if (resizeObserver !== null) {
     resizeObserver.disconnect()
