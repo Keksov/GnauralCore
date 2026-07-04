@@ -166,3 +166,26 @@ describe('SpectrogramTileCache.getByTileIndex (SF2.1 binCount fallback)', () => 
     expect(resolved).toEqual([100, 101, 102])
   })
 })
+
+describe('SpectrogramTileCache.findBest (SF11.9 cross-zoom covering fallback)', () => {
+  test('returns the highest-scoring entry; null skips; none -> undefined', () => {
+    const cache = new SpectrogramTileCache<number>(8)
+    cache.set('a|z0|t0|b1', 10)
+    cache.set('a|z0|t1|b1', 30)
+    cache.set('a|z0|t2|b1', 20)
+    expect(cache.findBest((v) => v)).toBe(30)
+    expect(cache.findBest((v) => (v === 30 ? null : v))).toBe(20)
+    expect(cache.findBest(() => null)).toBeUndefined()
+  })
+
+  test('prefers the finest covering tile (smallest span) for a sub-range', () => {
+    type Tk = { readonly frameStart: number; readonly frameCount: number }
+    const cache = new SpectrogramTileCache<Tk>(8)
+    cache.set('a|z8|t0|b1', { frameStart: 0, frameCount: 10000 }) // whole clip (coarse)
+    cache.set('a|z3|t0|b1', { frameStart: 0, frameCount: 500 }) // finer, still covers [100,200)
+    cache.set('a|z0|t9|b1', { frameStart: 9000, frameCount: 256 }) // does not cover -> skipped
+    const covers = (t: Tk): number | null =>
+      t.frameStart <= 100 && t.frameStart + t.frameCount >= 200 ? -t.frameCount : null
+    expect(cache.findBest(covers)).toEqual({ frameStart: 0, frameCount: 500 })
+  })
+})

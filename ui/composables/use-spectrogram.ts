@@ -114,15 +114,31 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       viewBinCount: currentView.viewBinCount,
       tileFrames,
     })
-    const present: SpectrogramTile[] = []
+    const analysisIdLocal = analysisId
+    const present = new Set<SpectrogramTile>()
     for (const r of reqs) {
       // Exact match first; otherwise reuse any cached tile for the same
       // (zoom, tileIndex) at a different viewBinCount so already-fetched tiles keep
       // rendering across a binCount change instead of only the newest one showing.
-      const tile = cache.get(r.key) ?? cache.getByTileIndex(analysisId, r.zoom, r.tileIndex)
-      if (tile !== undefined) present.push(tile)
+      let tile = cache.get(r.key) ?? cache.getByTileIndex(analysisIdLocal, r.zoom, r.tileIndex)
+      if (tile === undefined) {
+        // B1/SF11.9 responsiveness: no exact-zoom tile yet -> fall back to a cached tile
+        // from ANOTHER zoom that fully covers this range (e.g. the whole-clip overview),
+        // rendered stretched, so zoom/pan shows instant coarse content instead of blank.
+        // Prefer the FINEST covering tile (smallest span).
+        tile = cache.findBest((t) =>
+          t.analysisId === analysisIdLocal &&
+          t.frameStart <= r.frameStart &&
+          t.frameStart + t.frameCount >= r.frameStart + r.frameCount
+            ? -t.frameCount
+            : null,
+        )
+      }
+      if (tile !== undefined) present.add(tile)
     }
-    tiles.value = present
+    // Coarse (larger span) under exact (smaller span): draw order = span DESC so the
+    // sharp exact tiles paint over any coarse fallback.
+    tiles.value = [...present].sort((a, b) => b.frameCount - a.frameCount)
   }
 
   function handleServerMessage(aMessage: SpectrogramServerMessage): void {

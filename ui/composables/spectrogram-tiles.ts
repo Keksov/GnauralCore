@@ -145,6 +145,25 @@ export class SpectrogramTileCache<T = SpectrogramTile> {
     return match === undefined ? undefined : this.get(match)
   }
 
+  /**
+   * B1/SF11.9: best cached tile by a caller-supplied score (higher wins; return null
+   * to skip). Used to fall back to a covering tile from another zoom tier so the plot
+   * shows instant coarse content during zoom/pan instead of going blank. Bumps the
+   * winner to MRU.
+   */
+  findBest(aScore: (value: T) => number | null): T | undefined {
+    let best: string | undefined
+    let bestScore = Number.NEGATIVE_INFINITY
+    for (const [key, value] of this.entries) {
+      const s = aScore(value)
+      if (s !== null && s > bestScore) {
+        bestScore = s
+        best = key
+      }
+    }
+    return best === undefined ? undefined : this.get(best)
+  }
+
   set(aKey: string, aValue: T): void {
     if (this.entries.has(aKey)) {
       this.entries.delete(aKey)
