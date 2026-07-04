@@ -21,7 +21,8 @@ export interface SpectrogramSettings {
   // worker hop is DERIVED from it (window * (1 - overlap)) in toAnalysisParams. No `hop`
   // field — it was redundant (the worker always let hop win, making overlap a no-op).
   readonly overlap: number
-  readonly channel: number
+  // SF15.2: no `channel` — the L/R split (AudioPage opens channel 0 + channel 1 as two
+  // tracks) decides the channel, overriding any panel value, so it was vestigial.
   readonly winFunc: string
   readonly data: SpectrogramDataMode
   readonly fscale: SpectrogramFScale
@@ -45,7 +46,6 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   window: 2048,
   zeroPaddingFactor: 2,
   overlap: 0.75,
-  channel: 0,
   winFunc: 'hann',
   data: 'magnitude',
   fscale: 'log',
@@ -148,7 +148,6 @@ export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
     window: num('window', base.window),
     zeroPaddingFactor: num('zeroPaddingFactor', base.zeroPaddingFactor),
     overlap: num('overlap', base.overlap),
-    channel: num('channel', base.channel),
     winFunc: typeof raw.winFunc === 'string' && SPECTROGRAM_WIN_FUNCS.includes(raw.winFunc)
       ? raw.winFunc
       : base.winFunc,
@@ -188,7 +187,8 @@ export function toAnalysisParams(aSettings: SpectrogramSettings): SpectrogramAna
     // Derive the worker hop from overlap (same formula the worker uses when hop<=0).
     hop: Math.max(1, Math.round(aSettings.window * (1 - aSettings.overlap))),
     overlap: aSettings.overlap,
-    channel: aSettings.channel,
+    // No `channel` here — the L/R split (AudioPage) sets channel 0/1 per track; mono
+    // omits it so the worker defaults to channel 0.
     winFunc: aSettings.winFunc,
     data: aSettings.data,
     fscale: aSettings.fscale,
