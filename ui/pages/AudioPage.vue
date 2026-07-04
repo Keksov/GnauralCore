@@ -311,9 +311,13 @@
                               @pointercancel="onSpectrogramBottomPointerUp"
                             />
                           </div>
-                          <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24) -->
+                          <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
+                               B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
                           <spectrogram-minimap
                             :duration-sec="spectrogramDuration"
+                            :file-path="audio.displayFilePath"
+                            :analysis="spectrogramTracks[0]?.analysis"
+                            :render="spectrogramStore.renderOptions"
                             v-model:view="spectrogramView"
                           />
                         </div>

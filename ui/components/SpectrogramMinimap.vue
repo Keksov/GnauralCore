@@ -18,25 +18,51 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { SpectrogramAnalysisParams } from '@protocol'
 
+import { useSpectrogram } from '../composables/use-spectrogram'
+import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import { formatTimeSec, timeAxisTicks } from '../composables/spectrogram-axes'
-import { clampWindow, MIN_WINDOW_SEC, type TimeWindow } from '../composables/spectrogram-viewport'
+import {
+  clampWindow,
+  MIN_WINDOW_SEC,
+  viewportZoomTier,
+  type TimeWindow,
+} from '../composables/spectrogram-viewport'
 
 // SF10.4 (SF-D24): fixed bottom minimap-overview of the whole clip with a
 // draggable/resizable visible-window handle (player-style), replacing the q-range.
 // Drag the window body to pan, its edges to zoom; click outside to recenter.
+// SF11.7/B7: also renders a low-res spectrogram thumbnail of the whole clip behind the
+// navigator (its own useSpectrogram, whole-clip view; reuses the primary track's warm
+// analysis + tile cache, so it's near-free).
 
 interface Props {
   durationSec: number
   view: TimeWindow | null
+  /** Primary-channel analysis params (matches the first track, so the warm analysis is reused). */
+  analysis?: SpectrogramAnalysisParams
+  /** File to render a thumbnail for (null = no thumbnail). */
+  filePath?: string | null
+  /** Client-side render transform for the thumbnail tiles. */
+  render?: Partial<SpectrogramRenderOptions>
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ (event: 'update:view', view: TimeWindow): void }>()
 
 const { t } = useI18n()
+const spec = useSpectrogram()
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 let renderFrameId = 0
+let offscreen: HTMLCanvasElement | null = null
+
+function getOffscreen(aWidth: number, aHeight: number): HTMLCanvasElement {
+  if (offscreen === null) offscreen = document.createElement('canvas')
+  if (offscreen.width !== aWidth) offscreen.width = aWidth
+  if (offscreen.height !== aHeight) offscreen.height = aHeight
+  return offscreen
+}
 
 const PAD = 6
 const EDGE_PX = 6
@@ -70,9 +96,36 @@ function draw(): void {
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, cssW, cssH)
 
-  // Overview track baseline.
-  ctx.fillStyle = '#1e293b'
-  ctx.fillRect(PAD, 4, cssW - PAD * 2, cssH - 18)
+  // B7: whole-clip spectrogram thumbnail behind the navigator (falls back to a plain
+  // baseline until the tiles arrive).
+  const thumbTop = 4
+  const thumbH = Math.max(1, cssH - 18)
+  const tiles = spec.tiles.value
+  const analysis = spec.analysis.value
+  if (tiles.length > 0 && analysis !== null && analysis.frameCount > 0) {
+    const d = Math.max(MIN_WINDOW_SEC, props.durationSec)
+    const secPerFrame = analysis.durationSec / analysis.frameCount
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(PAD, thumbTop, cssW - PAD * 2, thumbH)
+    ctx.clip()
+    ctx.imageSmoothingEnabled = true
+    for (const tile of tiles) {
+      const image = tileToImage(tile, props.render)
+      if (image.width === 0 || image.height === 0) continue
+      const off = getOffscreen(image.width, image.height)
+      const offCtx = off.getContext('2d')
+      if (offCtx === null) continue
+      offCtx.putImageData(new ImageData(image.rgba, image.width, image.height), 0, 0)
+      const x = xForTime(canvas, tile.frameStart * secPerFrame)
+      const w = ((tile.frameCount * secPerFrame) / d) * plotWidth(canvas)
+      ctx.drawImage(off, 0, 0, image.width, image.height, x, thumbTop, Math.ceil(w) + 1, thumbH)
+    }
+    ctx.restore()
+  } else {
+    ctx.fillStyle = '#1e293b'
+    ctx.fillRect(PAD, thumbTop, cssW - PAD * 2, thumbH)
+  }
 
   if (props.view === null || props.durationSec <= 0) return
 
@@ -119,6 +172,72 @@ function scheduleDraw(): void {
     draw()
   })
 }
+
+// B7: fetch a single whole-clip overview so the thumbnail covers the full timeline at
+// ~minimap-width columns. Fixed view -> fetched once (per file/params/width), unlike the
+// interactive tracks. Reuses the primary track's warm analysis via the server cache.
+function applyMinimapView(): void {
+  const analysis = spec.analysis.value
+  const canvas = canvasEl.value
+  if (analysis === null || canvas === null) return
+  const columns = plotWidth(canvas)
+  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - 18)
+  spec.setView({
+    timeStartSec: 0,
+    timeEndSec: analysis.durationSec,
+    zoom: viewportZoomTier(
+      { startSec: 0, endSec: analysis.durationSec },
+      analysis.durationSec,
+      analysis.frameCount,
+      columns,
+    ),
+    viewBinCount: Math.max(24, Math.min(128, plotH)),
+  })
+}
+
+async function openForPath(aFilePath: string | null | undefined): Promise<void> {
+  await spec.close()
+  if (aFilePath === null || aFilePath === undefined || aFilePath === '') {
+    scheduleDraw()
+    return
+  }
+  try {
+    await spec.open({ filePath: aFilePath, ...(props.analysis ?? { window: 2048, hop: 512 }) })
+    applyMinimapView()
+  } catch {
+    // surfaced via spec.error; the thumbnail just falls back to the baseline
+  }
+}
+
+let reconfiguring = false
+async function reconfigureAnalysis(): Promise<void> {
+  if (props.analysis === undefined || spec.analysis.value === null || reconfiguring) return
+  reconfiguring = true
+  try {
+    await spec.reconfigure(props.analysis)
+    applyMinimapView()
+  } catch {
+    // surfaced via spec.error
+  } finally {
+    reconfiguring = false
+  }
+}
+
+watch(() => props.filePath, (value) => {
+  void openForPath(value)
+})
+
+let reconfigureTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => props.analysis, () => {
+  if (reconfigureTimer !== null) clearTimeout(reconfigureTimer)
+  reconfigureTimer = setTimeout(() => {
+    reconfigureTimer = null
+    void reconfigureAnalysis()
+  }, 150)
+}, { deep: true })
+
+watch([spec.tiles, spec.analysis], () => scheduleDraw())
+watch(() => props.render, () => scheduleDraw(), { deep: true })
 
 type DragMode = 'pan' | 'resize-left' | 'resize-right'
 let dragMode: DragMode | null = null
@@ -201,18 +320,28 @@ watch(() => [props.view, props.durationSec], () => scheduleDraw(), { deep: true 
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
-    resizeObserver = new ResizeObserver(() => scheduleDraw())
+    resizeObserver = new ResizeObserver(() => {
+      // width change -> re-pick the whole-clip zoom so the thumbnail stays ~1 col/px.
+      applyMinimapView()
+      scheduleDraw()
+    })
     resizeObserver.observe(canvasEl.value)
   }
+  void openForPath(props.filePath)
   scheduleDraw()
 })
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (reconfigureTimer !== null) {
+    clearTimeout(reconfigureTimer)
+    reconfigureTimer = null
+  }
   if (resizeObserver !== null) {
     resizeObserver.disconnect()
     resizeObserver = null
   }
+  void spec.close()
 })
 </script>
 
