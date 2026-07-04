@@ -34,7 +34,7 @@ describe('capability coverage + presets (U4.3)', () => {
   test('settings expose every DU4 capability (all keys present)', () => {
     expect(Object.keys(DEFAULT_SPECTROGRAM_SETTINGS).sort()).toEqual(
       [
-        'channel', 'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'hop', 'limit',
+        'channel', 'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'limit',
         'mode', 'overlap', 'palette', 'saturation', 'scale', 'startHz', 'stopHz',
         'window', 'winFunc', 'zeroPaddingFactor',
       ].sort(),
@@ -65,7 +65,7 @@ describe('mergeStoredSettings (U4.2 persistence)', () => {
     expect(merged.fscale).toBe('mel')
     expect(merged.palette).toBe('rainbow')
     expect(merged.gain).toBe(3)
-    expect(merged.hop).toBe(DEFAULT_SPECTROGRAM_SETTINGS.hop) // untouched key keeps default
+    expect(merged.overlap).toBe(DEFAULT_SPECTROGRAM_SETTINGS.overlap) // untouched key keeps default
   })
 
   test('rejects wrong types, invalid enums and unknown keys', () => {

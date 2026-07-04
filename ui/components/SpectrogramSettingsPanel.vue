@@ -175,7 +175,8 @@ const groups = computed<Group[]>(() => [
       sel('window', 'spectrogramWindow', numberOptions(SPECTROGRAM_WINDOW_SIZES)),
       sel('winFunc', 'spectrogramWinFunc', enumOptions(SPECTROGRAM_WIN_FUNCS, 'spectrogramWinFuncOpt')),
       sel('zeroPaddingFactor', 'spectrogramZeroPad', numberOptions(SPECTROGRAM_ZERO_PADDING, 'x')),
-      num('hop', 'spectrogramHop'),
+      // SF14 (variant b): Overlap is the frame-step control; the worker hop is derived
+      // from it. (The redundant Hop field was removed.)
       sld('overlap', 'spectrogramOverlap', { min: 0, max: 0.95, step: 0.05, decimals: 2 }),
       // SF14.1: 'Channel mode' removed — it is a no-op in our per-channel architecture
       // (the worker only echoes it; the L/R split is UI-driven). SF14.2: channel = Left/Right.

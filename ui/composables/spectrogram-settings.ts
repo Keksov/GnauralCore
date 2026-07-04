@@ -17,7 +17,9 @@ export interface SpectrogramSettings {
   // analysis (reconfigure -> worker open/reconfigure)
   readonly window: number
   readonly zeroPaddingFactor: number
-  readonly hop: number
+  // SF14 (variant b): `overlap` is the frame-step control (Audacity/ffmpeg style); the
+  // worker hop is DERIVED from it (window * (1 - overlap)) in toAnalysisParams. No `hop`
+  // field — it was redundant (the worker always let hop win, making overlap a no-op).
   readonly overlap: number
   readonly channel: number
   readonly winFunc: string
@@ -42,7 +44,6 @@ export interface SpectrogramSettings {
 export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   window: 2048,
   zeroPaddingFactor: 2,
-  hop: 512,
   overlap: 0.75,
   channel: 0,
   winFunc: 'hann',
@@ -146,7 +147,6 @@ export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
   return {
     window: num('window', base.window),
     zeroPaddingFactor: num('zeroPaddingFactor', base.zeroPaddingFactor),
-    hop: num('hop', base.hop),
     overlap: num('overlap', base.overlap),
     channel: num('channel', base.channel),
     winFunc: typeof raw.winFunc === 'string' && SPECTROGRAM_WIN_FUNCS.includes(raw.winFunc)
@@ -185,7 +185,8 @@ export function toAnalysisParams(aSettings: SpectrogramSettings): SpectrogramAna
   return {
     window: aSettings.window,
     zeroPaddingFactor: aSettings.zeroPaddingFactor,
-    hop: aSettings.hop,
+    // Derive the worker hop from overlap (same formula the worker uses when hop<=0).
+    hop: Math.max(1, Math.round(aSettings.window * (1 - aSettings.overlap))),
     overlap: aSettings.overlap,
     channel: aSettings.channel,
     winFunc: aSettings.winFunc,
