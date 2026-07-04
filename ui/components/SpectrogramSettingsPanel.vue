@@ -78,7 +78,6 @@ import { useI18n } from 'vue-i18n'
 
 import { useSpectrogramStore } from '../stores/spectrogram'
 import {
-  SPECTROGRAM_CHANNEL_MODES,
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_PALETTES,
@@ -136,6 +135,11 @@ const sel = (key: SelectableKey, labelKey: string, options: { label: string; val
   ({ key, kind: 'select', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), options })
 const num = (key: SelectableKey, labelKey: string): Field =>
   ({ key, kind: 'number', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`) })
+// SF14.2: the audio channel shown as Left/Right (values 0/1) instead of a raw number.
+const channelOptions = (): { label: string; value: number }[] => [
+  { label: t('audio.spectrogramChannelLeft'), value: 0 },
+  { label: t('audio.spectrogramChannelRight'), value: 1 },
+]
 const sld = (key: SelectableKey, labelKey: string, slider: SliderSpec): Field =>
   ({ key, kind: 'slider', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), slider })
 
@@ -173,8 +177,9 @@ const groups = computed<Group[]>(() => [
       sel('zeroPaddingFactor', 'spectrogramZeroPad', numberOptions(SPECTROGRAM_ZERO_PADDING, 'x')),
       num('hop', 'spectrogramHop'),
       sld('overlap', 'spectrogramOverlap', { min: 0, max: 0.95, step: 0.05, decimals: 2 }),
-      sel('mode', 'spectrogramChannelMode', enumOptions(SPECTROGRAM_CHANNEL_MODES, 'spectrogramModeOpt')),
-      num('channel', 'spectrogramChannel'),
+      // SF14.1: 'Channel mode' removed — it is a no-op in our per-channel architecture
+      // (the worker only echoes it; the L/R split is UI-driven). SF14.2: channel = Left/Right.
+      sel('channel', 'spectrogramChannel', channelOptions()),
     ],
   },
 ])
