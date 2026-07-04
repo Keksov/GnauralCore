@@ -8,6 +8,7 @@
       :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @dblclick="onDoubleClick"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -65,6 +66,7 @@ import {
   fractionToTime,
   fullWindow,
   MIN_WINDOW_SEC,
+  panWindow,
   timeToFraction,
   viewportZoomTier,
   zoomWindow,
@@ -111,10 +113,21 @@ const emit = defineEmits<{
 // SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
 // zoom/pan/select together. AudioPage provides these reactive refs; standalone use
 // falls back to per-view internal state.
+// SF15.1: a visible frequency window as bin-axis fractions [lo, hi] in [0,1] (0 = lowest
+// freq / bottom, 1 = highest / top). Default full range {0,1}. Enables Audacity-style
+// vertical (frequency) zoom/pan. Shared so stacked stereo tracks zoom freq together.
+interface FreqWindow {
+  readonly lo: number
+  readonly hi: number
+}
+const FULL_FREQ: FreqWindow = { lo: 0, hi: 1 }
+const MIN_FREQ_SPAN = 0.02
+
 interface SpectrogramSharedState {
   readonly view: import('vue').Ref<TimeWindow | null>
   readonly selection: import('vue').Ref<SpectrogramSelection | null>
   readonly commitSeq: import('vue').Ref<number>
+  readonly freqView?: import('vue').Ref<FreqWindow | null>
 }
 const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
@@ -145,6 +158,38 @@ const view = computed<TimeWindow>({
     else internalView.value = v
   },
 })
+
+// SF15.1: shared frequency window (or per-view fallback).
+const internalFreqView = ref<FreqWindow>(FULL_FREQ)
+const freqView = computed<FreqWindow>({
+  get: () => shared?.freqView?.value ?? internalFreqView.value,
+  set: (v) => {
+    if (shared?.freqView) shared.freqView.value = v
+    else internalFreqView.value = v
+  },
+})
+
+// Zoom the freq window about an anchor (0 = bottom, 1 = top); factor<1 zooms in.
+function zoomFreq(aFactor: number, aAnchorBottom: number): void {
+  const cur = freqView.value
+  const span = Math.max(MIN_FREQ_SPAN, cur.hi - cur.lo)
+  const anchor = cur.lo + Math.min(1, Math.max(0, aAnchorBottom)) * span
+  let newSpan = Math.min(1, Math.max(MIN_FREQ_SPAN, span * aFactor))
+  let lo = anchor - Math.min(1, Math.max(0, aAnchorBottom)) * newSpan
+  if (lo < 0) lo = 0
+  if (lo + newSpan > 1) lo = 1 - newSpan
+  if (lo < 0) { lo = 0; newSpan = 1 }
+  freqView.value = { lo, hi: lo + newSpan }
+}
+// Pan the freq window by a fraction delta (clamped to [0,1]).
+function panFreq(aDelta: number): void {
+  const cur = freqView.value
+  const span = cur.hi - cur.lo
+  let lo = cur.lo + aDelta
+  if (lo < 0) lo = 0
+  if (lo + span > 1) lo = 1 - span
+  freqView.value = { lo, hi: lo + span }
+}
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
 const isPreparing = computed(() => spec.loading.value)
@@ -198,6 +243,7 @@ function draw(): void {
   const winStart = win.startSec
   const winWidth = Math.max(MIN_WINDOW_SEC, win.endSec - win.startSec)
   const secPerFrame = analysis.durationSec / analysis.frameCount
+  const fv = freqView.value
 
   // Draw the tiles (if any). Axes are drawn regardless so an analysis with no tiles
   // yet still shows the framed plot rather than a fully blank panel.
@@ -218,12 +264,16 @@ function draw(): void {
       const tileWidthSec = tile.frameCount * secPerFrame
       const x = plotX + ((tileStartSec - winStart) / winWidth) * plotW
       const w = (tileWidthSec / winWidth) * plotW
-      ctx.drawImage(off, 0, 0, image.width, image.height, x, plotY, Math.ceil(w) + 1, plotH)
+      // SF15.1: crop the tile vertically to the visible frequency window (image row 0 =
+      // highest freq, so [lo,hi] bottom-fractions map to rows [(1-hi)H, (1-lo)H]).
+      const sy = (1 - fv.hi) * image.height
+      const sh = Math.max(1, (fv.hi - fv.lo) * image.height)
+      ctx.drawImage(off, 0, sy, image.width, sh, x, plotY, Math.ceil(w) + 1, plotH)
     }
     ctx.restore()
   }
 
-  drawAxes(ctx, plotX, plotY, plotW, plotH, tiles[0]?.binFrequenciesHz ?? [], win.startSec, win.endSec)
+  drawAxes(ctx, plotX, plotY, plotW, plotH, sliceFreq(tiles[0]?.binFrequenciesHz ?? [], fv), win.startSec, win.endSec)
 
   // playhead overlay (U3.3) when the transport position is inside the window
   const playhead = props.playheadSec
@@ -339,14 +389,43 @@ function applyView(): void {
 }
 
 
+// SF15.1: Audacity-style wheel navigation (see the gesture table in the component doc):
+//   wheel / Ctrl+wheel      -> TIME zoom about the pointer
+//   Shift+wheel             -> TIME pan (scroll left/right)
+//   Alt+wheel               -> FREQUENCY zoom about the pointer
+//   Alt+Shift+wheel         -> FREQUENCY pan (scroll up/down)
 function onWheel(aEvent: WheelEvent): void {
   if (!hasAnalysis.value) return
   const canvas = canvasEl.value
   if (canvas === null) return
   const plotW = plotColumns(canvas)
-  const anchor = Math.min(1, Math.max(0, (aEvent.offsetX - AXIS_MARGIN.left) / plotW))
-  const factor = aEvent.deltaY < 0 ? 0.8 : 1.25
-  view.value = zoomWindow(view.value, factor, anchor, duration.value)
+  const plotH = Math.max(1, Math.floor(canvas.clientHeight) - marginTop() - marginBottom())
+  const xAnchor = Math.min(1, Math.max(0, (aEvent.offsetX - AXIS_MARGIN.left) / plotW))
+  const yTop = Math.min(1, Math.max(0, (aEvent.offsetY - marginTop()) / plotH))
+  const zoomIn = aEvent.deltaY < 0
+  const zoomFactor = zoomIn ? 0.8 : 1.25
+
+  if (aEvent.altKey && aEvent.shiftKey) {
+    // frequency pan: scroll up -> move to higher frequencies.
+    panFreq((zoomIn ? 1 : -1) * 0.15 * (freqView.value.hi - freqView.value.lo))
+  } else if (aEvent.altKey) {
+    // frequency zoom about the pointer (yTop 0 = top -> anchorBottom = 1 - yTop).
+    zoomFreq(zoomFactor, 1 - yTop)
+  } else if (aEvent.shiftKey) {
+    // time pan: scroll down -> later.
+    const winWidth = view.value.endSec - view.value.startSec
+    view.value = panWindow(view.value, (zoomIn ? -1 : 1) * 0.15 * winWidth, duration.value)
+  } else {
+    // time zoom about the pointer (plain wheel or Ctrl+wheel).
+    view.value = zoomWindow(view.value, zoomFactor, xAnchor, duration.value)
+  }
+}
+
+// SF15.1: double-click resets both time and frequency zoom to the full view.
+function onDoubleClick(): void {
+  suppressClick = true
+  view.value = fullWindow(duration.value)
+  freqView.value = FULL_FREQ
 }
 
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
@@ -381,6 +460,22 @@ let dragging = false
 let suppressClick = false
 
 const clamp01 = (aValue: number): number => (aValue < 0 ? 0 : aValue > 1 ? 1 : aValue)
+
+// SF15.1: the sub-range of binFrequenciesHz visible under the current freq window
+// (index 0 = lowest freq). Used to label the frequency axis for the zoomed range.
+function sliceFreq(aBinFreqs: readonly number[], aFreqView: FreqWindow): readonly number[] {
+  const n = aBinFreqs.length
+  if (n === 0 || (aFreqView.lo <= 0 && aFreqView.hi >= 1)) return aBinFreqs
+  const lo = Math.max(0, Math.floor(aFreqView.lo * (n - 1)))
+  const hi = Math.min(n - 1, Math.ceil(aFreqView.hi * (n - 1)))
+  return hi > lo ? aBinFreqs.slice(lo, hi + 1) : aBinFreqs
+}
+// SF15.1: map a plot y-fraction (0 = top) through the freq window to a full-axis
+// top-fraction (0 = highest freq), for point/area queries.
+function freqTopFraction(aYTop: number): number {
+  const fv = freqView.value
+  return (1 - fv.hi) + clamp01(aYTop) * (fv.hi - fv.lo)
+}
 
 function plotFractions(aEvent: PointerEvent): { xFraction: number; yTopFraction: number } | null {
   const canvas = canvasEl.value
@@ -441,7 +536,7 @@ function onPointerMove(aEvent: PointerEvent): void {
   if (now - lastHoverTs < 60) return // throttle point-query
   lastHoverTs = now
   const timeSec = fractionToTime(f.xFraction, view.value)
-  const freqHz = frequencyAtFraction(f.yTopFraction, spec.tiles.value[0]?.binFrequenciesHz ?? [])
+  const freqHz = frequencyAtFraction(freqTopFraction(f.yTopFraction), spec.tiles.value[0]?.binFrequenciesHz ?? [])
   void spec.pointQuery(timeSec, freqHz).then((point) => {
     if (point !== null) {
       hover.value = { timeSec: point.frameTimeSec, freqHz: point.binHz, db: point.displayDb }
@@ -467,9 +562,11 @@ function runAreaQuery(): void {
     return
   }
   const binFreqs = spec.tiles.value[0]?.binFrequenciesHz ?? []
+  // SF15.1: the selection's top fractions are plot-relative — map them through the freq
+  // window to full-axis top-fractions before the query.
   const bounds = areaQueryBounds(
-    { timeSec: sel.timeStartSec, topFraction: sel.topLo },
-    { timeSec: sel.timeEndSec, topFraction: sel.topHi },
+    { timeSec: sel.timeStartSec, topFraction: freqTopFraction(sel.topLo) },
+    { timeSec: sel.timeEndSec, topFraction: freqTopFraction(sel.topHi) },
     binFreqs,
   )
   void spec
@@ -545,6 +642,11 @@ watch(view, () => {
 
 // shared selection changed (from any track) -> redraw the rect on this track (SF8.1).
 watch(selection, () => {
+  scheduleDraw()
+}, { deep: true })
+
+// SF15.1: frequency zoom/pan changes only the vertical crop + axis -> redraw, no refetch.
+watch(freqView, () => {
   scheduleDraw()
 }, { deep: true })
 

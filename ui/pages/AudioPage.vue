@@ -529,6 +529,8 @@ const spectrogramShared = {
   view: ref<TimeWindow | null>(null),
   selection: ref<SpectrogramSelection | null>(null),
   commitSeq: ref(0),
+  // SF15.1: shared frequency window (bin-axis fractions) so stacked tracks freq-zoom together.
+  freqView: ref<{ lo: number; hi: number } | null>(null),
 }
 provide('spectrogramShared', spectrogramShared)
 const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
@@ -766,6 +768,7 @@ const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfCha
 watch(() => audio.displayFilePath, () => {
   spectrogramShared.view.value = null
   spectrogramShared.selection.value = null
+  spectrogramShared.freqView.value = null
 })
 
 const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
