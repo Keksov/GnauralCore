@@ -103,7 +103,7 @@ describe('settings mappers (U4.1)', () => {
       scale: 'log',
       gain: 2,
       frequencyGain: 10,
-      drange: 120,
+      drange: 80, // SF16.5: default Range is now Audacity's 80 dB
       limit: 0,
       saturation: 1,
       palette: 'classic',

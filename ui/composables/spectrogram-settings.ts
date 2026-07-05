@@ -39,23 +39,24 @@ export interface SpectrogramSettings {
   readonly palette: SpectrogramPalette
 }
 
-// Defaults mirror Audacity's default spectrogram settings (Scale: Logarithmic,
-// 80..4000 Hz; Gain 0 dB, Range 120 dB, HF boost 0; FFT: Frequencies/magnitude,
-// window 2048 Hann, zero-padding factor 2; colour palette).
+// SF16.5: defaults now equal Audacity 3.7.8's real defaults (SpectrogramSettings.cpp):
+// frequency scale Mel over 0..20000 Hz, dB intensity map with Gain +20 dB / Range 80 dB
+// (Audacity's punchy high-contrast look), FFT Frequencies/magnitude, window 2048 Hann,
+// zero-padding ×2, Roseus palette.
 export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   window: 2048,
   zeroPaddingFactor: 2,
   overlap: 0.75,
   winFunc: 'hann',
   data: 'magnitude',
-  fscale: 'log',
-  startHz: 80,
-  stopHz: 4000,
+  fscale: 'mel',
+  startHz: 0,
+  stopHz: 20000,
   mode: 'combined',
   scale: 'log',
-  gain: 0, // SF16.1: gain is in dB now (0 dB = neutral), matching Audacity
+  gain: 20, // dB (Audacity default Gain +20 dB)
   frequencyGain: 0,
-  drange: 120,
+  drange: 80, // dB (Audacity default Range 80 dB)
   limit: 0,
   saturation: 1,
   palette: 'roseus',
@@ -132,6 +133,8 @@ export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
   {
     name: 'ffmpeg',
     label: 'ffmpeg showspectrumpic',
+    // Explicit ffmpeg character (linear freq / sqrt intensity, full range, neutral gain) so
+    // it does NOT inherit Audacity's punchy Gain +20 / Range 80 / Mel defaults (SF16.5).
     settings: {
       ...DEFAULT_SPECTROGRAM_SETTINGS,
       window: 2048,
@@ -140,6 +143,9 @@ export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
       scale: 'sqrt',
       data: 'magnitude',
       overlap: 0,
+      startHz: 0,
+      stopHz: 20000,
+      gain: 0,
       drange: 120,
       palette: 'grayscale',
     },
