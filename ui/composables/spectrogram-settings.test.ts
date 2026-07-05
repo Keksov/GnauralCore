@@ -49,11 +49,13 @@ describe('capability coverage + presets (U4.3)', () => {
     }
   })
 
-  test('preset character: ffmpeg=lin/sqrt, audacity=log/log', () => {
+  test('preset character: ffmpeg=lin/sqrt, audacity=mel/log (SF16.5 Audacity defaults)', () => {
     expect(presetSettings('ffmpeg')?.fscale).toBe('lin')
     expect(presetSettings('ffmpeg')?.scale).toBe('sqrt')
-    expect(presetSettings('audacity')?.fscale).toBe('log')
+    expect(presetSettings('audacity')?.fscale).toBe('mel')
     expect(presetSettings('audacity')?.scale).toBe('log')
+    expect(presetSettings('audacity')?.gain).toBe(20) // Audacity default Gain +20 dB
+    expect(presetSettings('audacity')?.drange).toBe(80) // Audacity default Range 80 dB
     expect(presetSettings('audacity' as never)).not.toBeNull()
   })
 })

@@ -107,18 +107,25 @@ export interface SpectrogramPreset {
 export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
   {
     name: 'audacity',
+    // SF16.5: match Audacity 3.7.8's actual defaults (SpectrogramSettings.cpp): FFT 2048
+    // Hann ×2, frequency scale Mel over 0..20000 Hz, dB intensity map with Gain +20 dB /
+    // Range 80 dB, Roseus palette. (Gain/Range give Audacity's punchy high-contrast look;
+    // Mel + full range give its vertical distribution.)
     label: 'Audacity',
     settings: {
       ...DEFAULT_SPECTROGRAM_SETTINGS,
       window: 2048,
       zeroPaddingFactor: 2,
       winFunc: 'hann',
-      fscale: 'log',
+      fscale: 'mel',
       scale: 'log',
       data: 'magnitude',
-      startHz: 80,
-      stopHz: 4000,
-      drange: 120,
+      startHz: 0,
+      stopHz: 20000,
+      gain: 20,
+      drange: 80,
+      frequencyGain: 0,
+      limit: 0,
       palette: 'roseus',
     },
   },
