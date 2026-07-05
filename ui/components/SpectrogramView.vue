@@ -16,6 +16,35 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
+    <!-- SF16.3: right-click zoom popover — presets ×1..×16 + a live % field. -->
+    <q-menu context-menu touch-position v-model="zoomMenuOpen">
+      <div class="spectrogram-view__zoom-menu">
+        <div class="spectrogram-view__zoom-title">{{ t('audio.spectrogramZoomTitle') }}</div>
+        <div class="spectrogram-view__zoom-presets">
+          <q-btn
+            v-for="p in ZOOM_PRESETS"
+            :key="p"
+            dense flat no-caps
+            :label="'×' + p"
+            v-close-popup
+            @click="applyZoomFactor(p)"
+          />
+        </div>
+        <q-input
+          v-model.number="zoomPercentInput"
+          type="number"
+          dense outlined
+          suffix="%"
+          :min="100"
+          class="spectrogram-view__zoom-input"
+          @keyup.enter="applyZoomPercent"
+        >
+          <template #append>
+            <q-btn dense flat no-caps :label="t('audio.spectrogramZoomApply')" @click="applyZoomPercent" />
+          </template>
+        </q-input>
+      </div>
+    </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
     <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar) -->
@@ -460,6 +489,38 @@ function onKeyDown(aEvent: KeyboardEvent): void {
   aEvent.preventDefault()
 }
 
+// SF16.3: zoom preset popover (right-click). Zoom ×N shows a span of duration/N about the
+// view centre; ×1 (100%) = the whole clip. The % field shows and sets the current zoom.
+const ZOOM_PRESETS = [1, 2, 3, 4, 8, 16] as const
+const zoomMenuOpen = ref(false)
+const zoomPercentInput = ref(100)
+
+const currentZoomPercent = computed(() => {
+  const span = view.value.endSec - view.value.startSec
+  if (duration.value <= 0 || span <= 0) return 100
+  return Math.round((duration.value / span) * 100)
+})
+
+function applyZoomFactor(aFactor: number): void {
+  const dur = duration.value
+  if (dur <= 0 || aFactor <= 0) return
+  const span = Math.min(dur, Math.max(MIN_WINDOW_SEC, dur / aFactor))
+  const center = (view.value.startSec + view.value.endSec) / 2
+  const start = Math.min(Math.max(0, center - span / 2), Math.max(0, dur - span))
+  view.value = { startSec: start, endSec: start + span }
+}
+
+function applyZoomPercent(): void {
+  const pct = Math.max(100, Number(zoomPercentInput.value) || 100)
+  applyZoomFactor(pct / 100)
+  zoomMenuOpen.value = false
+}
+
+// Seed the % field with the live zoom whenever the menu opens.
+watch(zoomMenuOpen, (aOpen) => {
+  if (aOpen) zoomPercentInput.value = currentZoomPercent.value
+})
+
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
 // SF-D25: cursor tooltip position (offset within the view) + text (area result on the
 // primary track, else the hover point).
@@ -522,6 +583,7 @@ function plotFractions(aEvent: PointerEvent): { xFraction: number; yTopFraction:
 
 function onPointerDown(aEvent: PointerEvent): void {
   if (!hasAnalysis.value) return
+  if (aEvent.button !== 0) return // SF16.3: ignore right/middle button (right-click = zoom menu)
   const f = plotFractions(aEvent)
   if (f === null || f.xFraction < 0 || f.xFraction > 1 || f.yTopFraction < 0 || f.yTopFraction > 1) return
   dragStart = {
@@ -823,6 +885,32 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__canvas--seekable {
   cursor: pointer;
+}
+
+/* SF16.3: right-click zoom popover. */
+.spectrogram-view__zoom-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  padding: 10px 12px;
+}
+
+.spectrogram-view__zoom-title {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.spectrogram-view__zoom-presets {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.spectrogram-view__zoom-input {
+  margin-top: 2px;
 }
 
 /* SF16.4: the canvas is keyboard-focusable (tabindex) for Home/End/arrow nav. */

@@ -90,6 +90,8 @@
     "chartUnavailable": "Не удалось инициализировать график Gnaural.",
     "spectrogramTitle": "Спектрограмма",
     "spectrogramCanvasLabel": "Спектрограмма аудио",
+    "spectrogramZoomTitle": "Масштаб",
+    "spectrogramZoomApply": "Применить",
     "spectrogramZoomIn": "Приблизить",
     "spectrogramZoomOut": "Отдалить",
     "spectrogramFit": "Под клип",

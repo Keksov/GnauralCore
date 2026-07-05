@@ -90,6 +90,8 @@
     "chartUnavailable": "Failed to initialize the Gnaural chart.",
     "spectrogramTitle": "Spectrogram",
     "spectrogramCanvasLabel": "Audio spectrogram",
+    "spectrogramZoomTitle": "Zoom",
+    "spectrogramZoomApply": "Apply",
     "spectrogramZoomIn": "Zoom in",
     "spectrogramZoomOut": "Zoom out",
     "spectrogramFit": "Fit to clip",
