@@ -13,6 +13,9 @@ import type { SpectrogramScale, SpectrogramTile } from '@protocol'
 //   invgrayscale = Audacity "Inverse grayscale" (1 − v).
 export type SpectrogramPalette = 'roseus' | 'classic' | 'grayscale' | 'invgrayscale'
 
+/** SF17.2: canvas upscaling on high zoom — bilinear (smooth) or nearest-neighbour (sharp). */
+export type SpectrogramImageScaling = 'smooth' | 'sharp'
+
 export interface SpectrogramRenderOptions {
   readonly scale: SpectrogramScale
   /** SF16.1: overall brightness in **dB** (Audacity semantics; 0 dB = neutral). */
@@ -23,6 +26,8 @@ export interface SpectrogramRenderOptions {
   readonly limit: number
   readonly palette: SpectrogramPalette
   readonly saturation: number
+  /** SF17.2: draw-time canvas scaling mode (does not affect the pixel mapping). */
+  readonly imageScaling: SpectrogramImageScaling
 }
 
 export const DEFAULT_RENDER_OPTIONS: SpectrogramRenderOptions = {
@@ -33,6 +38,7 @@ export const DEFAULT_RENDER_OPTIONS: SpectrogramRenderOptions = {
   limit: 0,
   palette: 'roseus',
   saturation: 1,
+  imageScaling: 'smooth',
 }
 
 /** Per-bin linear factor for frequency gain: `frequencyGain` dB per decade around 1 kHz. */

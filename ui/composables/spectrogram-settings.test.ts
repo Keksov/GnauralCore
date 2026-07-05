@@ -34,7 +34,7 @@ describe('capability coverage + presets (U4.3)', () => {
   test('settings expose every DU4 capability (all keys present)', () => {
     expect(Object.keys(DEFAULT_SPECTROGRAM_SETTINGS).sort()).toEqual(
       [
-        'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'limit',
+        'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'imageScaling', 'limit',
         'mode', 'overlap', 'palette', 'saturation', 'scale', 'startHz', 'stopHz',
         'window', 'winFunc', 'zeroPaddingFactor',
       ].sort(),
@@ -107,6 +107,7 @@ describe('settings mappers (U4.1)', () => {
       limit: 0,
       saturation: 1,
       palette: 'classic',
+      imageScaling: 'smooth',
     })
   })
 

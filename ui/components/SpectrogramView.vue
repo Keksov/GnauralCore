@@ -298,7 +298,8 @@ function draw(): void {
     ctx.beginPath()
     ctx.rect(plotX, plotY, plotW, plotH)
     ctx.clip()
-    ctx.imageSmoothingEnabled = true
+    // SF17.2: sharp = nearest-neighbour (crisp pixels at high zoom); smooth = bilinear.
+    ctx.imageSmoothingEnabled = props.render?.imageScaling !== 'sharp'
     for (const tile of tiles) {
       const image = tileToImage(tile, props.render)
       if (image.width === 0 || image.height === 0) continue

@@ -99,6 +99,7 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
+  SPECTROGRAM_IMAGE_SCALINGS,
   SPECTROGRAM_PALETTES,
   SPECTROGRAM_PRESETS,
   SPECTROGRAM_SCALES,
@@ -224,6 +225,14 @@ const groups = computed<Group[]>(() => [
       // SF14.1: 'Channel mode' removed (a no-op — the L/R split is UI-driven).
       // SF15.2: 'Channel' removed too — it was overridden by the L/R split (AudioPage always
       // opens channel 0 + channel 1 as two tracks), so the field did nothing.
+    ],
+  },
+  {
+    // SF17.2/17.3: sharpness controls for high zoom.
+    key: 'sharpness',
+    title: t('audio.spectrogramGroupSharpness'),
+    fields: [
+      sel('imageScaling', 'spectrogramImageScaling', enumOptions(SPECTROGRAM_IMAGE_SCALINGS, 'spectrogramImageScalingOpt')),
     ],
   },
 ])

@@ -6,7 +6,11 @@ import type {
   SpectrogramScale,
 } from '@protocol'
 
-import type { SpectrogramPalette, SpectrogramRenderOptions } from './spectrogram-render'
+import type {
+  SpectrogramImageScaling,
+  SpectrogramPalette,
+  SpectrogramRenderOptions,
+} from './spectrogram-render'
 
 // Pure settings model for the spectrogram panel/store (U4.1): the full backend
 // capability set (DU4), split into analysis params (worker re-analysis) and render
@@ -37,6 +41,8 @@ export interface SpectrogramSettings {
   readonly limit: number
   readonly saturation: number
   readonly palette: SpectrogramPalette
+  // SF17.2: high-zoom image scaling (render-only, live).
+  readonly imageScaling: SpectrogramImageScaling
 }
 
 // SF16.5: defaults now equal Audacity 3.7.8's real defaults (SpectrogramSettings.cpp):
@@ -60,6 +66,7 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   limit: 0,
   saturation: 1,
   palette: 'roseus',
+  imageScaling: 'smooth',
 }
 
 // Full option lists (panel choices) mirroring the backend cli/worker contracts.
@@ -84,6 +91,9 @@ export const SPECTROGRAM_CHANNEL_MODES: readonly SpectrogramChannelMode[] = ['co
 export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = [
   'roseus', 'classic', 'grayscale', 'invgrayscale',
 ]
+
+// SF17.2: image scaling modes (Резкость group).
+export const SPECTROGRAM_IMAGE_SCALINGS: readonly SpectrogramImageScaling[] = ['smooth', 'sharp']
 
 // Legacy palette ids (pre-SF16.2) -> current, so stored/preset values still resolve.
 const LEGACY_PALETTES: Readonly<Record<string, SpectrogramPalette>> = {
@@ -190,6 +200,7 @@ export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
     limit: num('limit', base.limit),
     saturation: num('saturation', base.saturation),
     palette: normalizePalette(raw.palette) ?? base.palette,
+    imageScaling: pick('imageScaling', SPECTROGRAM_IMAGE_SCALINGS, base.imageScaling),
   }
 }
 
@@ -203,6 +214,7 @@ export function toRenderOptions(aSettings: SpectrogramSettings): SpectrogramRend
     limit: aSettings.limit,
     saturation: aSettings.saturation,
     palette: aSettings.palette,
+    imageScaling: aSettings.imageScaling,
   }
 }
 
