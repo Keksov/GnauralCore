@@ -18,8 +18,9 @@
     />
     <!-- SF16.3 + SF17.1: right-click zoom popover — presets ×1..×16 + a live % field. -->
     <q-menu context-menu touch-position v-model="zoomMenuOpen">
-      <!-- SF17.1: close on Esc (belt-and-suspenders over q-menu's default). -->
-      <div class="spectrogram-view__zoom-menu" @keyup.esc="zoomMenuOpen = false">
+      <!-- SF17.1: close on Esc. keydown + .stop.prevent so Escape closes ONLY this popover
+           and does not reach the global window keydown handler / any enclosing q-dialog. -->
+      <div class="spectrogram-view__zoom-menu" @keydown.esc.stop.prevent="zoomMenuOpen = false">
         <div class="spectrogram-view__zoom-header">
           <div class="spectrogram-view__zoom-title">{{ t('audio.spectrogramZoomTitle') }}</div>
           <q-btn
