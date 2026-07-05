@@ -485,9 +485,31 @@ function onDoubleClick(): void {
   freqView.value = FULL_FREQ
 }
 
-// SF16.4: Audacity-style keyboard navigation on the focused canvas.
-//   Home/End -> scroll the view to the clip start/end (keep the current span);
-//   Left/Right -> pan by ~15% of the visible span; Shift+Left/Right -> pan a full page.
+// SF16.4 + SF19.1: Audacity-style keyboard navigation on the focused canvas.
+//   Left/Right       -> move the PLAYBACK POSITION (seek) by ±1 s;
+//   Shift+Left/Right -> seek by ±5 s;
+//   Alt+Left/Right   -> pan the view by ~15% of the visible span (the old arrow behaviour);
+//   Home/End         -> scroll the view to the clip start/end (keep the current span).
+const SEEK_STEP_SEC = 1
+const SEEK_STEP_SEC_LARGE = 5
+
+// Keep the playhead visible: if a seek moves it outside the current window, pan the view
+// so it sits just inside the nearer edge (Audacity-style follow).
+function followPlayhead(aSec: number): void {
+  const win = view.value
+  const margin = (win.endSec - win.startSec) * 0.1
+  if (aSec < win.startSec) view.value = panWindow(win, aSec - margin - win.startSec, duration.value)
+  else if (aSec > win.endSec) view.value = panWindow(win, aSec + margin - win.endSec, duration.value)
+}
+
+function seekBy(aDeltaSec: number): void {
+  const dur = duration.value
+  const from = props.playheadSec ?? view.value.startSec
+  const next = Math.max(0, Math.min(dur, from + aDeltaSec))
+  emit('seek', next)
+  followPlayhead(next)
+}
+
 function onKeyDown(aEvent: KeyboardEvent): void {
   if (!hasAnalysis.value) return
   const span = view.value.endSec - view.value.startSec
@@ -500,10 +522,12 @@ function onKeyDown(aEvent: KeyboardEvent): void {
       view.value = panWindow(view.value, dur + span, dur)
       break
     case 'ArrowLeft':
-      view.value = panWindow(view.value, -(aEvent.shiftKey ? span : 0.15 * span), dur)
+      if (aEvent.altKey) view.value = panWindow(view.value, -0.15 * span, dur)
+      else seekBy(-(aEvent.shiftKey ? SEEK_STEP_SEC_LARGE : SEEK_STEP_SEC))
       break
     case 'ArrowRight':
-      view.value = panWindow(view.value, aEvent.shiftKey ? span : 0.15 * span, dur)
+      if (aEvent.altKey) view.value = panWindow(view.value, 0.15 * span, dur)
+      else seekBy(aEvent.shiftKey ? SEEK_STEP_SEC_LARGE : SEEK_STEP_SEC)
       break
     default:
       return // let other keys through unhandled
