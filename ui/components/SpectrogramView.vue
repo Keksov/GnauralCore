@@ -4,9 +4,11 @@
       ref="canvasEl"
       class="spectrogram-view__canvas"
       role="img"
+      tabindex="0"
       :aria-label="t('audio.spectrogramCanvasLabel')"
       :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
+      @keydown="onKeyDown"
       @click="onClick"
       @dblclick="onDoubleClick"
       @pointerdown="onPointerDown"
@@ -432,6 +434,32 @@ function onDoubleClick(): void {
   freqView.value = FULL_FREQ
 }
 
+// SF16.4: Audacity-style keyboard navigation on the focused canvas.
+//   Home/End -> scroll the view to the clip start/end (keep the current span);
+//   Left/Right -> pan by ~15% of the visible span; Shift+Left/Right -> pan a full page.
+function onKeyDown(aEvent: KeyboardEvent): void {
+  if (!hasAnalysis.value) return
+  const span = view.value.endSec - view.value.startSec
+  const dur = duration.value
+  switch (aEvent.key) {
+    case 'Home':
+      view.value = panWindow(view.value, -dur - span, dur)
+      break
+    case 'End':
+      view.value = panWindow(view.value, dur + span, dur)
+      break
+    case 'ArrowLeft':
+      view.value = panWindow(view.value, -(aEvent.shiftKey ? span : 0.15 * span), dur)
+      break
+    case 'ArrowRight':
+      view.value = panWindow(view.value, aEvent.shiftKey ? span : 0.15 * span, dur)
+      break
+    default:
+      return // let other keys through unhandled
+  }
+  aEvent.preventDefault()
+}
+
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
 // SF-D25: cursor tooltip position (offset within the view) + text (area result on the
 // primary track, else the hover point).
@@ -795,5 +823,15 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__canvas--seekable {
   cursor: pointer;
+}
+
+/* SF16.4: the canvas is keyboard-focusable (tabindex) for Home/End/arrow nav. */
+.spectrogram-view__canvas:focus {
+  outline: none;
+}
+
+.spectrogram-view__canvas:focus-visible {
+  outline: 1px solid rgba(148, 163, 184, 0.6);
+  outline-offset: -1px;
 }
 </style>
