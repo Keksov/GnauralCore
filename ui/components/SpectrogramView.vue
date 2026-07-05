@@ -16,10 +16,19 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
-    <!-- SF16.3: right-click zoom popover — presets ×1..×16 + a live % field. -->
+    <!-- SF16.3 + SF17.1: right-click zoom popover — presets ×1..×16 + a live % field. -->
     <q-menu context-menu touch-position v-model="zoomMenuOpen">
-      <div class="spectrogram-view__zoom-menu">
-        <div class="spectrogram-view__zoom-title">{{ t('audio.spectrogramZoomTitle') }}</div>
+      <!-- SF17.1: close on Esc (belt-and-suspenders over q-menu's default). -->
+      <div class="spectrogram-view__zoom-menu" @keyup.esc="zoomMenuOpen = false">
+        <div class="spectrogram-view__zoom-header">
+          <div class="spectrogram-view__zoom-title">{{ t('audio.spectrogramZoomTitle') }}</div>
+          <q-btn
+            dense flat round size="sm"
+            icon="close"
+            v-close-popup
+            :aria-label="t('audio.spectrogramZoomClose')"
+          />
+        </div>
         <div class="spectrogram-view__zoom-presets">
           <q-btn
             v-for="p in ZOOM_PRESETS"
@@ -34,15 +43,21 @@
           v-model.number="zoomPercentInput"
           type="number"
           dense outlined
+          autofocus
           suffix="%"
           :min="100"
           class="spectrogram-view__zoom-input"
           @keyup.enter="applyZoomPercent"
-        >
-          <template #append>
-            <q-btn dense flat no-caps :label="t('audio.spectrogramZoomApply')" @click="applyZoomPercent" />
-          </template>
-        </q-input>
+        />
+        <!-- SF17.1: Применить as an explicit full-width primary button. -->
+        <q-btn
+          class="spectrogram-view__zoom-apply"
+          unelevated
+          color="primary"
+          no-caps
+          :label="t('audio.spectrogramZoomApply')"
+          @click="applyZoomPercent"
+        />
       </div>
     </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
@@ -896,11 +911,21 @@ onBeforeUnmount(() => {
   padding: 10px 12px;
 }
 
+.spectrogram-view__zoom-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
 .spectrogram-view__zoom-title {
   font-size: 12px;
   font-weight: 600;
   opacity: 0.7;
   text-transform: uppercase;
+}
+
+.spectrogram-view__zoom-apply {
+  margin-top: 2px;
 }
 
 .spectrogram-view__zoom-presets {

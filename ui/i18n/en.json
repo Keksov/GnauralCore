@@ -92,6 +92,7 @@
     "spectrogramCanvasLabel": "Audio spectrogram",
     "spectrogramZoomTitle": "Zoom",
     "spectrogramZoomApply": "Apply",
+    "spectrogramZoomClose": "Close",
     "spectrogramZoomIn": "Zoom in",
     "spectrogramZoomOut": "Zoom out",
     "spectrogramFit": "Fit to clip",

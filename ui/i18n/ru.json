@@ -92,6 +92,7 @@
     "spectrogramCanvasLabel": "Спектрограмма аудио",
     "spectrogramZoomTitle": "Масштаб",
     "spectrogramZoomApply": "Применить",
+    "spectrogramZoomClose": "Закрыть",
     "spectrogramZoomIn": "Приблизить",
     "spectrogramZoomOut": "Отдалить",
     "spectrogramFit": "Под клип",
