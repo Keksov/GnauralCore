@@ -1,19 +1,36 @@
 <template>
   <div class="spectrogram-settings">
     <div class="spectrogram-settings__presets">
-      <q-btn-dropdown dense flat no-caps icon="tune" :label="t('audio.spectrogramPresets')" class="spectrogram-settings__field">
-        <q-list dense>
+      <!-- SF18: quick-apply dropdown (active ✓ + "modified" *) + Save as… / Manage…. -->
+      <q-btn-dropdown dense flat no-caps icon="tune" :label="presetLabel" class="spectrogram-settings__field">
+        <q-list dense style="min-width: 220px">
           <q-item
-            v-for="preset in presets"
-            :key="preset.name"
+            v-for="p in store.allPresets"
+            :key="p.id"
             clickable
             v-close-popup
-            @click="store.applyPreset(preset.name)"
+            @click="store.applyPresetById(p.id)"
           >
-            <q-item-section>{{ preset.label }}</q-item-section>
+            <q-item-section avatar style="min-width: 26px">
+              <q-icon v-if="p.id === store.activePresetId" name="check" size="18px" />
+            </q-item-section>
+            <q-item-section>{{ p.name }}</q-item-section>
+            <q-item-section side v-if="p.builtin">
+              <q-badge outline color="grey">{{ t('audio.spectrogramPresetBuiltinTag') }}</q-badge>
+            </q-item-section>
+          </q-item>
+          <q-separator />
+          <q-item clickable v-close-popup @click="onSaveAs">
+            <q-item-section avatar style="min-width: 26px"><q-icon name="save" size="18px" /></q-item-section>
+            <q-item-section>{{ t('audio.spectrogramPresetSaveAs') }}</q-item-section>
+          </q-item>
+          <q-item clickable v-close-popup @click="managerOpen = true">
+            <q-item-section avatar style="min-width: 26px"><q-icon name="settings" size="18px" /></q-item-section>
+            <q-item-section>{{ t('audio.spectrogramPresetManage') }}</q-item-section>
           </q-item>
         </q-list>
       </q-btn-dropdown>
+      <spectrogram-preset-manager v-model="managerOpen" />
     </div>
 
     <!-- SF13.1: Audacity-style groups (Масштаб / Цвет / FFT-фильтр). -->
@@ -92,17 +109,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useQuasar } from 'quasar'
 
 import { useSpectrogramStore } from '../stores/spectrogram'
+import SpectrogramPresetManager from './SpectrogramPresetManager.vue'
 import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_HIGH_ZOOM_MODES,
   SPECTROGRAM_IMAGE_SCALINGS,
   SPECTROGRAM_PALETTES,
-  SPECTROGRAM_PRESETS,
   SPECTROGRAM_SCALES,
   SPECTROGRAM_WINDOW_SIZES,
   SPECTROGRAM_WIN_FUNCS,
@@ -111,13 +129,32 @@ import {
 } from '../composables/spectrogram-settings'
 
 const { t } = useI18n()
+const $q = useQuasar()
 const store = useSpectrogramStore()
 const s = store.settings
 // Same reactive object, loosely typed for the data-driven v-models (the field kind
 // guarantees the runtime type; TS can't narrow s[field.key] from a dynamic key).
 const sNum = s as unknown as Record<string, number>
 const sVal = s as unknown as Record<string, string | number>
-const presets = [...SPECTROGRAM_PRESETS]
+
+// SF18: preset dropdown label = active preset name + "*" when settings diverge.
+const managerOpen = ref(false)
+const presetLabel = computed(() => {
+  const active = store.activePreset
+  if (active === null) return t('audio.spectrogramPresets')
+  return store.isModified ? `${active.name} *` : active.name
+})
+function onSaveAs(): void {
+  $q.dialog({
+    title: t('audio.spectrogramPresetSaveAs'),
+    message: t('audio.spectrogramPresetNamePrompt'),
+    prompt: { model: store.activePreset?.name ?? '', type: 'text' },
+    cancel: true,
+    persistent: false,
+  }).onOk((aName: string) => {
+    if (aName.trim() !== '') store.saveAsPreset(aName)
+  })
+}
 
 type SelectableKey = keyof SpectrogramSettings
 
