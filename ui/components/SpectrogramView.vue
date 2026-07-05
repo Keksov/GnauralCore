@@ -132,6 +132,9 @@ interface Props {
   analysis?: SpectrogramAnalysisParams
   /** Client-side render transform applied live on the cached linear tiles (DU5). */
   render?: Partial<SpectrogramRenderOptions>
+  /** SF17.4: per-tile FFT window override for high-zoom sharpening (0 = analysis window).
+      Fetches sharper tiles for the visible window only — no whole-track reconfigure. */
+  windowOverride?: number
   /** Current transport playback position (s); draws a playhead overlay (U3.3). */
   playheadSec?: number | null
   /** When true, clicking the plot emits `seek` with the clicked time. */
@@ -437,6 +440,8 @@ function applyView(): void {
     timeEndSec: view.value.endSec,
     zoom: viewportZoomTier(view.value, analysis.durationSec, analysis.frameCount, columns),
     viewBinCount,
+    // SF17.4: per-tile FFT window override (high-zoom sharpening; 0 = none).
+    windowOverride: props.windowOverride ?? 0,
   })
 }
 
@@ -784,6 +789,12 @@ watch(() => props.render, () => {
 // playhead position moves during playback -> redraw the overlay only (no refetch).
 watch(() => props.playheadSec, () => {
   scheduleDraw()
+})
+
+// SF17.4: high-zoom window override changed -> re-apply the view so the composable
+// refetches sharp tiles for the visible window (no reconfigure, no whole-track pass).
+watch(() => props.windowOverride, () => {
+  applyView()
 })
 
 // analysis params changed -> re-analyse the open source (reconfigure), then refetch.

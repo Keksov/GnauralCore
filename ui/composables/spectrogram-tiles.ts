@@ -30,16 +30,23 @@ export interface PlanVisibleTilesOptions {
   readonly zoom: number
   readonly viewBinCount: number
   readonly tileFrames?: number
+  /** SF17.4: per-tile FFT window override (0/undefined = analysis window). */
+  readonly windowOverride?: number
 }
 
-/** Stable cache key for a tile (analysis + zoom + tile index + display bins). */
+/**
+ * Stable cache key for a tile (analysis + zoom + tile index + display bins + SF17.4
+ * window override). The override is part of the key so sharp (override) and normal
+ * tiles for the same (zoom, index) never collide in the cache.
+ */
 export function tileKey(
   aAnalysisId: string,
   aZoom: number,
   aTileIndex: number,
   aViewBinCount: number,
+  aWindowOverride = 0,
 ): string {
-  return `${aAnalysisId}|z${aZoom}|t${aTileIndex}|b${aViewBinCount}`
+  return `${aAnalysisId}|z${aZoom}|t${aTileIndex}|b${aViewBinCount}|w${aWindowOverride}`
 }
 
 /**
@@ -89,7 +96,7 @@ export function planVisibleTiles(aOptions: PlanVisibleTilesOptions): Spectrogram
       break
     }
     requests.push({
-      key: tileKey(aOptions.analysisId, aOptions.zoom, idx, aOptions.viewBinCount),
+      key: tileKey(aOptions.analysisId, aOptions.zoom, idx, aOptions.viewBinCount, aOptions.windowOverride ?? 0),
       tileIndex: idx,
       zoom: aOptions.zoom,
       frameStart,

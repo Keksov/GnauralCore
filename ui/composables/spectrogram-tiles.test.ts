@@ -9,12 +9,15 @@ import {
 
 describe('tileKey (U2.1)', () => {
   test('is stable and distinct per analysis/zoom/index/bins', () => {
-    expect(tileKey('a', 0, 3, 256)).toBe('a|z0|t3|b256')
+    expect(tileKey('a', 0, 3, 256)).toBe('a|z0|t3|b256|w0')
     expect(tileKey('a', 0, 3, 256)).toBe(tileKey('a', 0, 3, 256))
     expect(tileKey('a', 1, 3, 256)).not.toBe(tileKey('a', 0, 3, 256))
     expect(tileKey('a', 0, 4, 256)).not.toBe(tileKey('a', 0, 3, 256))
     expect(tileKey('a', 0, 3, 128)).not.toBe(tileKey('a', 0, 3, 256))
     expect(tileKey('b', 0, 3, 256)).not.toBe(tileKey('a', 0, 3, 256))
+    // SF17.4: window override is part of the key (sharp vs normal never collide)
+    expect(tileKey('a', 0, 3, 256, 512)).toBe('a|z0|t3|b256|w512')
+    expect(tileKey('a', 0, 3, 256, 512)).not.toBe(tileKey('a', 0, 3, 256))
   })
 })
 
@@ -35,7 +38,7 @@ describe('planVisibleTiles (U2.1)', () => {
     expect(tiles[0]?.frameStart).toBe(0)
     expect(tiles[0]?.frameCount).toBe(256)
     expect(tiles[1]?.frameStart).toBe(256)
-    expect(tiles[0]?.key).toBe('a|z0|t0|b256')
+    expect(tiles[0]?.key).toBe('a|z0|t0|b256|w0')
   })
 
   test('clamps the final tile to the analysis frame count', () => {
@@ -64,13 +67,13 @@ describe('planVisibleTiles (U2.1)', () => {
     expect(z3[0]?.frameStart).toBe(0)
     expect(z3[0]?.frameCount).toBe(256 * 8)
     expect(z3[1]?.frameStart).toBe(256 * 8)
-    expect(z3[0]?.key).toBe('a|z3|t0|b256')
+    expect(z3[0]?.key).toBe('a|z3|t0|b256|w0')
   })
 
   test('carries the zoom into the requests + keys', () => {
     const tiles = planVisibleTiles({ ...base, zoom: 2, timeStartSec: 0, timeEndSec: 1 })
     expect(tiles[0]?.zoom).toBe(2)
-    expect(tiles[0]?.key).toBe('a|z2|t0|b256')
+    expect(tiles[0]?.key).toBe('a|z2|t0|b256|w0')
   })
 
   test('returns empty for an out-of-range / empty window', () => {

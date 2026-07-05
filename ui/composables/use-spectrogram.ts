@@ -38,6 +38,8 @@ export interface SpectrogramView {
   readonly timeEndSec: number
   readonly zoom: number
   readonly viewBinCount: number
+  /** SF17.4: per-tile FFT window override for high-zoom sharpening (0/undefined = none). */
+  readonly windowOverride?: number
 }
 
 export interface UseSpectrogram {
@@ -112,6 +114,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       timeEndSec: currentView.timeEndSec,
       zoom: currentView.zoom,
       viewBinCount: currentView.viewBinCount,
+      windowOverride: currentView.windowOverride ?? 0,
       tileFrames,
     })
     const analysisIdLocal = analysisId
@@ -267,9 +270,11 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       timeEndSec: view.timeEndSec,
       zoom: view.zoom,
       viewBinCount: view.viewBinCount,
+      windowOverride: view.windowOverride ?? 0,
       tileFrames,
     })
     const secPerFrame = analysis.value.durationSec / analysis.value.frameCount
+    const windowOverride = view.windowOverride ?? 0
     for (const r of reqs) {
       if (cache.has(r.key)) continue
       const requestId = nextRequestId()
@@ -282,6 +287,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
         timeEndSec: (r.frameStart + r.frameCount) * secPerFrame,
         zoom: r.zoom,
         viewBinCount: r.viewBinCount,
+        ...(windowOverride > 0 ? { windowOverride } : {}),
       })
     }
     assembleVisibleTiles()
@@ -301,7 +307,8 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       Math.abs(aA.timeStartSec - aB.timeStartSec) < 1e-6 &&
       Math.abs(aA.timeEndSec - aB.timeEndSec) < 1e-6 &&
       aA.zoom === aB.zoom &&
-      aA.viewBinCount === aB.viewBinCount
+      aA.viewBinCount === aB.viewBinCount &&
+      (aA.windowOverride ?? 0) === (aB.windowOverride ?? 0)
     )
   }
 

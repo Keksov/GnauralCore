@@ -277,6 +277,7 @@
                               :file-path="audio.displayFilePath"
                               :analysis="track.analysis"
                               :render="spectrogramStore.renderOptions"
+                              :window-override="spectrogramWindowOverride"
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
                               :label="track.label"
@@ -803,15 +804,22 @@ watch(
   },
   { immediate: true },
 )
+// SF17.4 (variant C): `smallWindow` no longer reconfigures the whole-track analysis; it is
+// applied per-tile via `spectrogramWindowOverride` (the worker serves sharper tiles for the
+// visible window only). Only `reassign` still overrides the analysis params (it is inherently
+// whole-track — reassignment scatter-writes the whole file).
 function applyHighZoom(aBase: SpectrogramAnalysisParams): SpectrogramAnalysisParams {
   const s = spectrogramStore.settings
-  if (!spectrogramHighZoomActive.value || s.highZoomMode === 'off') return aBase
-  if (s.highZoomMode === 'reassign') return { ...aBase, data: 'reassign' }
-  // smallWindow: shrink the window (better time resolution) and re-derive the hop.
-  const window = s.highZoomWindow
-  const hop = Math.max(1, Math.round(window * (1 - s.overlap)))
-  return { ...aBase, window, hop }
+  if (!spectrogramHighZoomActive.value || s.highZoomMode !== 'reassign') return aBase
+  return { ...aBase, data: 'reassign' }
 }
+
+// The per-tile FFT window override for the `smallWindow` mode (0 = none / not active).
+const spectrogramWindowOverride = computed(() =>
+  spectrogramHighZoomActive.value && spectrogramStore.settings.highZoomMode === 'smallWindow'
+    ? spectrogramStore.settings.highZoomWindow
+    : 0,
+)
 
 const spectrogramLeftAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 0 }))
 const spectrogramRightAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 1 }))
