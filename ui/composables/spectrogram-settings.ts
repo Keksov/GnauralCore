@@ -182,6 +182,34 @@ export function presetSettings(aName: SpectrogramPresetName): SpectrogramSetting
   return SPECTROGRAM_PRESETS.find((preset) => preset.name === aName)?.settings ?? null
 }
 
+// SF18: user-defined presets (saved current settings). Built-ins above stay read-only.
+export interface SpectrogramUserPreset {
+  readonly id: string
+  readonly name: string
+  readonly settings: SpectrogramSettings
+}
+
+/** Validate a parsed (untrusted) user-preset array from localStorage or an import file. */
+export function mergeStoredUserPresets(aRaw: unknown): SpectrogramUserPreset[] {
+  if (!Array.isArray(aRaw)) return []
+  const out: SpectrogramUserPreset[] = []
+  for (const item of aRaw) {
+    if (typeof item !== 'object' || item === null) continue
+    const rec = item as Record<string, unknown>
+    const id = typeof rec.id === 'string' && rec.id !== '' ? rec.id : null
+    const name = typeof rec.name === 'string' && rec.name.trim() !== '' ? rec.name.trim() : null
+    if (id === null || name === null) continue
+    out.push({ id, name, settings: mergeStoredSettings(rec.settings) })
+  }
+  return out
+}
+
+/** Value-equality across every settings key (used for the "modified" indicator). */
+export function settingsEqual(aA: SpectrogramSettings, aB: SpectrogramSettings): boolean {
+  const keys = Object.keys(DEFAULT_SPECTROGRAM_SETTINGS) as (keyof SpectrogramSettings)[]
+  return keys.every((aKey) => aA[aKey] === aB[aKey])
+}
+
 /**
  * Merge a parsed (untrusted, e.g. localStorage) value over the defaults, keeping
  * only known keys with valid types/enums. Used for settings persistence (U4.2).

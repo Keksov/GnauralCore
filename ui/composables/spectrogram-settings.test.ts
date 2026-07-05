@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   DEFAULT_SPECTROGRAM_SETTINGS,
   mergeStoredSettings,
+  mergeStoredUserPresets,
+  settingsEqual,
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
   SPECTROGRAM_PALETTES,
@@ -94,6 +96,38 @@ describe('mergeStoredSettings (U4.2 persistence)', () => {
   test('non-object input -> defaults', () => {
     expect(mergeStoredSettings(null)).toEqual(DEFAULT_SPECTROGRAM_SETTINGS)
     expect(mergeStoredSettings('x')).toEqual(DEFAULT_SPECTROGRAM_SETTINGS)
+  })
+})
+
+describe('SF18 user presets (SF-D53)', () => {
+  test('mergeStoredUserPresets keeps valid entries + normalizes their settings', () => {
+    const parsed = mergeStoredUserPresets([
+      { id: 'a', name: 'Mine', settings: { window: 4096, fscale: 'mel', bogus: 1 } },
+      { id: '', name: 'no id', settings: {} }, // dropped: empty id
+      { id: 'b', name: '   ', settings: {} }, // dropped: blank name
+      { name: 'no id key', settings: {} }, // dropped: missing id
+      'nope', // dropped: not an object
+    ])
+    expect(parsed.map((p) => p.id)).toEqual(['a'])
+    expect(parsed[0]?.name).toBe('Mine')
+    expect(parsed[0]?.settings.window).toBe(4096)
+    expect(parsed[0]?.settings.fscale).toBe('mel')
+    // unknown keys are stripped and missing keys defaulted by mergeStoredSettings
+    expect('bogus' in parsed[0]!.settings).toBe(false)
+    expect(parsed[0]?.settings.overlap).toBe(DEFAULT_SPECTROGRAM_SETTINGS.overlap)
+  })
+
+  test('mergeStoredUserPresets on non-array -> []', () => {
+    expect(mergeStoredUserPresets(null)).toEqual([])
+    expect(mergeStoredUserPresets({})).toEqual([])
+    expect(mergeStoredUserPresets('x')).toEqual([])
+  })
+
+  test('settingsEqual is value-equality across all keys', () => {
+    const a = { ...DEFAULT_SPECTROGRAM_SETTINGS }
+    expect(settingsEqual(a, { ...a })).toBe(true)
+    expect(settingsEqual(a, { ...a, gain: a.gain + 1 })).toBe(false)
+    expect(settingsEqual(a, { ...a, palette: 'classic' })).toBe(false)
   })
 })
 
