@@ -97,14 +97,56 @@ export function timeAxisTicks(
   const range = aEndSec - aStartSec
   if (range <= 0) return []
   const step = niceStep(range, aTargetTicks)
-  if (step <= 0) return []
+  return ticksAtStep(aStartSec, aEndSec, range, step)
+}
+
+function ticksAtStep(aStartSec: number, aEndSec: number, aRange: number, aStep: number): AxisTick[] {
+  if (aStep <= 0) return []
   const ticks: AxisTick[] = []
-  const firstRaw = Math.ceil(aStartSec / step - 1e-9) * step
+  const firstRaw = Math.ceil(aStartSec / aStep - 1e-9) * aStep
   const first = firstRaw === 0 ? 0 : firstRaw // normalize -0 -> 0
-  for (let v = first; v <= aEndSec + 1e-9; v += step) {
-    ticks.push({ position: (v - aStartSec) / range, value: v })
+  for (let v = first; v <= aEndSec + 1e-9; v += aStep) {
+    ticks.push({ position: (v - aStartSec) / aRange, value: v })
   }
   return ticks
+}
+
+export interface TimeAxisTicks {
+  /** Labelled major ticks at nice round seconds. */
+  readonly major: AxisTick[]
+  /** Unlabelled minor ticks subdividing each major interval (Audacity-style). */
+  readonly minor: AxisTick[]
+}
+
+/**
+ * SF16.6: Audacity-style time ruler — labelled major ticks on a nice 1/2/5 step plus
+ * shorter unlabelled minor ticks subdividing each major interval. The minor step is
+ * chosen so it lands on nice values (major 1×10^k → 5 minors, 2×10^k → 4, 5×10^k → 5).
+ * Minor ticks coinciding with a major are dropped.
+ */
+export function timeAxisTicksWithMinor(
+  aStartSec: number,
+  aEndSec: number,
+  aTargetMajor = 6,
+): TimeAxisTicks {
+  const range = aEndSec - aStartSec
+  if (range <= 0) return { major: [], minor: [] }
+  const majorStep = niceStep(range, aTargetMajor)
+  if (majorStep <= 0) return { major: [], minor: [] }
+  const major = ticksAtStep(aStartSec, aEndSec, range, majorStep)
+
+  const magnitude = Math.pow(10, Math.floor(Math.log10(majorStep) + 1e-9))
+  const lead = Math.round(majorStep / magnitude) // 1, 2 or 5
+  const subdivisions = lead === 2 ? 4 : 5 // 1->0.2, 2->0.5, 5->1.0 (all nice)
+  const minorStep = majorStep / subdivisions
+
+  const minor: AxisTick[] = []
+  for (const tick of ticksAtStep(aStartSec, aEndSec, range, minorStep)) {
+    // drop minors that land on a major boundary
+    const onMajor = Math.abs(tick.value / majorStep - Math.round(tick.value / majorStep)) < 1e-6
+    if (!onMajor) minor.push(tick)
+  }
+  return { major, minor }
 }
 
 /** Compact frequency label, e.g. 440 -> "440", 4400 -> "4.4k", 12000 -> "12k". */

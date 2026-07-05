@@ -60,7 +60,7 @@ import {
   formatTimeSec,
   frequencyAtFraction,
   frequencyAxisTicks,
-  timeAxisTicks,
+  timeAxisTicksWithMinor,
 } from '../composables/spectrogram-axes'
 import {
   fractionToTime,
@@ -336,30 +336,34 @@ function drawAxes(
 
   // SF10.3: the time ruler is drawn only above the first track and below the last track
   // (props.showTimeAxisTop / showTimeAxisBottom); middle tracks carry none.
+  // SF16.6: Audacity-style ruler — denser labelled majors (~1 per 90px) + short minor ticks.
   ctx.textAlign = 'center'
-  const ticks = timeAxisTicks(timeStartSec, timeEndSec, 6)
-  if (props.showTimeAxisBottom) {
-    ctx.textBaseline = 'top'
-    for (const tick of ticks) {
-      const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
+  const targetMajor = Math.max(4, Math.min(14, Math.round(plotW / 90)))
+  const { major, minor } = timeAxisTicksWithMinor(timeStartSec, timeEndSec, targetMajor)
+  const tickX = (position: number): number =>
+    Math.min(plotX + plotW - 1, Math.max(plotX, plotX + position * plotW))
+  const drawTimeRuler = (edgeY: number, dir: number, baseline: CanvasTextBaseline): void => {
+    // minor ticks (short, unlabelled)
+    for (const tick of minor) {
+      const x = tickX(tick.position)
       ctx.beginPath()
-      ctx.moveTo(x, plotY + plotH)
-      ctx.lineTo(x, plotY + plotH + 3)
+      ctx.moveTo(x, edgeY)
+      ctx.lineTo(x, edgeY + dir * 2)
       ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value), x, plotY + plotH + 4)
+    }
+    // major ticks (long) + labels
+    ctx.textBaseline = baseline
+    for (const tick of major) {
+      const x = tickX(tick.position)
+      ctx.beginPath()
+      ctx.moveTo(x, edgeY)
+      ctx.lineTo(x, edgeY + dir * 4)
+      ctx.stroke()
+      ctx.fillText(formatTimeSec(tick.value), x, edgeY + dir * 5)
     }
   }
-  if (props.showTimeAxisTop) {
-    ctx.textBaseline = 'bottom'
-    for (const tick of ticks) {
-      const x = Math.min(plotX + plotW - 1, Math.max(plotX, plotX + tick.position * plotW))
-      ctx.beginPath()
-      ctx.moveTo(x, plotY)
-      ctx.lineTo(x, plotY - 3)
-      ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value), x, plotY - 4)
-    }
-  }
+  if (props.showTimeAxisBottom) drawTimeRuler(plotY + plotH, 1, 'top')
+  if (props.showTimeAxisTop) drawTimeRuler(plotY, -1, 'bottom')
 }
 
 function scheduleDraw(): void {

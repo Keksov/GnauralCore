@@ -8,6 +8,7 @@ import {
   frequencyAxisTicks,
   niceStep,
   timeAxisTicks,
+  timeAxisTicksWithMinor,
 } from './spectrogram-axes'
 
 describe('frequencyAxisTicks (U3.1)', () => {
@@ -70,6 +71,27 @@ describe('niceStep + timeAxisTicks (U3.1)', () => {
 
   test('empty/degenerate range -> no ticks', () => {
     expect(timeAxisTicks(5, 5, 6)).toEqual([])
+  })
+})
+
+describe('timeAxisTicksWithMinor (SF16.6 Audacity ruler)', () => {
+  test('majors match timeAxisTicks; minors subdivide without overlapping majors', () => {
+    const { major, minor } = timeAxisTicksWithMinor(0, 10, 6)
+    // major step = niceStep(10,6) = 2 -> [0,2,4,6,8,10]
+    expect(major.map((t) => t.value)).toEqual([0, 2, 4, 6, 8, 10])
+    // step 2 (lead 2) -> 4 subdivisions -> minor step 0.5; minors exclude the majors
+    expect(minor.length).toBeGreaterThan(0)
+    for (const m of minor) {
+      expect(major.some((mj) => Math.abs(mj.value - m.value) < 1e-6)).toBe(false)
+    }
+    // a representative minor value (0.5) is present
+    expect(minor.some((m) => Math.abs(m.value - 0.5) < 1e-6)).toBe(true)
+  })
+
+  test('minor positions stay within [0,1]; degenerate range -> empty', () => {
+    const { minor } = timeAxisTicksWithMinor(3, 9, 6)
+    expect(minor.every((t) => t.position >= 0 && t.position <= 1)).toBe(true)
+    expect(timeAxisTicksWithMinor(5, 5, 6)).toEqual({ major: [], minor: [] })
   })
 })
 
