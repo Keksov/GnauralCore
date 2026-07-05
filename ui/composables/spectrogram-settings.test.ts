@@ -37,6 +37,7 @@ describe('capability coverage + presets (U4.3)', () => {
         'data', 'drange', 'frequencyGain', 'fscale', 'gain', 'imageScaling', 'limit',
         'mode', 'overlap', 'palette', 'saturation', 'scale', 'startHz', 'stopHz',
         'window', 'winFunc', 'zeroPaddingFactor',
+        'highZoomMode', 'highZoomThreshold', 'highZoomWindow',
       ].sort(),
     )
   })

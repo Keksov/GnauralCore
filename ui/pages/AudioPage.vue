@@ -771,13 +771,51 @@ watch(() => audio.displayFilePath, () => {
   spectrogramShared.freqView.value = null
 })
 
-const spectrogramLeftAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 0 }))
-const spectrogramRightAnalysis = computed(() => ({ ...spectrogramStore.analysisParams, channel: 1 }))
-
 // SF10.1: the shared time window (provide/inject) is driven from the common header above
 // the stack. Duration comes from the decoded buffer (~ worker durationSec); good enough
 // for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
 const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration ?? 0)
+
+// SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
+// re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data
+// mode for sharper time detail; changing these params re-analyses via the composable.
+const spectrogramZoomFactor = computed(() => {
+  const v = spectrogramShared.view.value
+  const dur = spectrogramDuration.value
+  if (v === null || dur <= 0) return 1
+  const span = v.endSec - v.startSec
+  return span > 0 ? dur / span : 1
+})
+const spectrogramHighZoomActive = ref(false)
+watch(
+  () => [
+    spectrogramZoomFactor.value,
+    spectrogramStore.settings.highZoomMode,
+    spectrogramStore.settings.highZoomThreshold,
+  ] as const,
+  ([zoom, mode, threshold]) => {
+    if (mode === 'off') {
+      spectrogramHighZoomActive.value = false
+      return
+    }
+    if (!spectrogramHighZoomActive.value && zoom >= threshold) spectrogramHighZoomActive.value = true
+    else if (spectrogramHighZoomActive.value && zoom < threshold * 0.75) spectrogramHighZoomActive.value = false
+  },
+  { immediate: true },
+)
+function applyHighZoom(aBase: SpectrogramAnalysisParams): SpectrogramAnalysisParams {
+  const s = spectrogramStore.settings
+  if (!spectrogramHighZoomActive.value || s.highZoomMode === 'off') return aBase
+  if (s.highZoomMode === 'reassign') return { ...aBase, data: 'reassign' }
+  // smallWindow: shrink the window (better time resolution) and re-derive the hop.
+  const window = s.highZoomWindow
+  const hop = Math.max(1, Math.round(window * (1 - s.overlap)))
+  return { ...aBase, window, hop }
+}
+
+const spectrogramLeftAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 0 }))
+const spectrogramRightAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 1 }))
+
 const spectrogramHasView = computed(() => spectrogramShared.view.value !== null)
 // v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
 const spectrogramView = computed<TimeWindow | null>({
@@ -828,7 +866,7 @@ const spectrogramTracks = computed<SpectrogramTrack[]>(() =>
         { key: 'L', analysis: spectrogramLeftAnalysis.value, label: 'L', primary: true },
         { key: 'R', analysis: spectrogramRightAnalysis.value, label: 'R', primary: false },
       ]
-    : [{ key: 'mono', analysis: spectrogramStore.analysisParams, primary: true }],
+    : [{ key: 'mono', analysis: applyHighZoom(spectrogramStore.analysisParams), primary: true }],
 )
 
 // Keep the per-track heights array length in sync with the track count; new tracks get

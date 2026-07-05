@@ -99,6 +99,7 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
+  SPECTROGRAM_HIGH_ZOOM_MODES,
   SPECTROGRAM_IMAGE_SCALINGS,
   SPECTROGRAM_PALETTES,
   SPECTROGRAM_PRESETS,
@@ -233,6 +234,9 @@ const groups = computed<Group[]>(() => [
     title: t('audio.spectrogramGroupSharpness'),
     fields: [
       sel('imageScaling', 'spectrogramImageScaling', enumOptions(SPECTROGRAM_IMAGE_SCALINGS, 'spectrogramImageScalingOpt')),
+      sel('highZoomMode', 'spectrogramHighZoomMode', enumOptions(SPECTROGRAM_HIGH_ZOOM_MODES, 'spectrogramHighZoomModeOpt')),
+      spn('highZoomThreshold', 'spectrogramHighZoomThreshold', { min: 2, max: 64, step: 1, decimals: 0 }),
+      sel('highZoomWindow', 'spectrogramHighZoomWindow', numberOptions(SPECTROGRAM_WINDOW_SIZES)),
     ],
   },
 ])

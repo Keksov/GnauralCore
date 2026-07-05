@@ -43,7 +43,15 @@ export interface SpectrogramSettings {
   readonly palette: SpectrogramPalette
   // SF17.2: high-zoom image scaling (render-only, live).
   readonly imageScaling: SpectrogramImageScaling
+  // SF17.3: high-zoom analysis profile — sharper time detail above `highZoomThreshold`
+  // by switching to a smaller window or the reassign data mode (re-analyses; see AudioPage).
+  readonly highZoomMode: SpectrogramHighZoomMode
+  readonly highZoomThreshold: number
+  readonly highZoomWindow: number
 }
+
+// SF17.3: high-zoom sharpening strategy (variants b/c).
+export type SpectrogramHighZoomMode = 'off' | 'smallWindow' | 'reassign'
 
 // SF16.5: defaults now equal Audacity 3.7.8's real defaults (SpectrogramSettings.cpp):
 // frequency scale Mel over 0..20000 Hz, dB intensity map with Gain +20 dB / Range 80 dB
@@ -67,6 +75,9 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   saturation: 1,
   palette: 'roseus',
   imageScaling: 'smooth',
+  highZoomMode: 'off',
+  highZoomThreshold: 8,
+  highZoomWindow: 512,
 }
 
 // Full option lists (panel choices) mirroring the backend cli/worker contracts.
@@ -94,6 +105,11 @@ export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = [
 
 // SF17.2: image scaling modes (Резкость group).
 export const SPECTROGRAM_IMAGE_SCALINGS: readonly SpectrogramImageScaling[] = ['smooth', 'sharp']
+
+// SF17.3: high-zoom sharpening modes (Резкость group).
+export const SPECTROGRAM_HIGH_ZOOM_MODES: readonly SpectrogramHighZoomMode[] = [
+  'off', 'smallWindow', 'reassign',
+]
 
 // Legacy palette ids (pre-SF16.2) -> current, so stored/preset values still resolve.
 const LEGACY_PALETTES: Readonly<Record<string, SpectrogramPalette>> = {
@@ -201,6 +217,9 @@ export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
     saturation: num('saturation', base.saturation),
     palette: normalizePalette(raw.palette) ?? base.palette,
     imageScaling: pick('imageScaling', SPECTROGRAM_IMAGE_SCALINGS, base.imageScaling),
+    highZoomMode: pick('highZoomMode', SPECTROGRAM_HIGH_ZOOM_MODES, base.highZoomMode),
+    highZoomThreshold: num('highZoomThreshold', base.highZoomThreshold),
+    highZoomWindow: num('highZoomWindow', base.highZoomWindow),
   }
 }
 
