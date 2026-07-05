@@ -45,21 +45,31 @@ describe('magnitudeToScaled - scale family (U2.3)', () => {
   })
 })
 
-describe('paletteColor (U2.3)', () => {
-  test('intensity is grayscale', () => {
-    expect(paletteColor(0, 'intensity')).toEqual([0, 0, 0])
-    expect(paletteColor(1, 'intensity')).toEqual([255, 255, 255])
-    expect(paletteColor(0.5, 'intensity')).toEqual([128, 128, 128])
+describe('paletteColor (U2.3, SF16.2 Audacity schemes)', () => {
+  test('grayscale is v -> gray', () => {
+    expect(paletteColor(0, 'grayscale')).toEqual([0, 0, 0])
+    expect(paletteColor(1, 'grayscale')).toEqual([255, 255, 255])
+    expect(paletteColor(0.5, 'grayscale')).toEqual([128, 128, 128])
   })
 
-  test('rainbow goes blue(low) -> green(mid) -> red(high)', () => {
-    expect(paletteColor(0, 'rainbow')).toEqual([0, 0, 255])
-    expect(paletteColor(0.5, 'rainbow')).toEqual([0, 255, 0])
-    expect(paletteColor(1, 'rainbow')).toEqual([255, 0, 0])
+  test('invgrayscale is (1-v) -> gray', () => {
+    expect(paletteColor(0, 'invgrayscale')).toEqual([255, 255, 255])
+    expect(paletteColor(1, 'invgrayscale')).toEqual([0, 0, 0])
   })
 
-  test('saturation 0 desaturates the rainbow to gray', () => {
-    expect(paletteColor(1, 'rainbow', 0)).toEqual([255, 255, 255])
+  test('classic goes blue(low) -> green(mid) -> red(high)', () => {
+    expect(paletteColor(0, 'classic')).toEqual([0, 0, 255])
+    expect(paletteColor(0.5, 'classic')).toEqual([0, 255, 0])
+    expect(paletteColor(1, 'classic')).toEqual([255, 0, 0])
+  })
+
+  test('saturation 0 desaturates the classic rainbow to gray', () => {
+    expect(paletteColor(1, 'classic', 0)).toEqual([255, 255, 255])
+  })
+
+  test('roseus (Audacity default LUT): dark near 0, cream near 1', () => {
+    expect(paletteColor(0, 'roseus')).toEqual([1, 1, 1])
+    expect(paletteColor(1, 'roseus')).toEqual([254, 251, 249])
   })
 })
 
@@ -83,8 +93,8 @@ function fakeTile(binValuesPerFrame: number[][]): SpectrogramTile {
 }
 
 describe('tileToImage (U2.3)', () => {
-  test('width=frames, height=bins; top row = highest freq (grayscale default)', () => {
-    const img = tileToImage(fakeTile([[0, 1]]))
+  test('width=frames, height=bins; top row = highest freq (grayscale)', () => {
+    const img = tileToImage(fakeTile([[0, 1]]), { palette: 'grayscale' })
     expect(img.width).toBe(1)
     expect(img.height).toBe(2)
     expect(img.rgba[0]).toBe(255) // row 0 = bin1 (high) = 1 -> white
@@ -92,16 +102,16 @@ describe('tileToImage (U2.3)', () => {
     expect(img.rgba[3]).toBe(255) // alpha
   })
 
-  test('applies the rainbow palette to the linear tile', () => {
-    const img = tileToImage(fakeTile([[1]]), { scale: 'lin', palette: 'rainbow' })
-    // single full-scale bin -> rainbow high -> red
+  test('applies the classic palette to the linear tile', () => {
+    const img = tileToImage(fakeTile([[1]]), { scale: 'lin', palette: 'classic' })
+    // single full-scale bin -> classic high -> red
     expect([img.rgba[0], img.rgba[1], img.rgba[2]]).toEqual([255, 0, 0])
   })
 
   test('missing bins are safe (0 intensity)', () => {
     const tile = fakeTile([[0.5]])
     const broken: SpectrogramTile = { ...tile, frames: [{ frameIndex: 0, timeSec: 0, bins: [] }] }
-    expect(tileToImage(broken).rgba[0]).toBe(0)
+    expect(tileToImage(broken, { palette: 'grayscale' }).rgba[0]).toBe(0)
   })
 })
 

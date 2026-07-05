@@ -6,7 +6,12 @@ import type { SpectrogramScale, SpectrogramTile } from '@protocol'
 // re-draws, no worker re-analysis. The math mirrors the backend
 // (SpectrumCoreAnalysisConfig get_iscale + SpectrumCoreRaster ValueToRgb) for parity.
 
-export type SpectrogramPalette = 'intensity' | 'rainbow'
+// SF16.2: the four Audacity color schemes.
+//   roseus       = Audacity "Color (default)" — the Roseus colormap (magenta→orange→cream).
+//   classic      = Audacity "Color (classic)" — HSV blue(low)→red(high) rainbow.
+//   grayscale    = Audacity "Grayscale".
+//   invgrayscale = Audacity "Inverse grayscale" (1 − v).
+export type SpectrogramPalette = 'roseus' | 'classic' | 'grayscale' | 'invgrayscale'
 
 export interface SpectrogramRenderOptions {
   readonly scale: SpectrogramScale
@@ -25,7 +30,7 @@ export const DEFAULT_RENDER_OPTIONS: SpectrogramRenderOptions = {
   frequencyGain: 0,
   drange: 120,
   limit: 0,
-  palette: 'intensity',
+  palette: 'roseus',
   saturation: 1,
 }
 
@@ -129,23 +134,61 @@ function hsvToRgb(aHue: number, aSat: number, aVal: number): Rgb {
   return [Math.round(rr * 255), Math.round(gg * 255), Math.round(bb * 255)]
 }
 
+// SF16.2: the Roseus colormap (Audacity "Color (default)"), ported verbatim from
+// Audacity 3.7.8 lib-theme/AColorResources.h `specColormap[256][3]` as a base64
+// little-endian RGB byte blob (256 rows × 3 bytes). Decoded once at module load.
+const ROSEUS_LUT_B64 =
+  'AQEBAQICAgICAgMDAgMEAgQFAgUGAwYHAwcIAwgKAwkMAwoOAwwQAw0RAw4TAg8VAhAXAhEZAhIbAhMeARQg' +
+  'ARUiARYkARcmARgoABkrABotABsvABsyABw0AB02AB45AB47AR8+ASBAASBDAiFFAyFIBCJKBSNNBiNPCCNS' +
+  'CSRUCyRWDSVZDyVbESVeEyVgFSZjFyZlGSZoGyZqHSZsHyZvISZxIyZzJiZ2KCZ4KiZ6LCZ8LiZ+MSaAMyaC' +
+  'NSWENyWGOiWIPCSKPiSLQSSNQyOPRSOQSCOSSiKTTCKVTyGWUSGXVCCYViCZWB+aWx+bXR6cXx2dYh2eZByf' +
+  'ZxyfaRugaxugbhqhcBqhchmhdRmidxiieRiifBeifheigBeigxahhRahhxahiRahjBagjhagkBafkhaflBae' +
+  'lhadmRadmxecnRebnxeaoRiZoxiYpRmXpxqWqRqVqxuUrRyTrx2SsR2Rsx6QtR+OtyCNuCGMuiKLvCOJviSI' +
+  'wCWHwSeFwyiExSmCxiqByCuAyi1+yy59zS97zjB60DJ40TN30zR11DZ01jdy1zlx2Tpv2jxu2z1t3T9r3kBq' +
+  '30Jo4UNn4kVl40Zk5Ehj5Ulh5ktg501e6U5d6lBc61Jb7FNZ7VVY7VdX7llW71pU8FxT8V5S8mBR8mFQ82NP' +
+  '9GVO9WdN9WlM9mtL9mxK925K+HBJ+HJI+HRI+XZH+XhH+npG+nxG+n5G+4BG+4JF+4RG+4ZG+4hG/IpG/IxG' +
+  '/I5H/JBI/JJI/JRJ/JZK+5hL+5pM+5xN+55O+6BQ+6JR+qRT+qZV+qhX+apY+axa+K5d+LBf+LJh97Rj97Zm' +
+  '9rho9rpr9bxu9L5w9MBz88J288N58sV88sd/8cmD8MuG8M2J78+M79CQ7tKT7tSX7dWa7dee7Nmh7Nql7Nyp' +
+  '7N6s69+w6+G06+K36+S76+W/6+bC7OjG7OnJ7OrN7ezQ7e3U7u7X7+/b8PDe8fLh8vPk8/Tn9PXq9vbt9/fw' +
+  '+fjy+/n1/fr3/vv5'
+
+const ROSEUS_LUT = (() => {
+  const binary = atob(ROSEUS_LUT_B64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes // length 768: [r,g,b] × 256
+})()
+
 /**
- * Normalized intensity [0,1] -> RGB, mirroring the backend ValueToRgb: `intensity`
- * is grayscale, `rainbow` is HSV blue(low)->red(high). `saturation` scales the
- * rainbow HSV saturation (default 1 == backend; clamped to [0,1] for the palette).
+ * Normalized intensity [0,1] -> RGB, matching Audacity's four color schemes:
+ * `roseus` (Color default, LUT), `classic` (Color classic, HSV blue->red),
+ * `grayscale`, `invgrayscale` (1 - v). `saturation` scales only the `classic`
+ * HSV saturation (default 1; clamped to [0,1]); the LUT/grayscale ignore it.
  */
 export function paletteColor(
   aValue: number,
-  aPalette: SpectrogramPalette = 'intensity',
+  aPalette: SpectrogramPalette = 'roseus',
   aSaturation = 1,
 ): Rgb {
   const v = clamp01(aValue)
-  if (aPalette === 'rainbow') {
-    const sat = aSaturation < 0 ? 0 : aSaturation > 1 ? 1 : aSaturation
-    return hsvToRgb((1 - v) * 240, sat, 1)
+  switch (aPalette) {
+    case 'roseus': {
+      const i = (Math.round(v * 255) % 256) * 3
+      return [ROSEUS_LUT[i], ROSEUS_LUT[i + 1], ROSEUS_LUT[i + 2]]
+    }
+    case 'classic': {
+      const sat = aSaturation < 0 ? 0 : aSaturation > 1 ? 1 : aSaturation
+      return hsvToRgb((1 - v) * 240, sat, 1)
+    }
+    case 'invgrayscale': {
+      const g = Math.round((1 - v) * 255)
+      return [g, g, g]
+    }
+    default: {
+      const g = Math.round(v * 255)
+      return [g, g, g]
+    }
   }
-  const g = Math.round(v * 255)
-  return [g, g, g]
 }
 
 export interface TileImage {

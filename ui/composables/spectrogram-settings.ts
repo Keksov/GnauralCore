@@ -58,7 +58,7 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   drange: 120,
   limit: 0,
   saturation: 1,
-  palette: 'rainbow',
+  palette: 'roseus',
 }
 
 // Full option lists (panel choices) mirroring the backend cli/worker contracts.
@@ -79,7 +79,21 @@ export const SPECTROGRAM_SCALES: readonly SpectrogramScale[] = [
   'lin', 'sqrt', 'cbrt', 'log', '4thrt', '5thrt',
 ]
 export const SPECTROGRAM_CHANNEL_MODES: readonly SpectrogramChannelMode[] = ['combined', 'separate']
-export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = ['intensity', 'rainbow']
+// SF16.2: the four Audacity color schemes (Розовый / Классика / Оттенки серого / Инверсия).
+export const SPECTROGRAM_PALETTES: readonly SpectrogramPalette[] = [
+  'roseus', 'classic', 'grayscale', 'invgrayscale',
+]
+
+// Legacy palette ids (pre-SF16.2) -> current, so stored/preset values still resolve.
+const LEGACY_PALETTES: Readonly<Record<string, SpectrogramPalette>> = {
+  intensity: 'grayscale',
+  rainbow: 'classic',
+}
+function normalizePalette(aValue: unknown): SpectrogramPalette | null {
+  if (typeof aValue !== 'string') return null
+  if (SPECTROGRAM_PALETTES.includes(aValue as SpectrogramPalette)) return aValue as SpectrogramPalette
+  return LEGACY_PALETTES[aValue] ?? null
+}
 
 export type SpectrogramPresetName = 'audacity' | 'ffmpeg'
 
@@ -105,7 +119,7 @@ export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
       startHz: 80,
       stopHz: 4000,
       drange: 120,
-      palette: 'rainbow',
+      palette: 'roseus',
     },
   },
   {
@@ -120,7 +134,7 @@ export const SPECTROGRAM_PRESETS: readonly SpectrogramPreset[] = [
       data: 'magnitude',
       overlap: 0,
       drange: 120,
-      palette: 'intensity',
+      palette: 'grayscale',
     },
   },
 ]
@@ -162,7 +176,7 @@ export function mergeStoredSettings(aRaw: unknown): SpectrogramSettings {
     drange: num('drange', base.drange),
     limit: num('limit', base.limit),
     saturation: num('saturation', base.saturation),
-    palette: pick('palette', SPECTROGRAM_PALETTES, base.palette),
+    palette: normalizePalette(raw.palette) ?? base.palette,
   }
 }
 

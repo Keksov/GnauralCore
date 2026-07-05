@@ -26,7 +26,7 @@ describe('option lists cover the full backend capability set (DU4) (U4.1)', () =
     expect(SPECTROGRAM_DATA_MODES).toEqual(['magnitude', 'phase', 'uphase', 'reassign', 'pitch'])
     expect(SPECTROGRAM_FSCALES).toEqual(['lin', 'log', 'mel', 'bark', 'erb', 'period'])
     expect(SPECTROGRAM_SCALES).toEqual(['lin', 'sqrt', 'cbrt', 'log', '4thrt', '5thrt'])
-    expect(SPECTROGRAM_PALETTES).toEqual(['intensity', 'rainbow'])
+    expect(SPECTROGRAM_PALETTES).toEqual(['roseus', 'classic', 'grayscale', 'invgrayscale'])
   })
 })
 
@@ -60,12 +60,17 @@ describe('capability coverage + presets (U4.3)', () => {
 
 describe('mergeStoredSettings (U4.2 persistence)', () => {
   test('applies valid stored values over the defaults', () => {
-    const merged = mergeStoredSettings({ window: 4096, fscale: 'mel', palette: 'rainbow', gain: 3 })
+    const merged = mergeStoredSettings({ window: 4096, fscale: 'mel', palette: 'classic', gain: 3 })
     expect(merged.window).toBe(4096)
     expect(merged.fscale).toBe('mel')
-    expect(merged.palette).toBe('rainbow')
+    expect(merged.palette).toBe('classic')
     expect(merged.gain).toBe(3)
     expect(merged.overlap).toBe(DEFAULT_SPECTROGRAM_SETTINGS.overlap) // untouched key keeps default
+  })
+
+  test('SF16.2: legacy palette ids migrate (intensity->grayscale, rainbow->classic)', () => {
+    expect(mergeStoredSettings({ palette: 'intensity' }).palette).toBe('grayscale')
+    expect(mergeStoredSettings({ palette: 'rainbow' }).palette).toBe('classic')
   })
 
   test('rejects wrong types, invalid enums and unknown keys', () => {
@@ -91,7 +96,7 @@ describe('mergeStoredSettings (U4.2 persistence)', () => {
 
 describe('settings mappers (U4.1)', () => {
   test('toRenderOptions extracts the client-side render group (incl. frequencyGain)', () => {
-    const r = toRenderOptions({ ...DEFAULT_SPECTROGRAM_SETTINGS, gain: 2, palette: 'rainbow', frequencyGain: 10 })
+    const r = toRenderOptions({ ...DEFAULT_SPECTROGRAM_SETTINGS, gain: 2, palette: 'classic', frequencyGain: 10 })
     expect(r).toEqual({
       scale: 'log',
       gain: 2,
@@ -99,7 +104,7 @@ describe('settings mappers (U4.1)', () => {
       drange: 120,
       limit: 0,
       saturation: 1,
-      palette: 'rainbow',
+      palette: 'classic',
     })
   })
 
