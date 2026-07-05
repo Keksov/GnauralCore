@@ -115,6 +115,7 @@
     "spectrogramIntensityScale": "Intensity scale",
     "spectrogramPalette": "Palette",
     "spectrogramOverlap": "Overlap",
+    "spectrogramOverlapHelp": "Fraction each FFT frame overlaps the previous one — the frame-step control. Higher = smoother in time (more frames, slower); lower = coarser/faster.",
     "spectrogramGain": "Gain",
     "spectrogramFrequencyGain": "Frequency gain (dB/dec)",
     "spectrogramDynamicRange": "Dynamic range (dB)",

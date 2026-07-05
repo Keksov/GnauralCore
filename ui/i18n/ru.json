@@ -114,6 +114,7 @@
     "spectrogramIntensityScale": "Шкала интенсивности",
     "spectrogramPalette": "Палитра",
     "spectrogramOverlap": "Перекрытие",
+    "spectrogramOverlapHelp": "Доля перекрытия соседних FFT-кадров — управляет шагом кадра. Больше = плавнее по времени (больше кадров, медленнее); меньше = грубее/быстрее.",
     "spectrogramGain": "Усиление",
     "spectrogramFrequencyGain": "Частотное усиление (дБ/дек)",
     "spectrogramDynamicRange": "Динамический диапазон (дБ)",
