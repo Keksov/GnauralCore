@@ -442,7 +442,8 @@ export class SpectrogramSession {
     aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:get-tile" }>,
   ): string {
     const round = (aValue: number): number => Math.round(aValue * 1e6) / 1e6
-    return `${aMessage.zoom ?? 0}|${round(aMessage.timeStartSec)}|${round(aMessage.timeEndSec)}|${aMessage.viewBinCount}`
+    // SF17.4: windowOverride is part of the key so override/base tiles never collide.
+    return `${aMessage.zoom ?? 0}|${round(aMessage.timeStartSec)}|${round(aMessage.timeEndSec)}|${aMessage.viewBinCount}|${aMessage.windowOverride ?? 0}`
   }
 
   private async onGetTile(
@@ -470,6 +471,10 @@ export class SpectrogramSession {
         timeEndSec: aMessage.timeEndSec,
         zoom: aMessage.zoom ?? 0,
         viewBinCount: aMessage.viewBinCount,
+        // SF17.4: forward the optional per-tile window override to the worker.
+        ...(aMessage.windowOverride !== undefined && aMessage.windowOverride > 0
+          ? { windowOverride: aMessage.windowOverride }
+          : {}),
       }, GET_TILE_TIMEOUT_MS),
       "get-tile",
     )
