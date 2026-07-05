@@ -185,7 +185,10 @@ const { t } = useI18n()
 // SF9: track resize (mutual divider + uniform bottom handle) now lives in the AudioPage
 // stack (SF-D19/D20); this view just takes `height` as a plain prop.
 const canvasEl = ref<HTMLCanvasElement | null>(null)
-const spec = useSpectrogram()
+// SF19.2: longer idle debounce so a fast scroll/zoom burst coalesces to the settled view
+// (intermediate frames the user scrolls past are never fetched); the SF11.9 cross-zoom
+// fallback keeps the plot responsive meanwhile.
+const spec = useSpectrogram({ refetchDebounceMs: 200 })
 
 const MAX_VIEW_BINS = 512
 const AXIS_MARGIN = { left: 46, right: 8 }
