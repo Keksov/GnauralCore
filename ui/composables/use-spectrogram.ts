@@ -46,6 +46,10 @@ export interface UseSpectrogram {
   readonly analysis: Ref<SpectrogramAnalysisInfo | null>
   readonly tiles: Ref<readonly SpectrogramTile[]>
   readonly loading: Ref<boolean>
+  /** SF19.3: initial prepare (nothing rendered yet) — drives the full overlay. */
+  readonly preparing: Ref<boolean>
+  /** SF19.3: background refetch while a frame is already shown — drives a tiny spinner. */
+  readonly fetchingTiles: Ref<boolean>
   readonly error: Ref<string | null>
   open(aParams: SpectrogramAnalysisParams & { readonly filePath?: string }): Promise<SpectrogramAnalysisInfo>
   reconfigure(aParams: SpectrogramAnalysisParams): Promise<SpectrogramAnalysisInfo>
@@ -72,6 +76,12 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
   const analysis = shallowRef<SpectrogramAnalysisInfo | null>(null)
   const tiles = shallowRef<readonly SpectrogramTile[]>([])
   const loading = ref(false)
+  // SF19.3: split the loading signal so the UI can distinguish the initial prepare (full
+  // overlay) from a view-change refetch (background swap + tiny corner spinner).
+  //   preparing     = opening/reconfiguring with NOTHING rendered yet (first load);
+  //   fetchingTiles = tiles pending while a frame is already on screen (zoom/pan).
+  const preparing = ref(false)
+  const fetchingTiles = ref(false)
   const error = ref<string | null>(null)
 
   const cache = new SpectrogramTileCache<SpectrogramTile>(aOptions.cacheSize ?? DEFAULT_TILE_CACHE_SIZE)
@@ -90,15 +100,17 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
   const controlWaiters = new Map<string, (aMessage: SpectrogramServerMessage) => void>()
 
   function updateLoading(): void {
-    if (opening) {
-      loading.value = true
-      return
-    }
     let active = 0
     for (const p of pendingTiles.values()) {
       if (p.seq === viewSeq) active += 1
     }
-    loading.value = active > 0
+    const busy = opening || active > 0
+    const hasFrame = tiles.value.length > 0
+    // Nothing on screen yet + busy => initial prepare (full overlay); otherwise a
+    // background refetch of a view already showing a frame (fallback) => tiny spinner.
+    preparing.value = busy && !hasFrame
+    fetchingTiles.value = busy && hasFrame
+    loading.value = busy
   }
 
   function assembleVisibleTiles(): void {
@@ -399,5 +411,5 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
 
   onScopeDispose(dispose)
 
-  return { analysis, tiles, loading, error, open, reconfigure, setView, pointQuery, areaQuery, close, dispose }
+  return { analysis, tiles, loading, preparing, fetchingTiles, error, open, reconfigure, setView, pointQuery, areaQuery, close, dispose }
 }

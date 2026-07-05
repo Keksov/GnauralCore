@@ -84,6 +84,17 @@
       <q-spinner-hourglass color="cyan-4" size="32px" />
       <span class="spectrogram-view__loading-label">{{ t('audio.spectrogramPreparing') }}</span>
     </div>
+    <!-- SF19.3: view-change refetch shows a tiny corner spinner only (no dim / no message);
+         the current frame stays visible and the new one swaps in when ready. -->
+    <div
+      v-else-if="isFetchingTiles"
+      class="spectrogram-view__fetching"
+      role="status"
+      aria-live="polite"
+      :aria-label="t('audio.spectrogramPreparing')"
+    >
+      <q-spinner color="cyan-4" size="18px" />
+    </div>
     <div
       v-else-if="specError !== null"
       class="spectrogram-view__error"
@@ -245,7 +256,10 @@ function panFreq(aDelta: number): void {
 }
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
-const isPreparing = computed(() => spec.loading.value)
+// SF19.3: full overlay only for the initial prepare; a view-change refetch shows just a
+// tiny corner spinner while the new frame loads in the background.
+const isPreparing = computed(() => spec.preparing.value)
+const isFetchingTiles = computed(() => spec.fetchingTiles.value)
 const specError = computed(() => spec.error.value)
 const rootStyle = computed(() =>
   props.height !== undefined && props.height > 0
@@ -881,6 +895,16 @@ onBeforeUnmount(() => {
   justify-content: center;
   position: absolute;
   z-index: 5;
+}
+
+/* SF19.3: unobtrusive background-fetch hint — no backdrop, top-right corner. */
+.spectrogram-view__fetching {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 5;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .spectrogram-view__loading-label {
