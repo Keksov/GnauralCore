@@ -105,7 +105,8 @@ function rename(aPreset: PresetRef): void {
   $q.dialog({
     title: t('audio.spectrogramPresetRename'),
     prompt: { model: aPreset.name, type: 'text' },
-    cancel: true,
+    cancel: { label: t('audio.spectrogramPresetCancel'), flat: true },
+    ok: { label: t('audio.spectrogramPresetOk'), flat: true },
   }).onOk((aName: string) => store.renamePreset(aPreset.id, aName))
 }
 
@@ -117,8 +118,8 @@ function remove(aPreset: PresetRef): void {
   $q.dialog({
     title: t('audio.spectrogramPresetDelete'),
     message: t('audio.spectrogramPresetDeleteConfirm', { name: aPreset.name }),
-    cancel: true,
-    ok: { color: 'negative', label: t('audio.spectrogramPresetDelete') },
+    cancel: { label: t('audio.spectrogramPresetCancel'), flat: true },
+    ok: { color: 'negative', flat: true, label: t('audio.spectrogramPresetDelete') },
   }).onOk(() => store.deletePreset(aPreset.id))
 }
 

@@ -149,7 +149,8 @@ function onSaveAs(): void {
     title: t('audio.spectrogramPresetSaveAs'),
     message: t('audio.spectrogramPresetNamePrompt'),
     prompt: { model: store.activePreset?.name ?? '', type: 'text' },
-    cancel: true,
+    cancel: { label: t('audio.spectrogramPresetCancel'), flat: true },
+    ok: { label: t('audio.spectrogramPresetOk'), flat: true },
     persistent: false,
   }).onOk((aName: string) => {
     if (aName.trim() !== '') store.saveAsPreset(aName)

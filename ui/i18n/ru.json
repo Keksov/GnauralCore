@@ -117,6 +117,8 @@
     "spectrogramPresetImport": "Импорт",
     "spectrogramPresetImported": "Импортировано пресетов: {n}",
     "spectrogramPresetClose": "Закрыть",
+    "spectrogramPresetCancel": "Отмена",
+    "spectrogramPresetOk": "OK",
     "spectrogramReset": "Сброс",
     "spectrogramAnalysisGroup": "Анализ",
     "spectrogramWindow": "Окно",

@@ -117,6 +117,8 @@
     "spectrogramPresetImport": "Import",
     "spectrogramPresetImported": "Imported {n} preset(s)",
     "spectrogramPresetClose": "Close",
+    "spectrogramPresetCancel": "Cancel",
+    "spectrogramPresetOk": "OK",
     "spectrogramReset": "Reset",
     "spectrogramAnalysisGroup": "Analysis",
     "spectrogramDisplayGroup": "Display",
