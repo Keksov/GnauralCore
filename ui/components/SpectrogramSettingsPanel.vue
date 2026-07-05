@@ -51,6 +51,25 @@
           dense outlined
           class="spectrogram-settings__control"
         />
+        <!-- SF16.1: numeric spinbox with -/+ steppers for the render dials. -->
+        <q-input
+          v-else-if="field.kind === 'spin'"
+          v-model.number="sNum[field.key]"
+          type="number"
+          :min="field.spin!.min"
+          :max="field.spin!.max"
+          :step="field.spin!.step"
+          dense outlined
+          class="spectrogram-settings__control"
+          @blur="clampField(field)"
+        >
+          <template #prepend>
+            <q-btn dense flat round size="sm" icon="remove" :aria-label="'−'" @click="stepField(field, -1)" />
+          </template>
+          <template #append>
+            <q-btn dense flat round size="sm" icon="add" :aria-label="'+'" @click="stepField(field, 1)" />
+          </template>
+        </q-input>
         <template v-else>
           <div class="spectrogram-settings__slider-value text-grey-7">
             {{ Number(sNum[field.key]).toFixed(field.slider!.decimals) }}
@@ -107,6 +126,14 @@ interface SliderSpec {
   readonly decimals: number
 }
 
+// SF16.1: numeric spinbox spec (min/max/step + rounding decimals for the -/+ steppers).
+interface SpinSpec {
+  readonly min: number
+  readonly max: number
+  readonly step: number
+  readonly decimals: number
+}
+
 // SF13.2: enum -> localized option {label,value}. `optionsKey` is the i18n namespace
 // holding one label per enum value (e.g. audio.spectrogramWinFuncOpt.hann).
 function enumOptions(aList: readonly string[], aOptionsKey: string): { label: string; value: string }[] {
@@ -118,11 +145,12 @@ function numberOptions(aList: readonly number[], aSuffix = ''): { label: string;
 
 interface Field {
   readonly key: SelectableKey
-  readonly kind: 'select' | 'number' | 'slider'
+  readonly kind: 'select' | 'number' | 'slider' | 'spin'
   readonly label: string
   readonly help: string
   readonly options?: { label: string; value: string | number }[]
   readonly slider?: SliderSpec
+  readonly spin?: SpinSpec
 }
 interface Group {
   readonly key: string
@@ -137,6 +165,25 @@ const num = (key: SelectableKey, labelKey: string): Field =>
   ({ key, kind: 'number', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`) })
 const sld = (key: SelectableKey, labelKey: string, slider: SliderSpec): Field =>
   ({ key, kind: 'slider', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), slider })
+const spn = (key: SelectableKey, labelKey: string, spin: SpinSpec): Field =>
+  ({ key, kind: 'spin', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), spin })
+
+// SF16.1: -/+ stepper + clamp for spinbox fields (rounds to the spec step to avoid FP drift).
+function clamp(aValue: number, aSpec: SpinSpec): number {
+  const stepped = Math.round(aValue / aSpec.step) * aSpec.step
+  const bounded = Math.min(aSpec.max, Math.max(aSpec.min, stepped))
+  return Number(bounded.toFixed(aSpec.decimals))
+}
+function stepField(aField: Field, aDir: number): void {
+  const spec = aField.spin!
+  const cur = Number(sNum[aField.key])
+  sNum[aField.key] = clamp((Number.isFinite(cur) ? cur : 0) + aDir * spec.step, spec)
+}
+function clampField(aField: Field): void {
+  const spec = aField.spin!
+  const cur = Number(sNum[aField.key])
+  sNum[aField.key] = clamp(Number.isFinite(cur) ? cur : spec.min, spec)
+}
 
 // SF13.1 + SF13.2: grouped, localized (reactive to locale via t()).
 const groups = computed<Group[]>(() => [
@@ -154,11 +201,12 @@ const groups = computed<Group[]>(() => [
     title: t('audio.spectrogramGroupColor'),
     fields: [
       sel('scale', 'spectrogramIntensityScale', enumOptions(SPECTROGRAM_SCALES, 'spectrogramScaleOpt')),
-      sld('gain', 'spectrogramGain', { min: 0.1, max: 8, step: 0.1, decimals: 1 }),
-      sld('drange', 'spectrogramDynamicRange', { min: 20, max: 200, step: 5, decimals: 0 }),
-      sld('limit', 'spectrogramLimit', { min: -60, max: 0, step: 1, decimals: 0 }),
-      sld('frequencyGain', 'spectrogramFrequencyGain', { min: -20, max: 20, step: 1, decimals: 0 }),
-      sld('saturation', 'spectrogramSaturation', { min: -10, max: 10, step: 0.5, decimals: 1 }),
+      // SF16.1: numeric spinbox dials (default 0 where meaningful). Gain is in dB now.
+      spn('gain', 'spectrogramGain', { min: -60, max: 60, step: 1, decimals: 0 }),
+      spn('drange', 'spectrogramDynamicRange', { min: 10, max: 200, step: 5, decimals: 0 }),
+      spn('limit', 'spectrogramLimit', { min: -100, max: 0, step: 1, decimals: 0 }),
+      spn('frequencyGain', 'spectrogramFrequencyGain', { min: -60, max: 60, step: 1, decimals: 0 }),
+      spn('saturation', 'spectrogramSaturation', { min: 0, max: 1, step: 0.1, decimals: 1 }),
       sel('palette', 'spectrogramPalette', enumOptions(SPECTROGRAM_PALETTES, 'spectrogramPaletteOpt')),
     ],
   },

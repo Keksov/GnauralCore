@@ -53,7 +53,7 @@ export const DEFAULT_SPECTROGRAM_SETTINGS: SpectrogramSettings = {
   stopHz: 4000,
   mode: 'combined',
   scale: 'log',
-  gain: 1,
+  gain: 0, // SF16.1: gain is in dB now (0 dB = neutral), matching Audacity
   frequencyGain: 0,
   drange: 120,
   limit: 0,

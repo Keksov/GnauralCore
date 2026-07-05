@@ -132,7 +132,7 @@
     "spectrogramStartHzHelp": "Lowest frequency shown on the vertical axis.",
     "spectrogramStopHzHelp": "Highest frequency shown. 0 = Nyquist (half the sample rate).",
     "spectrogramIntensityScaleHelp": "How magnitude maps to brightness. Logarithmic (dB) reveals quiet detail; linear/root scales compress less.",
-    "spectrogramGainHelp": "Overall brightness multiplier applied to the spectrogram.",
+    "spectrogramGainHelp": "Overall brightness in dB (0 dB = neutral); positive brightens, negative darkens.",
     "spectrogramDynamicRangeHelp": "Range in dB between the darkest and brightest values shown. Larger reveals more low-level detail.",
     "spectrogramLimitHelp": "Upper dB limit (ceiling); values above map to the brightest color.",
     "spectrogramFrequencyGainHelp": "High-frequency emphasis, in dB per decade of frequency. Brightens the high frequencies.",

@@ -20,11 +20,11 @@ describe('magnitudeToScaled - log/dB (U2.3)', () => {
     expect(magnitudeToScaled(Math.pow(10, -60 / 20), { scale: 'log', drange: 120 })).toBeCloseTo(0.5, 6)
   })
 
-  test('gain x2 ~= +6 dB', () => {
+  test('gain in dB (SF16.1): +6 dB shifts the log map by 6/drange', () => {
     const m = Math.pow(10, -60 / 20)
     const base = magnitudeToScaled(m, { scale: 'log', drange: 120 })
-    const gained = magnitudeToScaled(m, { scale: 'log', drange: 120, gain: 2 })
-    expect(gained - base).toBeCloseTo(6.0206 / 120, 3)
+    const gained = magnitudeToScaled(m, { scale: 'log', drange: 120, gain: 6 })
+    expect(gained - base).toBeCloseTo(6 / 120, 6)
   })
 })
 

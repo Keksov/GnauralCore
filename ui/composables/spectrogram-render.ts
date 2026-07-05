@@ -15,6 +15,7 @@ export type SpectrogramPalette = 'roseus' | 'classic' | 'grayscale' | 'invgraysc
 
 export interface SpectrogramRenderOptions {
   readonly scale: SpectrogramScale
+  /** SF16.1: overall brightness in **dB** (Audacity semantics; 0 dB = neutral). */
   readonly gain: number
   /** Audacity-style frequency-dependent dB shaping (per-bin), applied in the renderer. */
   readonly frequencyGain: number
@@ -26,7 +27,7 @@ export interface SpectrogramRenderOptions {
 
 export const DEFAULT_RENDER_OPTIONS: SpectrogramRenderOptions = {
   scale: 'log',
-  gain: 1,
+  gain: 0,
   frequencyGain: 0,
   drange: 120,
   limit: 0,
@@ -75,16 +76,18 @@ export function magnitudeToScaled(
   const opts = resolveRenderOptions(aOptions)
   if (opts.drange <= 0) return 0
   const lowerDb = opts.limit - opts.drange
+  // SF16.1: `gain` is now in dB (Audacity semantics) -> linear factor before the map.
+  const gainMult = Math.pow(10, opts.gain / 20)
 
   if (opts.scale === 'log') {
-    let db = rawMagnitudeToDb(aMagnitude * opts.gain, lowerDb)
+    let db = rawMagnitudeToDb(aMagnitude * gainMult, lowerDb)
     if (db > opts.limit) db = opts.limit
     return clamp01((db - lowerDb) / opts.drange)
   }
 
   const dMax = Math.pow(10, opts.limit / 20)
   const dMin = Math.pow(10, (opts.limit - opts.drange) / 20)
-  let a = aMagnitude * opts.gain
+  let a = aMagnitude * gainMult
   if (a < dMin) a = dMin
   if (a > dMax) a = dMax
   let anorm = dMax > dMin ? (a - dMin) / (dMax - dMin) : 0
