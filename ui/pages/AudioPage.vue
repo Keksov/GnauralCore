@@ -108,9 +108,34 @@
             </q-tabs>
 
             <div class="audio-page__meta-strip">
-              <div class="audio-page__meta-cell audio-page__meta-cell--file" :title="sessionFilePath">
+              <!-- SF20: recent-files quick-pick dropdown replaces the static selected-file text. -->
+              <div class="audio-page__meta-cell audio-page__meta-cell--file">
                 <div class="text-caption text-grey-7 audio-page__meta-label">{{ t('audio.selectedFile') }}</div>
-                <div class="text-body2 audio-page__meta-value audio-page__meta-value--file">{{ sessionFilePath }}</div>
+                <q-btn-dropdown
+                  dense flat no-caps
+                  class="audio-page__file-dropdown"
+                  :label="selectedFileLabel"
+                  :title="audio.selectedPath ?? ''"
+                >
+                  <q-list dense class="audio-page__recent-list">
+                    <q-item v-if="audio.recentFiles.length === 0" disable>
+                      <q-item-section class="text-grey-6">{{ t('audio.recentFilesEmpty') }}</q-item-section>
+                    </q-item>
+                    <q-item
+                      v-for="path in audio.recentFiles"
+                      :key="path"
+                      clickable
+                      v-close-popup
+                      :active="path === audio.selectedPath"
+                      @click="audio.selectPath(path)"
+                    >
+                      <q-item-section>
+                        <q-item-label lines="1">{{ fileBasename(path) }}</q-item-label>
+                        <q-item-label caption lines="1">{{ path }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-btn-dropdown>
               </div>
               <div class="audio-page__meta-cell audio-page__meta-cell--right audio-page__meta-cell--metric">
                 <div class="text-caption text-grey-7 audio-page__meta-label">{{ t('audio.position') }}</div>
@@ -725,9 +750,13 @@ const selectedTreePath = computed<string | null>({
   },
 })
 
-const sessionFilePath = computed(() => {
-  return audio.selectedPath ?? audio.displayFilePath ?? t('audio.noFileSelected')
-})
+// SF20: toolbar quick-pick — basename for the dropdown label/items, full path in the caption.
+function fileBasename(aPath: string): string {
+  return aPath.split(/[\\/]/u).pop() ?? aPath
+}
+const selectedFileLabel = computed(() =>
+  audio.selectedPath !== null ? fileBasename(audio.selectedPath) : t('audio.noFileSelected'),
+)
 
 function buildExportFileName(filePath: string, format: ExportAudioFileKind): string {
   const sourceName = filePath.split(/[\\/]/).pop() ?? filePath
@@ -1547,6 +1576,17 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 .audio-page__meta-value--file {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* SF20: recent-files quick-pick dropdown in the meta strip. */
+.audio-page__file-dropdown {
+  margin-left: -8px;
+  max-width: 100%;
+}
+
+.audio-page__recent-list {
+  max-width: 520px;
+  min-width: 240px;
 }
 
 .audio-page__tabs {

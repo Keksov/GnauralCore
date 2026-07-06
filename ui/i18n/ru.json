@@ -26,6 +26,7 @@
     "spectrogramTab": "Спектрограмма",
     "editorTab": "Редактор",
     "noFileSelected": "Файл не выбран",
+    "recentFilesEmpty": "Нет недавних файлов",
     "fileKindGnaural": ".gnaural",
     "fileKindWav": ".wav",
     "fileKindFlac": ".flac",
