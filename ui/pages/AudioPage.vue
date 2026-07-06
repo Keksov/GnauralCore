@@ -342,8 +342,9 @@
                           <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view. -->
                           <div v-if="showWaveform" class="audio-page__waveform-stack">
                             <waveform-view
-                              v-for="wtrack in waveformTracks"
+                              v-for="(wtrack, wIndex) in waveformTracks"
                               :key="wtrack.key"
+                              :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
                               :buffer="audio.spectrogramBuffer"
                               :channel="wtrack.channel"
                               :label="wtrack.label"
@@ -1209,6 +1210,12 @@ const spectrogramNavRef = ref<SpectrogramNavHandle | null>(null)
 function setPrimarySpectrogramRef(el: unknown, index: number): void {
   if (index === 0) spectrogramNavRef.value = (el as SpectrogramNavHandle | null) ?? null
 }
+// SF23 follow-up: the waveform primary is the nav target when the spectrogram is hidden.
+const waveformNavRef = ref<SpectrogramNavHandle | null>(null)
+function setPrimaryWaveformRef(el: unknown, index: number): void {
+  if (index === 0) waveformNavRef.value = (el as SpectrogramNavHandle | null) ?? null
+}
+const trackEditorNav = computed(() => spectrogramNavRef.value ?? waveformNavRef.value)
 const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
 
 function handlePlayerKeyDown(event: KeyboardEvent): void {
@@ -1226,13 +1233,13 @@ function handlePlayerKeyDown(event: KeyboardEvent): void {
   // even if the canvas isn't focused — the window is treated as the track editor's.
   if (
     activePlayerViewTab.value === 'spectrogram' &&
-    spectrogramNavRef.value !== null &&
+    trackEditorNav.value !== null &&
     SPECTROGRAM_NAV_KEYS.has(event.key)
   ) {
     // SF23.1: preventDefault FIRST so Alt+Left/Right don't trigger the browser's history
     // back/forward (hash router) before the pan runs.
     event.preventDefault()
-    spectrogramNavRef.value.handleNavKey(event)
+    trackEditorNav.value.handleNavKey(event)
     return
   }
 

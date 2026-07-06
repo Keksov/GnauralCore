@@ -310,6 +310,49 @@ function onClick(aEvent: MouseEvent): void {
   emit('seek', Math.max(0, Math.min(durationSec.value, fractionToTime(f, view.value))))
 }
 
+// SF23 follow-up: Audacity-style keyboard nav, exposed for AudioPage to delegate when the
+// waveform is the active track editor (e.g. Waveform-only mode, spectrogram hidden).
+//   Left/Right -> seek ±1 s (Shift ±5 s); Alt+Left/Right -> pan; Home/End -> view edges.
+const SEEK_STEP_SEC = 1
+const SEEK_STEP_SEC_LARGE = 5
+function followPlayhead(aSec: number): void {
+  const win = view.value
+  const margin = (win.endSec - win.startSec) * 0.1
+  if (aSec < win.startSec) view.value = panWindow(win, aSec - margin - win.startSec, durationSec.value)
+  else if (aSec > win.endSec) view.value = panWindow(win, aSec + margin - win.endSec, durationSec.value)
+}
+function seekBy(aDeltaSec: number): void {
+  const from = props.playheadSec ?? view.value.startSec
+  const next = Math.max(0, Math.min(durationSec.value, from + aDeltaSec))
+  emit('seek', next)
+  followPlayhead(next)
+}
+function handleNavKey(aEvent: KeyboardEvent): void {
+  if (!hasAudio.value) return
+  const span = view.value.endSec - view.value.startSec
+  const dur = durationSec.value
+  switch (aEvent.key) {
+    case 'Home':
+      view.value = panWindow(view.value, -dur - span, dur)
+      break
+    case 'End':
+      view.value = panWindow(view.value, dur + span, dur)
+      break
+    case 'ArrowLeft':
+      if (aEvent.altKey) view.value = panWindow(view.value, -0.15 * span, dur)
+      else seekBy(-(aEvent.shiftKey ? SEEK_STEP_SEC_LARGE : SEEK_STEP_SEC))
+      break
+    case 'ArrowRight':
+      if (aEvent.altKey) view.value = panWindow(view.value, 0.15 * span, dur)
+      else seekBy(aEvent.shiftKey ? SEEK_STEP_SEC_LARGE : SEEK_STEP_SEC)
+      break
+    default:
+      return
+  }
+  aEvent.preventDefault()
+}
+defineExpose({ handleNavKey })
+
 const hover = ref<{ timeSec: number; amp: number } | null>(null)
 const hoverPos = ref<{ x: number; y: number } | null>(null)
 const hoverText = computed(() => {
