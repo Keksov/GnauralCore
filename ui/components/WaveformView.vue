@@ -311,7 +311,10 @@ const hoverText = computed(() => {
   const h = hover.value
   if (h === null) return ''
   const db = amplitudeToDb(h.amp)
-  return `${formatTimeSec(h.timeSec)} · ${h.amp.toFixed(3)} · ${db.toFixed(1)} dB`
+  // SF22.4: query surface at the cursor — time, sample index, amplitude, dBFS.
+  const sr = model.info.value?.sampleRate ?? 0
+  const sampleIdx = Math.round(h.timeSec * sr)
+  return `${formatTimeSec(h.timeSec)} · #${sampleIdx} · ${h.amp.toFixed(3)} · ${db.toFixed(1)} dB`
 })
 
 function onPointerMove(aEvent: PointerEvent): void {

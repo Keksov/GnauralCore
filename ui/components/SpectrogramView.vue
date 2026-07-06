@@ -111,6 +111,7 @@ import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { useAudioModel } from '../composables/use-audio-model'
+import { amplitudeToDb } from '../composables/audio-model'
 import { peaksToColumns, type WaveformScale } from '../composables/waveform-render'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import {
@@ -653,7 +654,13 @@ const tooltipText = computed<string | null>(() => {
   }
   if (hover.value !== null) {
     const h = hover.value
-    return `${formatTimeSec(h.timeSec)} · ${formatHz(h.freqHz)} Hz · ${h.db.toFixed(1)} dB`
+    let text = `${formatTimeSec(h.timeSec)} · ${formatHz(h.freqHz)} Hz · ${h.db.toFixed(1)} dB`
+    // SF22.4: unified readout — also query the audio model (amplitude) at the cursor.
+    if (wfModel.info.value !== null) {
+      const amp = wfModel.sampleAt(h.timeSec, props.waveformChannel ?? 0)
+      text += ` · amp ${amp.toFixed(3)} (${amplitudeToDb(amp).toFixed(1)} dBFS)`
+    }
+    return text
   }
   return null
 })
