@@ -299,6 +299,7 @@
                           <div class="audio-page__spectrogram-stack">
                           <template v-for="(track, index) in spectrogramTracks" :key="track.key">
                             <spectrogram-view
+                              :ref="(el) => setPrimarySpectrogramRef(el, index)"
                               :file-path="audio.displayFilePath"
                               :analysis="track.analysis"
                               :render="spectrogramStore.renderOptions"
@@ -1091,6 +1092,15 @@ function shouldIgnorePlayerHotkey(event: KeyboardEvent): boolean {
   return target.closest('input, textarea, select, button, [role="button"], .cm-editor, .q-dialog, .q-menu') !== null
 }
 
+// SF21: the primary spectrogram track editor. Global keydown delegates navigation keys to it
+// when focus isn't in another control, so arrows/Home/End work anywhere in the window.
+interface SpectrogramNavHandle { handleNavKey: (event: KeyboardEvent) => void }
+const spectrogramNavRef = ref<SpectrogramNavHandle | null>(null)
+function setPrimarySpectrogramRef(el: unknown, index: number): void {
+  if (index === 0) spectrogramNavRef.value = (el as SpectrogramNavHandle | null) ?? null
+}
+const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
+
 function handlePlayerKeyDown(event: KeyboardEvent): void {
   // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
   if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
@@ -1099,6 +1109,17 @@ function handlePlayerKeyDown(event: KeyboardEvent): void {
     return
   }
   if (shouldIgnorePlayerHotkey(event)) {
+    return
+  }
+
+  // SF21: when the spectrogram (track editor) view is active, route navigation keys to it
+  // even if the canvas isn't focused — the window is treated as the track editor's.
+  if (
+    activePlayerViewTab.value === 'spectrogram' &&
+    spectrogramNavRef.value !== null &&
+    SPECTROGRAM_NAV_KEYS.has(event.key)
+  ) {
+    spectrogramNavRef.value.handleNavKey(event)
     return
   }
 

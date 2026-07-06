@@ -8,7 +8,6 @@
       :aria-label="t('audio.spectrogramCanvasLabel')"
       :class="{ 'spectrogram-view__canvas--seekable': seekable }"
       @wheel.prevent="onWheel"
-      @keydown="onKeyDown"
       @click="onClick"
       @dblclick="onDoubleClick"
       @pointerdown="onPointerDown"
@@ -502,7 +501,9 @@ function onDoubleClick(): void {
   freqView.value = FULL_FREQ
 }
 
-// SF16.4 + SF19.1: Audacity-style keyboard navigation on the focused canvas.
+// SF16.4 + SF19.1 + SF21: Audacity-style keyboard navigation. Exposed as `handleNavKey`
+// and driven by the AudioPage window keydown handler when focus isn't in another control
+// (so the keys work anywhere in the window, not only when the canvas is focused).
 //   Left/Right       -> move the PLAYBACK POSITION (seek) by ±1 s;
 //   Shift+Left/Right -> seek by ±5 s;
 //   Alt+Left/Right   -> pan the view by ~15% of the visible span (the old arrow behaviour);
@@ -551,6 +552,9 @@ function onKeyDown(aEvent: KeyboardEvent): void {
   }
   aEvent.preventDefault()
 }
+
+// SF21: let AudioPage's global keydown handler drive navigation (see onKeyDown).
+defineExpose({ handleNavKey: onKeyDown })
 
 // SF16.3: zoom preset popover (right-click). Zoom ×N shows a span of duration/N about the
 // view centre; ×1 (100%) = the whole clip. The % field shows and sets the current zoom.
