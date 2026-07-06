@@ -286,6 +286,34 @@
                             <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
                             <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
                             <q-space />
+                            <!-- SF22: waveform toggles (separate track / overlay / amplitude scale). -->
+                            <q-btn
+                              dense flat round size="sm"
+                              icon="show_chart"
+                              :color="showWaveform ? 'primary' : undefined"
+                              :aria-label="t('audio.waveformShow')"
+                              @click="showWaveform = !showWaveform"
+                            >
+                              <q-tooltip>{{ t('audio.waveformShow') }}</q-tooltip>
+                            </q-btn>
+                            <q-btn
+                              dense flat round size="sm"
+                              icon="stacked_line_chart"
+                              :color="waveformOverlay ? 'primary' : undefined"
+                              :aria-label="t('audio.waveformOverlay')"
+                              @click="waveformOverlay = !waveformOverlay"
+                            >
+                              <q-tooltip>{{ t('audio.waveformOverlay') }}</q-tooltip>
+                            </q-btn>
+                            <q-btn
+                              v-if="showWaveform || waveformOverlay"
+                              dense flat no-caps size="sm"
+                              :label="waveformScale === 'db' ? 'dB' : 'lin'"
+                              :aria-label="t('audio.waveformScale')"
+                              @click="waveformScale = waveformScale === 'db' ? 'linear' : 'db'"
+                            >
+                              <q-tooltip>{{ t('audio.waveformScale') }}</q-tooltip>
+                            </q-btn>
                             <q-btn
                               dense flat round size="sm"
                               icon="tune"
@@ -294,6 +322,21 @@
                               aria-controls="spectrogram-settings-panel"
                               :aria-expanded="spectrogramSettingsOpen"
                               @click="toggleSpectrogramSettings"
+                            />
+                          </div>
+                          <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view. -->
+                          <div v-if="showWaveform" class="audio-page__waveform-stack">
+                            <waveform-view
+                              v-for="wtrack in waveformTracks"
+                              :key="wtrack.key"
+                              :buffer="audio.spectrogramBuffer"
+                              :channel="wtrack.channel"
+                              :label="wtrack.label"
+                              :scale="waveformScale"
+                              :playhead-sec="displayedPositionSec"
+                              :seekable="canSeek"
+                              :height="WAVEFORM_TRACK_HEIGHT"
+                              @seek="handleSeek"
                             />
                           </div>
                           <div class="audio-page__spectrogram-stack">
@@ -422,6 +465,7 @@
 import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import SpectrogramMinimap from '../components/SpectrogramMinimap.vue'
 import SpectrogramView from '../components/SpectrogramView.vue'
+import WaveformView from '../components/WaveformView.vue'
 import {
   fullWindow,
   isFullWindow,
@@ -794,6 +838,39 @@ const noSpectrogramLabel = computed(() => {
 })
 
 const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
+
+// SF22: waveform view prefs (separate track show + overlay + amplitude scale), persisted.
+const STORAGE_AUDIO_WAVEFORM = 'mindwave-audio-waveform'
+function loadWaveformPrefs(): { show?: boolean; overlay?: boolean; scale?: string } {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUDIO_WAVEFORM)
+    const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, never>) : {}
+  } catch {
+    return {}
+  }
+}
+const wfPrefs = loadWaveformPrefs()
+const showWaveform = ref<boolean>(wfPrefs.show ?? true)
+const waveformOverlay = ref<boolean>(wfPrefs.overlay ?? false)
+const waveformScale = ref<'linear' | 'db'>(wfPrefs.scale === 'db' ? 'db' : 'linear')
+watch([showWaveform, waveformOverlay, waveformScale], () => {
+  try {
+    localStorage.setItem(
+      STORAGE_AUDIO_WAVEFORM,
+      JSON.stringify({ show: showWaveform.value, overlay: waveformOverlay.value, scale: waveformScale.value }),
+    )
+  } catch {
+    // ignore
+  }
+})
+const WAVEFORM_TRACK_HEIGHT = 110
+interface WaveformTrack { readonly key: string; readonly channel: number; readonly label?: string }
+const waveformTracks = computed<WaveformTrack[]>(() =>
+  isSpectrogramStereo.value
+    ? [{ key: 'wL', channel: 0, label: 'L' }, { key: 'wR', channel: 1, label: 'R' }]
+    : [{ key: 'wMono', channel: 0 }],
+)
 
 // Reset the shared spectrogram view/selection when the file changes (fresh full view).
 watch(() => audio.displayFilePath, () => {
@@ -1359,6 +1436,14 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   display: flex;
   gap: 4px;
   padding: 0 4px 4px;
+}
+
+/* SF22: waveform tracks above the spectrogram. */
+.audio-page__waveform-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 2px;
 }
 
 /* SF9.2: 2px mutual-resize divider between adjacent spectrogram tracks (SF-D19). */
