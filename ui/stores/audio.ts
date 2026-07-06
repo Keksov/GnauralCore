@@ -18,14 +18,20 @@ import type {
 } from '@protocol'
 import { audioApi } from '../audio-api'
 
-const STORAGE_AUDIO_SELECTED_PATH = 'mindwave-audio-selected-path'
+// SF20: recent files (most-recent first, cap 5) for the toolbar quick-pick dropdown.
+// Replaces the old single "restore last selected path" (which auto-loaded on tab open).
+const STORAGE_AUDIO_RECENT_FILES = 'mindwave-audio-recent-files'
+const RECENT_FILES_LIMIT = 5
 
-const loadStoredSelectedPath = (): string | null => {
+const loadRecentFiles = (): string[] => {
   try {
-    const value = localStorage.getItem(STORAGE_AUDIO_SELECTED_PATH)
-    return value !== null && value !== '' ? value : null
+    const raw = localStorage.getItem(STORAGE_AUDIO_RECENT_FILES)
+    if (raw === null) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((p): p is string => typeof p === 'string' && p !== '').slice(0, RECENT_FILES_LIMIT)
   } catch {
-    return null
+    return []
   }
 }
 
@@ -104,7 +110,9 @@ export const useAudioStore = defineStore('audio', () => {
   let renderSpectrogramAbortController: AbortController | null = null
   const settings = ref<AudioSettings>({ presetsRoot: '' })
   const presetsTree = ref<readonly PresetTreeNode[]>([])
-  const selectedPath = ref<string | null>(loadStoredSelectedPath())
+  // SF20: no auto-load on Audio-tab open — the last file is NOT restored into the selection.
+  const selectedPath = ref<string | null>(null)
+  const recentFiles = ref<string[]>(loadRecentFiles())
   const selectedNode = ref<PresetTreeNode | null>(null)
   const remoteTransportState = ref<AudioTransportState>('idle')
   const localTransportState = ref<AudioTransportState>('idle')
@@ -287,18 +295,19 @@ export const useAudioStore = defineStore('audio', () => {
     return isLocalAudioFileKind(displayMode.value) && localDurationSec.value > 0
   })
 
-  watch(selectedPath, (value) => {
+  // SF20: persist the recent-files list (the toolbar quick-pick uses it).
+  watch(recentFiles, (value) => {
     try {
-      if (value === null) {
-        localStorage.removeItem(STORAGE_AUDIO_SELECTED_PATH)
-        return
-      }
-
-      localStorage.setItem(STORAGE_AUDIO_SELECTED_PATH, value)
+      localStorage.setItem(STORAGE_AUDIO_RECENT_FILES, JSON.stringify(value))
     } catch {
-      // Ignore storage failures and keep the in-memory selection working.
+      // Ignore storage failures and keep the in-memory list working.
     }
-  }, { immediate: true })
+  }, { deep: true })
+
+  // Record a picked file at the front of the recent list (dedupe, cap RECENT_FILES_LIMIT).
+  function recordRecentFile(path: string): void {
+    recentFiles.value = [path, ...recentFiles.value.filter((p) => p !== path)].slice(0, RECENT_FILES_LIMIT)
+  }
 
   function releaseWavObjectUrl(): void {
     if (wavObjectUrl.value !== null) {
@@ -809,9 +818,8 @@ export const useAudioStore = defineStore('audio', () => {
       const response = await audioApi.fetchPresets()
       settings.value = { presetsRoot: response.presetsRoot }
       presetsTree.value = response.items
-      if (selectedPath.value !== null) {
-        selectPath(selectedPath.value)
-      }
+      // SF20: do NOT re-select/auto-load a previously stored path on refresh — the user
+      // picks from the toolbar recent-files dropdown or the tree instead.
       lastError.value = null
     } catch (error) {
       presetsTree.value = []
@@ -831,6 +839,9 @@ export const useAudioStore = defineStore('audio', () => {
 
     selectedNode.value = nextNode
     selectedPath.value = nextSelectedPath
+
+    // SF20: remember picked files for the toolbar quick-pick.
+    if (nextSelectedPath !== null) recordRecentFile(nextSelectedPath)
 
     if (
       !isLocalAudioFileKind(selectedNode.value?.fileKind) ||
@@ -975,6 +986,7 @@ export const useAudioStore = defineStore('audio', () => {
     settings,
     presetsTree,
     selectedPath,
+    recentFiles,
     selectedNode,
     selectedFileKind,
     activePlaybackMode,
