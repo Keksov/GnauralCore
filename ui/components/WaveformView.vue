@@ -54,6 +54,8 @@ interface Props {
   channel?: number
   /** Amplitude scale: linear (-1..1) or dBFS. */
   scale?: WaveformScale
+  /** SF23.2: waveform colour. */
+  color?: string
   label?: string
   height?: number
   playheadSec?: number | null
@@ -64,6 +66,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   channel: 0,
   scale: 'linear',
+  color: '#67e8f9',
   playheadSec: null,
   seekable: false,
   showTimeAxisTop: false,
@@ -186,7 +189,8 @@ function draw(): void {
   // RMS band (lighter) then the min/max envelope (brighter), one column per pixel.
   const n = cacheColumns.length
   if (n > 0) {
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.35)'
+    ctx.fillStyle = props.color
+    ctx.globalAlpha = 0.35
     for (let i = 0; i < n; i++) {
       const col = cacheColumns[i]!
       const x = plotX + (i / n) * plotW
@@ -194,7 +198,8 @@ function draw(): void {
       const bottom = centerY + col.rmsU * halfH
       ctx.fillRect(x, top, Math.max(1, plotW / n), Math.max(1, bottom - top))
     }
-    ctx.strokeStyle = '#38bdf8'
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = props.color
     ctx.beginPath()
     for (let i = 0; i < n; i++) {
       const col = cacheColumns[i]!
@@ -348,6 +353,7 @@ watch(durationSec, (dur) => {
 watch(view, () => scheduleDraw(), { deep: true })
 watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.scale, () => scheduleDraw())
+watch(() => props.color, () => scheduleDraw())
 watch(() => props.channel, () => scheduleDraw())
 watch(() => props.playheadSec, () => scheduleDraw())
 watch(() => props.buffer, () => scheduleDraw())

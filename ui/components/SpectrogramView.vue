@@ -153,6 +153,9 @@ interface Props {
   waveformBuffer?: AudioBuffer | null
   waveformScale?: WaveformScale
   waveformChannel?: number
+  /** SF23.2: overlay colour + opacity. */
+  waveformColor?: string
+  waveformOpacity?: number
   /** Current transport playback position (s); draws a playhead overlay (U3.3). */
   playheadSec?: number | null
   /** When true, clicking the plot emits `seek` with the clicked time. */
@@ -239,7 +242,8 @@ function drawWaveformOverlay(
   ctx.beginPath()
   ctx.rect(plotX, plotY, plotW, plotH)
   ctx.clip()
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)'
+  ctx.globalAlpha = props.waveformOpacity ?? 0.55
+  ctx.strokeStyle = props.waveformColor ?? '#67e8f9'
   ctx.lineWidth = 1
   ctx.beginPath()
   for (let i = 0; i < n; i++) {
@@ -249,6 +253,7 @@ function drawWaveformOverlay(
     ctx.lineTo(x, centerY - c.minU * halfH)
   }
   ctx.stroke()
+  ctx.globalAlpha = 1
   ctx.restore()
 }
 
@@ -905,7 +910,7 @@ watch(() => props.windowOverride, () => {
 
 // SF22.3: waveform overlay toggles/inputs -> redraw.
 watch(
-  () => [props.waveformOverlay, props.waveformScale, props.waveformChannel, props.waveformBuffer],
+  () => [props.waveformOverlay, props.waveformScale, props.waveformChannel, props.waveformBuffer, props.waveformColor, props.waveformOpacity],
   () => scheduleDraw(),
 )
 
