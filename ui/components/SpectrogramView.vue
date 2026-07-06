@@ -110,6 +110,8 @@ import { useI18n } from 'vue-i18n'
 import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
+import { useAudioModel } from '../composables/use-audio-model'
+import { peaksToColumns, type WaveformScale } from '../composables/waveform-render'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import {
   areaQueryBounds,
@@ -145,6 +147,11 @@ interface Props {
   /** SF17.4: per-tile FFT window override for high-zoom sharpening (0 = analysis window).
       Fetches sharper tiles for the visible window only — no whole-track reconfigure. */
   windowOverride?: number
+  /** SF22.3: overlay the waveform (of `waveformBuffer` channel `waveformChannel`) on the plot. */
+  waveformOverlay?: boolean
+  waveformBuffer?: AudioBuffer | null
+  waveformScale?: WaveformScale
+  waveformChannel?: number
   /** Current transport playback position (s); draws a playhead overlay (U3.3). */
   playheadSec?: number | null
   /** When true, clicking the plot emits `seek` with the clicked time. */
@@ -199,6 +206,50 @@ const canvasEl = ref<HTMLCanvasElement | null>(null)
 // (intermediate frames the user scrolls past are never fetched); the SF11.9 cross-zoom
 // fallback keeps the plot responsive meanwhile.
 const spec = useSpectrogram({ refetchDebounceMs: 200 })
+
+// SF22.3: optional waveform overlay (audio model + memoized peak columns for the visible view).
+const wfModel = useAudioModel(computed(() => props.waveformBuffer ?? null))
+let wfCacheSig = ''
+let wfCacheColumns = peaksToColumns([], 'linear')
+function drawWaveformOverlay(
+  ctx: CanvasRenderingContext2D,
+  plotX: number,
+  plotY: number,
+  plotW: number,
+  plotH: number,
+  win: TimeWindow,
+): void {
+  if (props.waveformOverlay !== true) return
+  const info = wfModel.info.value
+  if (info === null) return
+  const scale: WaveformScale = props.waveformScale ?? 'linear'
+  const ch = props.waveformChannel ?? 0
+  const sig = `${win.startSec}|${win.endSec}|${plotW}|${scale}|${ch}|${info.length}`
+  if (sig !== wfCacheSig) {
+    wfCacheColumns = peaksToColumns(wfModel.peaks(win.startSec, win.endSec, plotW, ch), scale)
+    wfCacheSig = sig
+  }
+  const cols = wfCacheColumns
+  const n = cols.length
+  if (n === 0) return
+  const centerY = plotY + plotH / 2
+  const halfH = (plotH / 2) * 0.92
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(plotX, plotY, plotW, plotH)
+  ctx.clip()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let i = 0; i < n; i++) {
+    const c = cols[i]!
+    const x = plotX + (i / n) * plotW + 0.5
+    ctx.moveTo(x, centerY - c.maxU * halfH)
+    ctx.lineTo(x, centerY - c.minU * halfH)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
 
 const MAX_VIEW_BINS = 512
 const AXIS_MARGIN = { left: 46, right: 8 }
@@ -339,6 +390,9 @@ function draw(): void {
     }
     ctx.restore()
   }
+
+  // SF22.3: waveform overlay on top of the tiles (below the axes/playhead).
+  drawWaveformOverlay(ctx, plotX, plotY, plotW, plotH, win)
 
   drawAxes(ctx, plotX, plotY, plotW, plotH, sliceFreq(tiles[0]?.binFrequenciesHz ?? [], fv), win.startSec, win.endSec)
 
@@ -841,6 +895,12 @@ watch(() => props.playheadSec, () => {
 watch(() => props.windowOverride, () => {
   applyView()
 })
+
+// SF22.3: waveform overlay toggles/inputs -> redraw.
+watch(
+  () => [props.waveformOverlay, props.waveformScale, props.waveformChannel, props.waveformBuffer],
+  () => scheduleDraw(),
+)
 
 // analysis params changed -> re-analyse the open source (reconfigure), then refetch.
 // Debounced so dragging a control coalesces into one re-analysis (U4.2).
