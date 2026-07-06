@@ -116,6 +116,8 @@ export interface TimeAxisTicks {
   readonly major: AxisTick[]
   /** Unlabelled minor ticks subdividing each major interval (Audacity-style). */
   readonly minor: AxisTick[]
+  /** SF20.3: the major step (s) — drives label precision (sub-second fraction). */
+  readonly majorStep: number
 }
 
 /**
@@ -130,9 +132,9 @@ export function timeAxisTicksWithMinor(
   aTargetMajor = 6,
 ): TimeAxisTicks {
   const range = aEndSec - aStartSec
-  if (range <= 0) return { major: [], minor: [] }
+  if (range <= 0) return { major: [], minor: [], majorStep: 0 }
   const majorStep = niceStep(range, aTargetMajor)
-  if (majorStep <= 0) return { major: [], minor: [] }
+  if (majorStep <= 0) return { major: [], minor: [], majorStep: 0 }
   const major = ticksAtStep(aStartSec, aEndSec, range, majorStep)
 
   const magnitude = Math.pow(10, Math.floor(Math.log10(majorStep) + 1e-9))
@@ -146,7 +148,7 @@ export function timeAxisTicksWithMinor(
     const onMajor = Math.abs(tick.value / majorStep - Math.round(tick.value / majorStep)) < 1e-6
     if (!onMajor) minor.push(tick)
   }
-  return { major, minor }
+  return { major, minor, majorStep }
 }
 
 /** Compact frequency label, e.g. 440 -> "440", 4400 -> "4.4k", 12000 -> "12k". */
@@ -158,13 +160,22 @@ export function formatHz(aHz: number): string {
   return `${Math.round(aHz)}`
 }
 
-/** Compact time label, e.g. 2.5 -> "2.50s", 65 -> "1:05". */
-export function formatTimeSec(aSec: number): string {
+/**
+ * Compact time label with a comma decimal separator, e.g. 2.5 -> "2,50s", 65 -> "1:05".
+ * SF20.3: when a tick step < 1 s is supplied, the seconds carry a sub-second fraction after
+ * the comma (e.g. 65.3 with step 0.1 -> "1:05,3") so ticks at high zoom don't read identically.
+ */
+export function formatTimeSec(aSec: number, aStepSec?: number): string {
   const sec = aSec < 0 ? 0 : aSec
+  // Decimals follow the tick step when given, else the legacy sub-minute default.
+  const decimals = aStepSec === undefined
+    ? (sec < 60 ? (sec < 10 ? 2 : 1) : 0)
+    : aStepSec < 0.1 ? 2 : aStepSec < 1 ? 1 : 0
   const minutes = Math.floor(sec / 60)
   if (minutes > 0) {
-    const rem = Math.round(sec - minutes * 60)
-    return `${minutes}:${rem.toString().padStart(2, '0')}`
+    const rem = sec - minutes * 60
+    const padTo = decimals > 0 ? 3 + decimals : 2 // "05" or "05.3" / "05.25"
+    return `${minutes}:${rem.toFixed(decimals).padStart(padTo, '0')}`.replace('.', ',')
   }
-  return `${sec.toFixed(sec < 10 ? 2 : 1)}s`
+  return `${sec.toFixed(decimals)}s`.replace('.', ',')
 }

@@ -91,7 +91,7 @@ describe('timeAxisTicksWithMinor (SF16.6 Audacity ruler)', () => {
   test('minor positions stay within [0,1]; degenerate range -> empty', () => {
     const { minor } = timeAxisTicksWithMinor(3, 9, 6)
     expect(minor.every((t) => t.position >= 0 && t.position <= 1)).toBe(true)
-    expect(timeAxisTicksWithMinor(5, 5, 6)).toEqual({ major: [], minor: [] })
+    expect(timeAxisTicksWithMinor(5, 5, 6)).toEqual({ major: [], minor: [], majorStep: 0 })
   })
 })
 
@@ -125,9 +125,23 @@ describe('formatHz / formatTimeSec (U3.1)', () => {
     expect(formatHz(12000)).toBe('12k')
   })
 
-  test('time labels', () => {
-    expect(formatTimeSec(2.5)).toBe('2.50s')
+  test('time labels use a comma decimal separator (SF20.3)', () => {
+    expect(formatTimeSec(2.5)).toBe('2,50s')
     expect(formatTimeSec(65)).toBe('1:05')
-    expect(formatTimeSec(0)).toBe('0.00s')
+    expect(formatTimeSec(0)).toBe('0,00s')
+  })
+
+  test('SF20.3: sub-second step adds a comma-fraction so ticks do not read identically', () => {
+    // step >= 1 -> whole seconds (no duplicates issue)
+    expect(formatTimeSec(65, 1)).toBe('1:05')
+    expect(formatTimeSec(65.3, 1)).toBe('1:05')
+    // step 0.1 -> one decimal after the comma; 65.0/65.3/65.6 stay distinct
+    expect(formatTimeSec(65, 0.1)).toBe('1:05,0')
+    expect(formatTimeSec(65.3, 0.1)).toBe('1:05,3')
+    // step 0.05 -> two decimals
+    expect(formatTimeSec(65.25, 0.05)).toBe('1:05,25')
+    // sub-minute high zoom
+    expect(formatTimeSec(5.3, 0.1)).toBe('5,3s')
+    expect(formatTimeSec(5, 1)).toBe('5s')
   })
 })

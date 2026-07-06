@@ -407,7 +407,7 @@ function drawAxes(
   // SF16.6: Audacity-style ruler — denser labelled majors (~1 per 90px) + short minor ticks.
   ctx.textAlign = 'center'
   const targetMajor = Math.max(4, Math.min(14, Math.round(plotW / 90)))
-  const { major, minor } = timeAxisTicksWithMinor(timeStartSec, timeEndSec, targetMajor)
+  const { major, minor, majorStep } = timeAxisTicksWithMinor(timeStartSec, timeEndSec, targetMajor)
   const tickX = (position: number): number =>
     Math.min(plotX + plotW - 1, Math.max(plotX, plotX + position * plotW))
   const drawTimeRuler = (edgeY: number, dir: number, baseline: CanvasTextBaseline): void => {
@@ -427,7 +427,7 @@ function drawAxes(
       ctx.moveTo(x, edgeY)
       ctx.lineTo(x, edgeY + dir * 4)
       ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value), x, edgeY + dir * 5)
+      ctx.fillText(formatTimeSec(tick.value, majorStep), x, edgeY + dir * 5)
     }
   }
   if (props.showTimeAxisBottom) drawTimeRuler(plotY + plotH, 1, 'top')
