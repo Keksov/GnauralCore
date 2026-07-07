@@ -322,7 +322,7 @@
                               <waveform-view
                                 :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
                                 :file-path="audio.displayFilePath"
-                                :analysis="spectrogramTracks[wIndex]?.analysis"
+                                :analysis="wtrack.analysis"
                                 :channel="wtrack.channel"
                                 :label="wtrack.label"
                                 :scale="wfScale(wtrack.channel)"
@@ -368,10 +368,10 @@
                               :window-override="spectrogramWindowOverride"
                               :waveform-overlay="waveformOverlay"
                               :waveform-buffer="audio.spectrogramBuffer"
-                              :waveform-scale="wfScale(index)"
-                              :waveform-color="wfColor(index)"
-                              :waveform-opacity="wfOpacity(index)"
-                              :waveform-channel="index"
+                              :waveform-scale="wfScale(track.channel)"
+                              :waveform-color="wfColor(track.channel)"
+                              :waveform-opacity="wfOpacity(track.channel)"
+                              :waveform-channel="track.channel"
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
                               :label="track.label"
@@ -380,7 +380,7 @@
                               :show-time-axis-bottom="index === spectrogramTracks.length - 1"
                               :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
-                              @open-settings="openWaveformSettings(index)"
+                              @open-settings="openWaveformSettings(track.channel)"
                             />
                             <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
                             <div
@@ -1042,6 +1042,56 @@ const minimapMode = ref<MinimapMode>(
   MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
 )
 const minimapSettingsOpen = ref(false)
+
+// SF28 (SF-D66): per-kind track ORDER + independent HIDE set, so L/R can be reordered and hidden
+// independently for the waveform and the spectrogram. `viewMode` stays a coarse visibility preset
+// (which KINDS show); this layer decides order + which channels are hidden within a shown kind.
+type TrackKind = 'waveform' | 'spectrogram'
+const STORAGE_AUDIO_TRACK_LAYOUT = 'mindwave-audio-track-layout'
+function loadTrackLayout(): { order?: Record<string, unknown>; hidden?: unknown } {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUDIO_TRACK_LAYOUT)
+    const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
+    return typeof parsed === 'object' && parsed !== null ? (parsed as { order?: Record<string, unknown>; hidden?: unknown }) : {}
+  } catch {
+    return {}
+  }
+}
+function numArr(v: unknown, fallback: number[]): number[] {
+  return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)) : fallback
+}
+const savedLayout = loadTrackLayout()
+const trackOrder = ref<Record<TrackKind, number[]>>({
+  waveform: numArr(savedLayout.order?.waveform, [0, 1]),
+  spectrogram: numArr(savedLayout.order?.spectrogram, [0, 1]),
+})
+const hiddenTracks = ref<Set<string>>(
+  new Set(Array.isArray(savedLayout.hidden) ? savedLayout.hidden.filter((x): x is string => typeof x === 'string') : []),
+)
+function trackKey(kind: TrackKind, ch: number): string {
+  return `${kind}:${ch}`
+}
+function isTrackHidden(kind: TrackKind, ch: number): boolean {
+  return hiddenTracks.value.has(trackKey(kind, ch))
+}
+// Ordered, non-hidden channel list for a kind, given the available channel count. Unknown/new
+// channels are appended so a mono→stereo file transition still surfaces the new channel.
+function orderedChannels(kind: TrackKind, count: number): number[] {
+  const ord = trackOrder.value[kind].filter((c) => c >= 0 && c < count)
+  for (let c = 0; c < count; c++) if (!ord.includes(c)) ord.push(c)
+  return ord.filter((c) => !isTrackHidden(kind, c))
+}
+watch([trackOrder, hiddenTracks], () => {
+  try {
+    localStorage.setItem(
+      STORAGE_AUDIO_TRACK_LAYOUT,
+      JSON.stringify({ order: trackOrder.value, hidden: Array.from(hiddenTracks.value) }),
+    )
+  } catch {
+    // ignore
+  }
+}, { deep: true })
+
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
@@ -1063,12 +1113,23 @@ watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode]
     // ignore
   }
 }, { deep: true })
-interface WaveformTrack { readonly key: string; readonly channel: number; readonly label?: string }
-const waveformTracks = computed<WaveformTrack[]>(() =>
-  isSpectrogramStereo.value
-    ? [{ key: 'wL', channel: 0, label: 'L' }, { key: 'wR', channel: 1, label: 'R' }]
-    : [{ key: 'wMono', channel: 0 }],
-)
+interface WaveformTrack {
+  readonly key: string
+  readonly channel: number
+  readonly label?: string
+  readonly analysis: SpectrogramAnalysisParams
+}
+// SF28.1: driven by the unified layout model — ordered + hidden-filtered per channel. Carries the
+// per-channel analysis directly (was indexed off spectrogramTracks, which breaks under reorder).
+const waveformTracks = computed<WaveformTrack[]>(() => {
+  const stereo = isSpectrogramStereo.value
+  return orderedChannels('waveform', stereo ? 2 : 1).map((ch) => ({
+    key: stereo ? (ch === 0 ? 'wL' : 'wR') : 'wMono',
+    channel: ch,
+    label: stereo ? (ch === 0 ? 'L' : 'R') : undefined,
+    analysis: spectrogramAnalysisForChannel(ch),
+  }))
+})
 
 // SF25: waveform track heights — same mutual-divider + uniform-bottom resize as the spectrogram.
 const WAVEFORM_TRACK_HEIGHT_DEFAULT = 110
@@ -1216,6 +1277,12 @@ const spectrogramWindowOverride = computed(() =>
 
 const spectrogramLeftAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 0 }))
 const spectrogramRightAnalysis = computed(() => ({ ...applyHighZoom(spectrogramStore.analysisParams), channel: 1 }))
+// SF28.1: analysis params for a given channel (used by both the spectrogram and waveform tracks so
+// each track fetches its own channel regardless of display order). Mono uses the base params.
+function spectrogramAnalysisForChannel(ch: number): SpectrogramAnalysisParams {
+  if (!isSpectrogramStereo.value) return applyHighZoom(spectrogramStore.analysisParams)
+  return ch === 0 ? spectrogramLeftAnalysis.value : spectrogramRightAnalysis.value
+}
 
 const spectrogramHasView = computed(() => spectrogramShared.view.value !== null)
 // v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
@@ -1257,18 +1324,25 @@ function closeSpectrogramSettings(): void {
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
 interface SpectrogramTrack {
   readonly key: string
+  readonly channel: number
   readonly analysis: SpectrogramAnalysisParams
   readonly label?: string
   readonly primary: boolean
 }
-const spectrogramTracks = computed<SpectrogramTrack[]>(() =>
-  isSpectrogramStereo.value
-    ? [
-        { key: 'L', analysis: spectrogramLeftAnalysis.value, label: 'L', primary: true },
-        { key: 'R', analysis: spectrogramRightAnalysis.value, label: 'R', primary: false },
-      ]
-    : [{ key: 'mono', analysis: applyHighZoom(spectrogramStore.analysisParams), primary: true }],
-)
+// SF28.1: ordered + hidden-filtered per the unified layout model. The first VISIBLE track is
+// primary (drives the shared view/keyboard focus).
+const spectrogramTracks = computed<SpectrogramTrack[]>(() => {
+  if (!isSpectrogramStereo.value) {
+    return [{ key: 'mono', channel: 0, analysis: applyHighZoom(spectrogramStore.analysisParams), primary: true }]
+  }
+  return orderedChannels('spectrogram', 2).map((ch, i) => ({
+    key: ch === 0 ? 'L' : 'R',
+    channel: ch,
+    analysis: ch === 0 ? spectrogramLeftAnalysis.value : spectrogramRightAnalysis.value,
+    label: ch === 0 ? 'L' : 'R',
+    primary: i === 0,
+  }))
+})
 
 // Keep the per-track heights array length in sync with the track count; new tracks get
 // the first track's height (or the Audacity default), preserving existing sizes.
