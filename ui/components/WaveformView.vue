@@ -12,16 +12,25 @@
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="waveform-view__label-overlay">{{ label }}</span>
-    <!-- SF27: per-track gear opens this track's colour/scale settings. -->
-    <q-btn
-      dense flat round size="xs"
-      icon="settings"
-      class="waveform-view__gear"
-      :aria-label="t('audio.waveformStyle')"
-      @click.stop="emit('open-settings')"
-    >
-      <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
-    </q-btn>
+    <!-- SF27/SF28.2: per-track actions — hide, and gear (colour/scale settings). -->
+    <div class="waveform-view__actions">
+      <q-btn
+        dense flat round size="xs"
+        icon="visibility_off"
+        :aria-label="t('audio.trackHide')"
+        @click.stop="emit('hide')"
+      >
+        <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
+      </q-btn>
+      <q-btn
+        dense flat round size="xs"
+        icon="settings"
+        :aria-label="t('audio.waveformStyle')"
+        @click.stop="emit('open-settings')"
+      >
+        <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
+      </q-btn>
+    </div>
     <div
       v-if="hover !== null && hoverPos !== null"
       class="waveform-view__tooltip"
@@ -89,7 +98,11 @@ const props = withDefaults(defineProps<Props>(), {
   showTimeAxisTop: false,
   showTimeAxisBottom: false,
 })
-const emit = defineEmits<{ (event: 'seek', sec: number): void; (event: 'open-settings'): void }>()
+const emit = defineEmits<{
+  (event: 'seek', sec: number): void
+  (event: 'open-settings'): void
+  (event: 'hide'): void
+}>()
 
 interface SpectrogramSharedState {
   readonly view: import('vue').Ref<TimeWindow | null>
@@ -527,17 +540,22 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-/* SF27: per-track settings gear, top-right corner. */
-.waveform-view__gear {
-  color: #cbd5e1;
-  opacity: 0.6;
+/* SF27/SF28.2: per-track action buttons (hide + gear), top-right corner. */
+.waveform-view__actions {
+  display: flex;
+  gap: 2px;
   position: absolute;
   right: 4px;
   top: 2px;
   z-index: 5;
 }
 
-.waveform-view__gear:hover {
+.waveform-view__actions .q-btn {
+  color: #cbd5e1;
+  opacity: 0.6;
+}
+
+.waveform-view__actions .q-btn:hover {
   opacity: 1;
 }
 

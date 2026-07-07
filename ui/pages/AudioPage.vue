@@ -315,6 +315,23 @@
                               @click="toggleSpectrogramSettings"
                             />
                           </div>
+                          <!-- SF28.2: restore strip for hidden tracks (click a chip to bring it back). -->
+                          <div v-if="hiddenTrackList.length > 0" class="audio-page__hidden-tracks">
+                            <q-icon name="visibility_off" size="16px" />
+                            <span class="audio-page__hidden-tracks-label">{{ t('audio.hiddenTracks') }}:</span>
+                            <q-chip
+                              v-for="h in hiddenTrackList"
+                              :key="h.key"
+                              clickable dense
+                              icon="visibility"
+                              color="grey-8"
+                              text-color="grey-3"
+                              @click="showTrack(h.kind, h.channel)"
+                            >
+                              {{ h.label }}
+                              <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                            </q-chip>
+                          </div>
                           <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
                                SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
                           <div v-if="showWaveform" class="audio-page__waveform-stack">
@@ -334,6 +351,7 @@
                                 :height="waveformTrackHeights[wIndex]"
                                 @seek="handleSeek"
                                 @open-settings="openWaveformSettings(wtrack.channel)"
+                                @hide="hideTrack('waveform', wtrack.channel)"
                               />
                               <div
                                 v-if="wIndex < waveformTracks.length - 1"
@@ -381,6 +399,7 @@
                               :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
                               @open-settings="openWaveformSettings(track.channel)"
+                              @hide="hideTrack('spectrogram', track.channel)"
                             />
                             <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
                             <div
@@ -1091,6 +1110,38 @@ watch([trackOrder, hiddenTracks], () => {
     // ignore
   }
 }, { deep: true })
+// SF28.2: hide/show a single track (independent per kind + channel). Reassign the Set so the
+// persistence watch + computeds react.
+function hideTrack(kind: TrackKind, ch: number): void {
+  const s = new Set(hiddenTracks.value)
+  s.add(trackKey(kind, ch))
+  hiddenTracks.value = s
+}
+function showTrack(kind: TrackKind, ch: number): void {
+  const s = new Set(hiddenTracks.value)
+  s.delete(trackKey(kind, ch))
+  hiddenTracks.value = s
+}
+// The restore strip lists hidden tracks whose KIND is currently shown by the view-mode preset
+// (restoring a track under a preset-hidden kind wouldn't surface it).
+interface HiddenTrackEntry { readonly key: string; readonly kind: TrackKind; readonly channel: number; readonly label: string }
+const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
+  const count = isSpectrogramStereo.value ? 2 : 1
+  const out: HiddenTrackEntry[] = []
+  const kinds: ReadonlyArray<{ kind: TrackKind; shown: boolean; name: string }> = [
+    { kind: 'waveform', shown: showWaveform.value, name: t('audio.trackKindWaveform') },
+    { kind: 'spectrogram', shown: showSpectrogram.value, name: t('audio.trackKindSpectrogram') },
+  ]
+  for (const { kind, shown, name } of kinds) {
+    if (!shown) continue
+    for (let ch = 0; ch < count; ch++) {
+      if (!isTrackHidden(kind, ch)) continue
+      const chLabel = count > 1 ? (ch === 0 ? 'L' : 'R') : ''
+      out.push({ key: trackKey(kind, ch), kind, channel: ch, label: chLabel ? `${name} ${chLabel}` : name })
+    }
+  }
+  return out
+})
 
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
@@ -1838,6 +1889,20 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 }
 
 /* SF23.2: waveform style popover (colour + overlay opacity). */
+/* SF28.2: hidden-tracks restore strip above the stacks. */
+.audio-page__hidden-tracks {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.audio-page__hidden-tracks-label {
+  font-size: 12px;
+}
+
 .audio-page__wf-color {
   background: none;
   border: none;

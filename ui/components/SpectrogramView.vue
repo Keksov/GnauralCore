@@ -62,17 +62,26 @@
     </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
-    <!-- SF27: waveform-overlay gear opens this track's overlay colour/scale settings. -->
-    <q-btn
-      v-if="waveformOverlay"
-      dense flat round size="xs"
-      icon="settings"
-      class="spectrogram-view__wf-gear"
-      :aria-label="t('audio.waveformStyle')"
-      @click.stop="emit('open-settings')"
-    >
-      <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
-    </q-btn>
+    <!-- SF27/SF28.2: per-track actions — hide, and (when overlaid) the waveform-style gear. -->
+    <div class="spectrogram-view__actions">
+      <q-btn
+        dense flat round size="xs"
+        icon="visibility_off"
+        :aria-label="t('audio.trackHide')"
+        @click.stop="emit('hide')"
+      >
+        <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
+      </q-btn>
+      <q-btn
+        v-if="waveformOverlay"
+        dense flat round size="xs"
+        icon="settings"
+        :aria-label="t('audio.waveformStyle')"
+        @click.stop="emit('open-settings')"
+      >
+        <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
+      </q-btn>
+    </div>
     <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar) -->
     <div
       v-if="tooltipText !== null && tooltipPos !== null"
@@ -191,6 +200,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
+  (event: 'hide'): void
 }>()
 
 // SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
@@ -1032,17 +1042,22 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-/* SF27: waveform-overlay settings gear, top-right corner. */
-.spectrogram-view__wf-gear {
-  color: #cbd5e1;
-  opacity: 0.6;
+/* SF27/SF28.2: per-track action buttons (hide + overlay gear), top-right corner. */
+.spectrogram-view__actions {
+  display: flex;
+  gap: 2px;
   position: absolute;
   right: 4px;
   top: 2px;
   z-index: 5;
 }
 
-.spectrogram-view__wf-gear:hover {
+.spectrogram-view__actions .q-btn {
+  color: #cbd5e1;
+  opacity: 0.6;
+}
+
+.spectrogram-view__actions .q-btn:hover {
   opacity: 1;
 }
 
