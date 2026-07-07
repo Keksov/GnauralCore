@@ -12,6 +12,16 @@
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="waveform-view__label-overlay">{{ label }}</span>
+    <!-- SF27: per-track gear opens this track's colour/scale settings. -->
+    <q-btn
+      dense flat round size="xs"
+      icon="settings"
+      class="waveform-view__gear"
+      :aria-label="t('audio.waveformStyle')"
+      @click.stop="emit('open-settings')"
+    >
+      <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
+    </q-btn>
     <div
       v-if="hover !== null && hoverPos !== null"
       class="waveform-view__tooltip"
@@ -79,7 +89,7 @@ const props = withDefaults(defineProps<Props>(), {
   showTimeAxisTop: false,
   showTimeAxisBottom: false,
 })
-const emit = defineEmits<{ (event: 'seek', sec: number): void }>()
+const emit = defineEmits<{ (event: 'seek', sec: number): void; (event: 'open-settings'): void }>()
 
 interface SpectrogramSharedState {
   readonly view: import('vue').Ref<TimeWindow | null>
@@ -515,6 +525,20 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   z-index: 4;
+}
+
+/* SF27: per-track settings gear, top-right corner. */
+.waveform-view__gear {
+  color: #cbd5e1;
+  opacity: 0.6;
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  z-index: 5;
+}
+
+.waveform-view__gear:hover {
+  opacity: 1;
 }
 
 .waveform-view__tooltip {

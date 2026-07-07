@@ -304,31 +304,7 @@
                                 </q-item>
                               </q-list>
                             </q-btn-dropdown>
-                            <!-- SF22/SF23.2: amplitude scale + waveform style (colour / overlay opacity). -->
-                            <q-btn
-                              v-if="viewMode !== 'spectrogram'"
-                              dense flat no-caps size="sm"
-                              :label="waveformScale === 'db' ? 'dB' : 'lin'"
-                              :aria-label="t('audio.waveformScale')"
-                              @click="waveformScale = waveformScale === 'db' ? 'linear' : 'db'"
-                            >
-                              <q-tooltip>{{ t('audio.waveformScale') }}</q-tooltip>
-                            </q-btn>
-                            <q-btn v-if="viewMode !== 'spectrogram'" dense flat round size="sm" icon="palette" :aria-label="t('audio.waveformStyle')">
-                              <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
-                              <q-menu>
-                                <div class="audio-page__wf-style">
-                                  <div class="row items-center justify-between no-wrap q-mb-sm">
-                                    <span class="text-caption">{{ t('audio.waveformColor') }}</span>
-                                    <input type="color" v-model="waveformColor" class="audio-page__wf-color" />
-                                  </div>
-                                  <template v-if="viewMode === 'overlay'">
-                                    <div class="text-caption">{{ t('audio.waveformOpacity') }}: {{ Math.round(waveformOpacity * 100) }}%</div>
-                                    <q-slider v-model="waveformOpacity" :min="0.1" :max="1" :step="0.05" dense />
-                                  </template>
-                                </div>
-                              </q-menu>
-                            </q-btn>
+                            <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
                             <q-btn
                               dense flat round size="sm"
                               icon="tune"
@@ -349,14 +325,15 @@
                                 :analysis="spectrogramTracks[wIndex]?.analysis"
                                 :channel="wtrack.channel"
                                 :label="wtrack.label"
-                                :scale="waveformScale"
-                                :color="waveformColor"
+                                :scale="wfScale(wtrack.channel)"
+                                :color="wfColor(wtrack.channel)"
                                 :playhead-sec="displayedPositionSec"
                                 :seekable="canSeek"
                                 :show-time-axis-top="wIndex === 0"
                                 :show-time-axis-bottom="wIndex === waveformTracks.length - 1 && !showSpectrogram"
                                 :height="waveformTrackHeights[wIndex]"
                                 @seek="handleSeek"
+                                @open-settings="openWaveformSettings(wtrack.channel)"
                               />
                               <div
                                 v-if="wIndex < waveformTracks.length - 1"
@@ -391,9 +368,9 @@
                               :window-override="spectrogramWindowOverride"
                               :waveform-overlay="waveformOverlay"
                               :waveform-buffer="audio.spectrogramBuffer"
-                              :waveform-scale="waveformScale"
-                              :waveform-color="waveformColor"
-                              :waveform-opacity="waveformOpacity"
+                              :waveform-scale="wfScale(index)"
+                              :waveform-color="wfColor(index)"
+                              :waveform-opacity="wfOpacity(index)"
                               :waveform-channel="index"
                               :playhead-sec="displayedPositionSec"
                               :seekable="canSeek"
@@ -403,6 +380,7 @@
                               :show-time-axis-bottom="index === spectrogramTracks.length - 1"
                               :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
+                              @open-settings="openWaveformSettings(index)"
                             />
                             <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
                             <div
@@ -438,7 +416,7 @@
                               :analysis="spectrogramTracks[0]?.analysis"
                               :render="spectrogramStore.renderOptions"
                               :mode="minimapMode"
-                              :waveform-color="waveformColor"
+                              :waveform-color="wfColor(0)"
                               v-model:view="spectrogramView"
                             />
                             <!-- SF26: gear opens the minimap settings dialog. -->
@@ -478,6 +456,39 @@
                                   <q-item-section>{{ t(`audio.minimapMode_${m}`) }}</q-item-section>
                                 </q-item>
                               </q-list>
+                            </q-card>
+                          </q-dialog>
+
+                          <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
+                          <q-dialog v-model="waveformSettingsOpen">
+                            <q-card class="audio-page__minimap-dialog">
+                              <q-card-section class="row items-center q-pb-sm">
+                                <div class="text-subtitle1">
+                                  {{ t('audio.waveformStyle') }}<span v-if="wfDlgLabel"> — {{ wfDlgLabel }}</span>
+                                </div>
+                                <q-space />
+                                <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
+                              </q-card-section>
+                              <q-separator />
+                              <q-card-section class="q-gutter-md">
+                                <div class="row items-center justify-between no-wrap">
+                                  <span class="text-body2">{{ t('audio.waveformColor') }}</span>
+                                  <input type="color" v-model="wfDlgColor" class="audio-page__wf-color" />
+                                </div>
+                                <div class="row items-center justify-between no-wrap">
+                                  <span class="text-body2">{{ t('audio.waveformScale') }}</span>
+                                  <q-btn-toggle
+                                    v-model="wfDlgScale"
+                                    dense unelevated no-caps
+                                    toggle-color="primary"
+                                    :options="[{ label: 'lin', value: 'linear' }, { label: 'dB', value: 'db' }]"
+                                  />
+                                </div>
+                                <div v-if="viewMode === 'overlay'">
+                                  <div class="text-body2 q-mb-xs">{{ t('audio.waveformOpacity') }}: {{ Math.round(wfDlgOpacity * 100) }}%</div>
+                                  <q-slider v-model="wfDlgOpacity" :min="0.1" :max="1" :step="0.05" dense />
+                                </div>
+                              </q-card-section>
                             </q-card>
                           </q-dialog>
                         </div>
@@ -933,7 +944,16 @@ const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfCha
 type AudioViewMode = 'waveform' | 'spectrogram' | 'both' | 'overlay'
 const AUDIO_VIEW_MODES: readonly AudioViewMode[] = ['both', 'overlay', 'spectrogram', 'waveform']
 const STORAGE_AUDIO_WAVEFORM = 'mindwave-audio-waveform'
-function loadWaveformPrefs(): { mode?: string; scale?: string; color?: string; opacity?: number; minimap?: string } {
+function loadWaveformPrefs(): {
+  mode?: string
+  scale?: string // legacy scalar (pre-SF27) — migrated to scales[0]
+  color?: string // legacy
+  opacity?: number // legacy
+  scales?: unknown
+  colors?: unknown
+  opacities?: unknown
+  minimap?: string
+} {
   try {
     const raw = localStorage.getItem(STORAGE_AUDIO_WAVEFORM)
     const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
@@ -949,9 +969,75 @@ const wfPrefs = loadWaveformPrefs()
 const viewMode = ref<AudioViewMode>(
   AUDIO_VIEW_MODES.includes(wfPrefs.mode as AudioViewMode) ? (wfPrefs.mode as AudioViewMode) : 'both',
 )
-const waveformScale = ref<'linear' | 'db'>(wfPrefs.scale === 'db' ? 'db' : 'linear')
-const waveformColor = ref<string>(typeof wfPrefs.color === 'string' ? wfPrefs.color : '#67e8f9')
-const waveformOpacity = ref<number>(typeof wfPrefs.opacity === 'number' ? wfPrefs.opacity : 0.55)
+// SF27: waveform colour / scale / overlay-opacity are now PER TRACK (per channel), so L and R
+// can differ. Arrays are indexed by channel; legacy scalar prefs seed channel 0 on migration.
+type WaveformScale = 'linear' | 'db'
+const WAVEFORM_DEFAULT_COLORS = ['#67e8f9', '#fbbf24'] // L cyan, R amber
+function seedArray<T>(saved: unknown, legacy: T, fallback: (ch: number) => T): T[] {
+  if (Array.isArray(saved) && saved.length > 0) return saved.slice(0, 2) as T[]
+  return [legacy ?? fallback(0), fallback(1)]
+}
+const waveformScales = ref<WaveformScale[]>(
+  seedArray<WaveformScale>(wfPrefs.scales, wfPrefs.scale === 'db' ? 'db' : 'linear', () => 'linear'),
+)
+const waveformColors = ref<string[]>(
+  seedArray<string>(
+    wfPrefs.colors,
+    typeof wfPrefs.color === 'string' ? wfPrefs.color : WAVEFORM_DEFAULT_COLORS[0],
+    (ch) => WAVEFORM_DEFAULT_COLORS[ch] ?? WAVEFORM_DEFAULT_COLORS[0],
+  ),
+)
+const waveformOpacities = ref<number[]>(
+  seedArray<number>(wfPrefs.opacities, typeof wfPrefs.opacity === 'number' ? wfPrefs.opacity : 0.55, () => 0.55),
+)
+function wfScale(ch: number): WaveformScale {
+  return waveformScales.value[ch] ?? waveformScales.value[0] ?? 'linear'
+}
+function wfColor(ch: number): string {
+  return waveformColors.value[ch] ?? WAVEFORM_DEFAULT_COLORS[ch] ?? WAVEFORM_DEFAULT_COLORS[0]
+}
+function wfOpacity(ch: number): number {
+  return waveformOpacities.value[ch] ?? waveformOpacities.value[0] ?? 0.55
+}
+// Per-track settings dialog: which channel's settings are open (null = closed).
+const waveformSettingsChannel = ref<number | null>(null)
+const waveformSettingsOpen = computed<boolean>({
+  get: () => waveformSettingsChannel.value !== null,
+  set: (v) => {
+    if (!v) waveformSettingsChannel.value = null
+  },
+})
+function openWaveformSettings(ch: number): void {
+  waveformSettingsChannel.value = ch
+}
+const wfDlgChannel = computed(() => waveformSettingsChannel.value ?? 0)
+const wfDlgLabel = computed(() =>
+  isSpectrogramStereo.value ? (wfDlgChannel.value === 0 ? 'L' : 'R') : '',
+)
+const wfDlgScale = computed<WaveformScale>({
+  get: () => wfScale(wfDlgChannel.value),
+  set: (v) => {
+    const a = waveformScales.value.slice()
+    a[wfDlgChannel.value] = v
+    waveformScales.value = a
+  },
+})
+const wfDlgColor = computed<string>({
+  get: () => wfColor(wfDlgChannel.value),
+  set: (v) => {
+    const a = waveformColors.value.slice()
+    a[wfDlgChannel.value] = v
+    waveformColors.value = a
+  },
+})
+const wfDlgOpacity = computed<number>({
+  get: () => wfOpacity(wfDlgChannel.value),
+  set: (v) => {
+    const a = waveformOpacities.value.slice()
+    a[wfDlgChannel.value] = v
+    waveformOpacities.value = a
+  },
+})
 const minimapMode = ref<MinimapMode>(
   MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
 )
@@ -961,16 +1047,22 @@ const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.va
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
 const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
-watch([viewMode, waveformScale, waveformColor, waveformOpacity, minimapMode], () => {
+watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
   try {
     localStorage.setItem(
       STORAGE_AUDIO_WAVEFORM,
-      JSON.stringify({ mode: viewMode.value, scale: waveformScale.value, color: waveformColor.value, opacity: waveformOpacity.value, minimap: minimapMode.value }),
+      JSON.stringify({
+        mode: viewMode.value,
+        scales: waveformScales.value,
+        colors: waveformColors.value,
+        opacities: waveformOpacities.value,
+        minimap: minimapMode.value,
+      }),
     )
   } catch {
     // ignore
   }
-})
+}, { deep: true })
 interface WaveformTrack { readonly key: string; readonly channel: number; readonly label?: string }
 const waveformTracks = computed<WaveformTrack[]>(() =>
   isSpectrogramStereo.value
@@ -1672,11 +1764,6 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 }
 
 /* SF23.2: waveform style popover (colour + overlay opacity). */
-.audio-page__wf-style {
-  min-width: 200px;
-  padding: 12px;
-}
-
 .audio-page__wf-color {
   background: none;
   border: none;

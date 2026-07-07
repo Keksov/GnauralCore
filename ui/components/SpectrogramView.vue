@@ -62,6 +62,17 @@
     </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
+    <!-- SF27: waveform-overlay gear opens this track's overlay colour/scale settings. -->
+    <q-btn
+      v-if="waveformOverlay"
+      dense flat round size="xs"
+      icon="settings"
+      class="spectrogram-view__wf-gear"
+      :aria-label="t('audio.waveformStyle')"
+      @click.stop="emit('open-settings')"
+    >
+      <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
+    </q-btn>
     <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar) -->
     <div
       v-if="tooltipText !== null && tooltipPos !== null"
@@ -179,6 +190,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
+  (event: 'open-settings'): void
 }>()
 
 // SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
@@ -1018,6 +1030,20 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   z-index: 4;
+}
+
+/* SF27: waveform-overlay settings gear, top-right corner. */
+.spectrogram-view__wf-gear {
+  color: #cbd5e1;
+  opacity: 0.6;
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  z-index: 5;
+}
+
+.spectrogram-view__wf-gear:hover {
+  opacity: 1;
 }
 
 /* SF-D25: point/area readout tooltip anchored at the cursor. */
