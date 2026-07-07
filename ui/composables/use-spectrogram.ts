@@ -28,6 +28,59 @@ function nextRequestId(): string {
   return `spec-${Date.now().toString(36)}-${gRequestSeq}`
 }
 
+// SF24 (interleaved tile loading): the spectrogram worker is a single serial process, so if one
+// track (e.g. stereo L) sends ALL its get-tile requests before the other (R), R visibly lags.
+// This shared round-robin scheduler interleaves sends across every useSpectrogram instance with a
+// bounded in-flight count, so stacked tracks fill in TOGETHER. Frontend-only (no backend change).
+const TILE_INFLIGHT_CAP = 3
+interface QueuedTile {
+  readonly requestId: string
+  readonly dispatch: () => void
+}
+const gTileQueues = new Map<number, QueuedTile[]>()
+let gTileRing: number[] = []
+const gTileInflight = new Set<string>()
+let gInstanceSeq = 0
+
+function tilePump(): void {
+  let guard = 8192
+  while (gTileInflight.size < TILE_INFLIGHT_CAP && gTileRing.length > 0 && guard-- > 0) {
+    const id = gTileRing.shift() as number
+    const q = gTileQueues.get(id)
+    if (q === undefined || q.length === 0) {
+      gTileQueues.delete(id)
+      continue
+    }
+    const item = q.shift() as QueuedTile
+    gTileInflight.add(item.requestId)
+    item.dispatch()
+    if (q.length > 0) gTileRing.push(id) // requeue at the back — round-robin across instances
+    else gTileQueues.delete(id)
+  }
+}
+
+/** Replace an instance's pending tile sends and pump the interleaved scheduler. */
+function tileScheduleInstance(aInstanceId: number, aItems: QueuedTile[]): void {
+  if (aItems.length === 0) {
+    gTileQueues.delete(aInstanceId)
+    gTileRing = gTileRing.filter((i) => i !== aInstanceId)
+    return
+  }
+  gTileQueues.set(aInstanceId, aItems)
+  if (!gTileRing.includes(aInstanceId)) gTileRing.push(aInstanceId)
+  tilePump()
+}
+
+/** A tile response arrived (or errored) — free the slot and dispatch the next queued tile. */
+function tileComplete(aRequestId: string): void {
+  if (gTileInflight.delete(aRequestId)) tilePump()
+}
+
+function tileClearInstance(aInstanceId: number): void {
+  gTileQueues.delete(aInstanceId)
+  gTileRing = gTileRing.filter((i) => i !== aInstanceId)
+}
+
 export interface UseSpectrogramOptions {
   readonly tileFrames?: number
   readonly cacheSize?: number
@@ -75,6 +128,7 @@ interface PendingTile {
 
 export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectrogram {
   const ws = useWsService()
+  const instanceId = ++gInstanceSeq // SF24: identity in the shared interleaving scheduler
 
   const analysis = shallowRef<SpectrogramAnalysisInfo | null>(null)
   const tiles = shallowRef<readonly SpectrogramTile[]>([])
@@ -167,6 +221,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       return
     }
     if (aMessage.type === 'spectrogram:tile') {
+      tileComplete(aMessage.requestId) // SF24: free the scheduler slot, dispatch the next queued
       const pending = pendingTiles.get(aMessage.requestId)
       if (pending === undefined) return
       pendingTiles.delete(aMessage.requestId)
@@ -179,6 +234,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       return
     }
     if (aMessage.type === 'spectrogram:error') {
+      tileComplete(aMessage.requestId) // SF24: free the slot if this was an in-flight tile
       // Only surface an error this instance owns. Control-request errors are delivered to the
       // owning instance's waiter above (and handled by the caller); a broadcast error for
       // another instance's request (the WS is shared across composables) must NOT clobber this
@@ -294,21 +350,32 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     })
     const secPerFrame = analysis.value.durationSec / analysis.value.frameCount
     const windowOverride = view.windowOverride ?? 0
+    const analysisIdLocal = analysisId
+    // SF24: hand the sends to the shared round-robin scheduler (interleaves L/R). pendingTiles
+    // (loading state) is set at DISPATCH time so a queue replaced by a newer view leaks nothing.
+    const items: QueuedTile[] = []
     for (const r of reqs) {
       if (cache.has(r.key)) continue
       const requestId = nextRequestId()
-      pendingTiles.set(requestId, { key: r.key, seq })
-      ws.sendSpectrogram({
-        type: 'spectrogram:get-tile',
+      items.push({
         requestId,
-        analysisId,
-        timeStartSec: r.frameStart * secPerFrame,
-        timeEndSec: (r.frameStart + r.frameCount) * secPerFrame,
-        zoom: r.zoom,
-        viewBinCount: r.viewBinCount,
-        ...(windowOverride > 0 ? { windowOverride } : {}),
+        dispatch: () => {
+          pendingTiles.set(requestId, { key: r.key, seq })
+          ws.sendSpectrogram({
+            type: 'spectrogram:get-tile',
+            requestId,
+            analysisId: analysisIdLocal,
+            timeStartSec: r.frameStart * secPerFrame,
+            timeEndSec: (r.frameStart + r.frameCount) * secPerFrame,
+            zoom: r.zoom,
+            viewBinCount: r.viewBinCount,
+            ...(windowOverride > 0 ? { windowOverride } : {}),
+          })
+          updateLoading()
+        },
       })
     }
+    tileScheduleInstance(instanceId, items)
     assembleVisibleTiles()
     updateLoading()
   }
@@ -413,6 +480,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     }
     opening = false
     pendingTiles.clear()
+    tileClearInstance(instanceId) // SF24: drop any queued (unsent) tiles for this instance
     // Drop the stale view so the next open's setView is never skipped by the no-op guard.
     currentView = null
     updateLoading()
@@ -438,6 +506,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     unsubscribe()
     controlWaiters.clear()
     pendingTiles.clear()
+    tileClearInstance(instanceId)
   }
 
   onScopeDispose(dispose)
