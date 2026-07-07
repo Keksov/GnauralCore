@@ -1657,11 +1657,12 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 }
 
 /* SF9.3: bottom handle below the last track — uniform resize of all tracks (SF-D20). */
+/* SF26: the bottom resize handle matches the between-tracks divider (same 2px thickness + look). */
 .audio-page__spectrogram-bottom-handle {
-  background: rgba(148, 163, 184, 0.14);
+  background: rgba(148, 163, 184, 0.35);
   cursor: ns-resize;
   flex: 0 0 auto;
-  height: 8px;
+  height: 2px;
   touch-action: none;
   width: 100%;
 }
