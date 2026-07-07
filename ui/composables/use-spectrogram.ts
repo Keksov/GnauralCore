@@ -179,11 +179,15 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
       return
     }
     if (aMessage.type === 'spectrogram:error') {
+      // Only surface an error this instance owns. Control-request errors are delivered to the
+      // owning instance's waiter above (and handled by the caller); a broadcast error for
+      // another instance's request (the WS is shared across composables) must NOT clobber this
+      // instance's error state — that used to show the waveform's error over the spectrogram.
       if (pendingTiles.has(aMessage.requestId)) {
         pendingTiles.delete(aMessage.requestId)
+        error.value = aMessage.error
         updateLoading()
       }
-      error.value = aMessage.error
     }
   }
 

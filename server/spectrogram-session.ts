@@ -195,8 +195,10 @@ const GET_TILE_TIMEOUT_MS = 60_000
 // its open worker analysis (skips the ~seconds full-file decode). Since Opt C made
 // analyses lazy (samples-only, no giant matrix), a few kept warm are affordable.
 // Bounded by count AND kept-sample bytes (whichever hits first) to avoid OOM.
-const ANALYSIS_CACHE_MAX = 4
-const ANALYSIS_CACHE_BUDGET_BYTES = 1_500_000_000
+// SF24.1: raised to comfortably hold stereo spectrogram + waveform (which reuse one analysis
+// per channel via findByKey, but leave headroom for the minimap + a transient open race).
+const ANALYSIS_CACHE_MAX = 6
+const ANALYSIS_CACHE_BUDGET_BYTES = 3_000_000_000
 
 // SF11.2: cache computed tiles per warm analysis so re-fetching an already-seen view
 // (returning to a file, or re-panning) skips the worker's on-demand STFT recompute

@@ -346,6 +346,7 @@
                               :key="wtrack.key"
                               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
                               :file-path="audio.displayFilePath"
+                              :analysis="spectrogramTracks[wIndex]?.analysis"
                               :channel="wtrack.channel"
                               :label="wtrack.label"
                               :scale="waveformScale"

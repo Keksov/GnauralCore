@@ -27,6 +27,8 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import type { SpectrogramAnalysisParams } from '@protocol'
+
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { amplitudeToDb, type AudioPeak } from '../composables/audio-model'
 import { peaksToColumns, WAVEFORM_DB_FLOOR, type WaveformScale } from '../composables/waveform-render'
@@ -51,6 +53,10 @@ import {
 
 interface Props {
   filePath: string | null
+  /** SF24.1 fix: open with the SAME analysis params as the spectrogram track for this channel
+      so the backend REUSES one analysis (peaks + tiles from it) instead of opening a separate
+      one that would push past the analysis cache cap and evict others. */
+  analysis?: SpectrogramAnalysisParams
   /** Channel to draw (0 = L / mono, 1 = R). */
   channel?: number
   /** Amplitude scale: linear (-1..1) or dBFS. */
@@ -429,7 +435,9 @@ async function openForFile(aFilePath: string | null): Promise<void> {
     return
   }
   try {
-    await spec.open({ filePath: aFilePath, window: 2048, hop: 512, data: 'magnitude', channel: props.channel })
+    // Reuse the spectrogram track's analysis (same params -> same cache key -> shared).
+    const params = props.analysis ?? { window: 2048, hop: 512, data: 'magnitude' as const, channel: props.channel }
+    await spec.open({ filePath: aFilePath, ...params })
   } catch {
     // ignore — draw shows the empty frame
   }
@@ -451,6 +459,8 @@ watch(() => props.color, () => scheduleDraw())
 watch(() => props.channel, () => { void openForFile(props.filePath) })
 watch(() => props.playheadSec, () => scheduleDraw())
 watch(() => props.filePath, (v) => { void openForFile(v) })
+// SF24.1 fix: track the spectrogram track's params so we keep reusing its (reconfigured) analysis.
+watch(() => props.analysis, () => { void openForFile(props.filePath) }, { deep: true })
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
