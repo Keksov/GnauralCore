@@ -339,22 +339,46 @@
                               @click="toggleSpectrogramSettings"
                             />
                           </div>
-                          <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view. -->
+                          <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
+                               SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
                           <div v-if="showWaveform" class="audio-page__waveform-stack">
-                            <waveform-view
-                              v-for="(wtrack, wIndex) in waveformTracks"
-                              :key="wtrack.key"
-                              :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
-                              :file-path="audio.displayFilePath"
-                              :analysis="spectrogramTracks[wIndex]?.analysis"
-                              :channel="wtrack.channel"
-                              :label="wtrack.label"
-                              :scale="waveformScale"
-                              :color="waveformColor"
-                              :playhead-sec="displayedPositionSec"
-                              :seekable="canSeek"
-                              :height="WAVEFORM_TRACK_HEIGHT"
-                              @seek="handleSeek"
+                            <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
+                              <waveform-view
+                                :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
+                                :file-path="audio.displayFilePath"
+                                :analysis="spectrogramTracks[wIndex]?.analysis"
+                                :channel="wtrack.channel"
+                                :label="wtrack.label"
+                                :scale="waveformScale"
+                                :color="waveformColor"
+                                :playhead-sec="displayedPositionSec"
+                                :seekable="canSeek"
+                                :show-time-axis-top="wIndex === 0"
+                                :show-time-axis-bottom="wIndex === waveformTracks.length - 1 && !showSpectrogram"
+                                :height="waveformTrackHeights[wIndex]"
+                                @seek="handleSeek"
+                              />
+                              <div
+                                v-if="wIndex < waveformTracks.length - 1"
+                                class="audio-page__spectrogram-divider"
+                                role="separator"
+                                aria-orientation="horizontal"
+                                :aria-label="t('audio.spectrogramResizeHandle')"
+                                @pointerdown="onWaveformDividerPointerDown($event, wIndex)"
+                                @pointermove="onWaveformDividerPointerMove"
+                                @pointerup="onWaveformDividerPointerUp"
+                                @pointercancel="onWaveformDividerPointerUp"
+                              />
+                            </template>
+                            <div
+                              class="audio-page__spectrogram-bottom-handle"
+                              role="separator"
+                              aria-orientation="horizontal"
+                              :aria-label="t('audio.spectrogramResizeHandle')"
+                              @pointerdown="onWaveformBottomPointerDown"
+                              @pointermove="onWaveformBottomPointerMove"
+                              @pointerup="onWaveformBottomPointerUp"
+                              @pointercancel="onWaveformBottomPointerUp"
                             />
                           </div>
                           <div v-if="showSpectrogram" class="audio-page__spectrogram-stack">
@@ -375,7 +399,7 @@
                               :seekable="canSeek"
                               :label="track.label"
                               :primary="track.primary"
-                              :show-time-axis-top="index === 0"
+                              :show-time-axis-top="index === 0 && !showWaveform"
                               :show-time-axis-bottom="index === spectrogramTracks.length - 1"
                               :height="spectrogramTrackHeights[index]"
                               @seek="handleSeek"
@@ -899,13 +923,100 @@ watch([viewMode, waveformScale, waveformColor, waveformOpacity], () => {
     // ignore
   }
 })
-const WAVEFORM_TRACK_HEIGHT = 110
 interface WaveformTrack { readonly key: string; readonly channel: number; readonly label?: string }
 const waveformTracks = computed<WaveformTrack[]>(() =>
   isSpectrogramStereo.value
     ? [{ key: 'wL', channel: 0, label: 'L' }, { key: 'wR', channel: 1, label: 'R' }]
     : [{ key: 'wMono', channel: 0 }],
 )
+
+// SF25: waveform track heights — same mutual-divider + uniform-bottom resize as the spectrogram.
+const WAVEFORM_TRACK_HEIGHT_DEFAULT = 110
+const WAVEFORM_TRACK_HEIGHT_MIN = 48
+const WAVEFORM_TRACK_HEIGHT_MAX = 800
+const STORAGE_AUDIO_WAVEFORM_TRACK_HEIGHTS = 'mindwave-audio-waveform-track-heights'
+function clampWaveformHeight(aValue: number): number {
+  return Math.max(WAVEFORM_TRACK_HEIGHT_MIN, Math.min(WAVEFORM_TRACK_HEIGHT_MAX, Math.round(aValue)))
+}
+function loadStoredWaveformTrackHeights(): number[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUDIO_WAVEFORM_TRACK_HEIGHTS)
+    if (raw === null) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is number => typeof v === 'number' && Number.isFinite(v)).map(clampWaveformHeight)
+  } catch {
+    return []
+  }
+}
+const waveformTrackHeights = ref<number[]>(loadStoredWaveformTrackHeights())
+watch(waveformTrackHeights, (v) => {
+  try { localStorage.setItem(STORAGE_AUDIO_WAVEFORM_TRACK_HEIGHTS, JSON.stringify(v)) } catch { /* ignore */ }
+}, { deep: true })
+watch(() => waveformTracks.value.length, (aCount) => {
+  const cur = waveformTrackHeights.value
+  if (cur.length === aCount) return
+  const base = cur[0] ?? WAVEFORM_TRACK_HEIGHT_DEFAULT
+  const next: number[] = []
+  for (let i = 0; i < aCount; i += 1) next.push(clampWaveformHeight(cur[i] ?? base))
+  waveformTrackHeights.value = next
+}, { immediate: true })
+
+// Waveform resize handlers (mirror the spectrogram: mutual divider + uniform bottom handle).
+let wfDividerIndex = -1
+let wfDividerStartY = 0
+let wfDividerTopStart = 0
+let wfDividerBottomStart = 0
+function onWaveformDividerPointerDown(aEvent: PointerEvent, aIndex: number): void {
+  const hs = waveformTrackHeights.value
+  if (aIndex < 0 || aIndex + 1 >= hs.length) return
+  wfDividerIndex = aIndex
+  wfDividerStartY = aEvent.clientY
+  wfDividerTopStart = hs[aIndex]
+  wfDividerBottomStart = hs[aIndex + 1]
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+}
+function onWaveformDividerPointerMove(aEvent: PointerEvent): void {
+  if (wfDividerIndex < 0) return
+  const total = wfDividerTopStart + wfDividerBottomStart
+  let top = wfDividerTopStart + (aEvent.clientY - wfDividerStartY)
+  top = Math.max(WAVEFORM_TRACK_HEIGHT_MIN, Math.min(total - WAVEFORM_TRACK_HEIGHT_MIN, top))
+  const next = waveformTrackHeights.value.slice()
+  next[wfDividerIndex] = Math.round(top)
+  next[wfDividerIndex + 1] = Math.round(total - top)
+  waveformTrackHeights.value = next
+}
+function onWaveformDividerPointerUp(aEvent: PointerEvent): void {
+  if (wfDividerIndex < 0) return
+  wfDividerIndex = -1
+  try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+}
+let wfBottomResizing = false
+let wfBottomStartY = 0
+let wfBottomStartHeights: number[] = []
+function onWaveformBottomPointerDown(aEvent: PointerEvent): void {
+  if (waveformTrackHeights.value.length === 0) return
+  wfBottomResizing = true
+  wfBottomStartY = aEvent.clientY
+  wfBottomStartHeights = waveformTrackHeights.value.slice()
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+}
+function onWaveformBottomPointerMove(aEvent: PointerEvent): void {
+  if (!wfBottomResizing) return
+  const minH = Math.min(...wfBottomStartHeights)
+  const maxH = Math.max(...wfBottomStartHeights)
+  const lo = WAVEFORM_TRACK_HEIGHT_MIN - minH
+  const hi = WAVEFORM_TRACK_HEIGHT_MAX - maxH
+  const dy = Math.max(lo, Math.min(hi, aEvent.clientY - wfBottomStartY))
+  waveformTrackHeights.value = wfBottomStartHeights.map((h) => Math.round(h + dy))
+}
+function onWaveformBottomPointerUp(aEvent: PointerEvent): void {
+  if (!wfBottomResizing) return
+  wfBottomResizing = false
+  try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+}
 
 // Reset the shared spectrogram view/selection when the file changes (fresh full view).
 watch(() => audio.displayFilePath, () => {

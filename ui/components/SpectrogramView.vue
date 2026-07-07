@@ -470,23 +470,27 @@ function drawAxes(
   const tickX = (position: number): number =>
     Math.min(plotX + plotW - 1, Math.max(plotX, plotX + position * plotW))
   const drawTimeRuler = (edgeY: number, dir: number, baseline: CanvasTextBaseline): void => {
+    // SF25: brighter + taller ticks so the ruler reads clearly over the dark plot.
+    ctx.strokeStyle = '#cbd5e1'
+    ctx.lineWidth = 1
     // minor ticks (short, unlabelled)
     for (const tick of minor) {
       const x = tickX(tick.position)
       ctx.beginPath()
       ctx.moveTo(x, edgeY)
-      ctx.lineTo(x, edgeY + dir * 2)
+      ctx.lineTo(x, edgeY + dir * 3)
       ctx.stroke()
     }
     // major ticks (long) + labels
+    ctx.lineWidth = 1.5
     ctx.textBaseline = baseline
     for (const tick of major) {
       const x = tickX(tick.position)
       ctx.beginPath()
       ctx.moveTo(x, edgeY)
-      ctx.lineTo(x, edgeY + dir * 4)
+      ctx.lineTo(x, edgeY + dir * 6)
       ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value, majorStep), x, edgeY + dir * 5)
+      ctx.fillText(formatTimeSec(tick.value, majorStep), x, edgeY + dir * 7)
     }
   }
   if (props.showTimeAxisBottom) drawTimeRuler(plotY + plotH, 1, 'top')

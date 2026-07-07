@@ -273,35 +273,36 @@ function drawAxes(
   ctx.fillText(midLabel, plotX - 5, plotY + plotH / 2)
   ctx.fillText(botLabel, plotX - 5, plotY + plotH - 6)
 
-  // time ruler (SF16.6 style) on the requested edges.
+  // time ruler (SF16.6 style) on the requested edges. SF25: brighter + taller ticks + minor ticks.
   const win = view.value
   ctx.textAlign = 'center'
   const targetMajor = Math.max(4, Math.min(14, Math.round(plotW / 90)))
-  const { major, majorStep } = timeAxisTicksWithMinor(win.startSec, win.endSec, targetMajor)
+  const { major, minor, majorStep } = timeAxisTicksWithMinor(win.startSec, win.endSec, targetMajor)
   const tickX = (position: number): number =>
     Math.min(plotX + plotW - 1, Math.max(plotX, plotX + position * plotW))
-  if (props.showTimeAxisBottom) {
-    ctx.textBaseline = 'top'
+  const drawRuler = (edgeY: number, dir: number, baseline: CanvasTextBaseline): void => {
+    ctx.strokeStyle = '#cbd5e1'
+    ctx.lineWidth = 1
+    for (const tick of minor) {
+      const x = tickX(tick.position)
+      ctx.beginPath()
+      ctx.moveTo(x, edgeY)
+      ctx.lineTo(x, edgeY + dir * 3)
+      ctx.stroke()
+    }
+    ctx.lineWidth = 1.5
+    ctx.textBaseline = baseline
     for (const tick of major) {
       const x = tickX(tick.position)
       ctx.beginPath()
-      ctx.moveTo(x, plotY + plotH)
-      ctx.lineTo(x, plotY + plotH + 4)
+      ctx.moveTo(x, edgeY)
+      ctx.lineTo(x, edgeY + dir * 6)
       ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value, majorStep), x, plotY + plotH + 5)
+      ctx.fillText(formatTimeSec(tick.value, majorStep), x, edgeY + dir * 7)
     }
   }
-  if (props.showTimeAxisTop) {
-    ctx.textBaseline = 'bottom'
-    for (const tick of major) {
-      const x = tickX(tick.position)
-      ctx.beginPath()
-      ctx.moveTo(x, plotY)
-      ctx.lineTo(x, plotY - 4)
-      ctx.stroke()
-      ctx.fillText(formatTimeSec(tick.value, majorStep), x, plotY - 5)
-    }
-  }
+  if (props.showTimeAxisBottom) drawRuler(plotY + plotH, 1, 'top')
+  if (props.showTimeAxisTop) drawRuler(plotY, -1, 'bottom')
 }
 
 function scheduleDraw(): void {
