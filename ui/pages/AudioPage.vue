@@ -329,24 +329,6 @@
                                 </div>
                               </q-menu>
                             </q-btn>
-                            <!-- SF26: minimap thumbnail content (spectrogram / waveform / overlay). -->
-                            <q-btn-dropdown dense flat no-caps size="sm" icon="video_label" :label="t(`audio.minimapMode_${minimapMode}`)" :aria-label="t('audio.minimapMode')">
-                              <q-list dense style="min-width: 180px">
-                                <q-item
-                                  v-for="m in MINIMAP_MODES"
-                                  :key="m"
-                                  clickable
-                                  v-close-popup
-                                  :active="m === minimapMode"
-                                  @click="minimapMode = m"
-                                >
-                                  <q-item-section avatar style="min-width: 26px">
-                                    <q-icon v-if="m === minimapMode" name="check" size="18px" />
-                                  </q-item-section>
-                                  <q-item-section>{{ t(`audio.minimapMode_${m}`) }}</q-item-section>
-                                </q-item>
-                              </q-list>
-                            </q-btn-dropdown>
                             <q-btn
                               dense flat round size="sm"
                               icon="tune"
@@ -449,16 +431,55 @@
                           </div>
                           <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
                                B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
-                          <spectrogram-minimap
-                            v-if="showSpectrogram"
-                            :duration-sec="spectrogramDuration"
-                            :file-path="audio.displayFilePath"
-                            :analysis="spectrogramTracks[0]?.analysis"
-                            :render="spectrogramStore.renderOptions"
-                            :mode="minimapMode"
-                            :waveform-color="waveformColor"
-                            v-model:view="spectrogramView"
-                          />
+                          <div v-if="showSpectrogram" class="audio-page__minimap-wrap">
+                            <spectrogram-minimap
+                              :duration-sec="spectrogramDuration"
+                              :file-path="audio.displayFilePath"
+                              :analysis="spectrogramTracks[0]?.analysis"
+                              :render="spectrogramStore.renderOptions"
+                              :mode="minimapMode"
+                              :waveform-color="waveformColor"
+                              v-model:view="spectrogramView"
+                            />
+                            <!-- SF26: gear opens the minimap settings dialog. -->
+                            <q-btn
+                              dense flat round size="xs"
+                              icon="settings"
+                              class="audio-page__minimap-gear"
+                              :aria-label="t('audio.minimapMode')"
+                              @click="minimapSettingsOpen = true"
+                            >
+                              <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
+                            </q-btn>
+                          </div>
+
+                          <!-- SF26: minimap settings dialog (thumbnail content). -->
+                          <q-dialog v-model="minimapSettingsOpen">
+                            <q-card class="audio-page__minimap-dialog">
+                              <q-card-section class="row items-center q-pb-sm">
+                                <div class="text-subtitle1">{{ t('audio.minimapMode') }}</div>
+                                <q-space />
+                                <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
+                              </q-card-section>
+                              <q-separator />
+                              <q-list>
+                                <q-item
+                                  v-for="m in MINIMAP_MODES"
+                                  :key="m"
+                                  clickable
+                                  v-close-popup
+                                  :active="m === minimapMode"
+                                  active-class="text-primary"
+                                  @click="minimapMode = m"
+                                >
+                                  <q-item-section avatar style="min-width: 30px">
+                                    <q-icon v-if="m === minimapMode" name="check" size="20px" />
+                                  </q-item-section>
+                                  <q-item-section>{{ t(`audio.minimapMode_${m}`) }}</q-item-section>
+                                </q-item>
+                              </q-list>
+                            </q-card>
+                          </q-dialog>
                         </div>
                       </div>
 
@@ -934,6 +955,7 @@ const waveformOpacity = ref<number>(typeof wfPrefs.opacity === 'number' ? wfPref
 const minimapMode = ref<MinimapMode>(
   MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
 )
+const minimapSettingsOpen = ref(false)
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
@@ -1617,6 +1639,28 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   display: flex;
   gap: 4px;
   padding: 0 4px 4px;
+}
+
+/* SF26: minimap gear (settings) overlaid in the top-right corner. */
+.audio-page__minimap-wrap {
+  position: relative;
+}
+
+.audio-page__minimap-gear {
+  color: #cbd5e1;
+  opacity: 0.7;
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  z-index: 3;
+}
+
+.audio-page__minimap-gear:hover {
+  opacity: 1;
+}
+
+.audio-page__minimap-dialog {
+  min-width: 300px;
 }
 
 /* SF22: waveform tracks above the spectrogram. */
