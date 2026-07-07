@@ -82,6 +82,7 @@ async function fetchMinimapPeaks(): Promise<void> {
   const analysis = spec.analysis.value
   if (canvas === null || analysis === null || minimapMode.value === 'spectrogram') {
     minimapPeaks = []
+    scheduleDraw() // redraw so switching TO spectrogram-only clears the stale waveform
     return
   }
   minimapPeaks = await spec.getPeaks(0, analysis.durationSec, plotWidth(canvas))
