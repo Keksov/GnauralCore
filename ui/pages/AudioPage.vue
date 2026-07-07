@@ -329,6 +329,24 @@
                                 </div>
                               </q-menu>
                             </q-btn>
+                            <!-- SF26: minimap thumbnail content (spectrogram / waveform / overlay). -->
+                            <q-btn-dropdown dense flat no-caps size="sm" icon="video_label" :label="t(`audio.minimapMode_${minimapMode}`)" :aria-label="t('audio.minimapMode')">
+                              <q-list dense style="min-width: 180px">
+                                <q-item
+                                  v-for="m in MINIMAP_MODES"
+                                  :key="m"
+                                  clickable
+                                  v-close-popup
+                                  :active="m === minimapMode"
+                                  @click="minimapMode = m"
+                                >
+                                  <q-item-section avatar style="min-width: 26px">
+                                    <q-icon v-if="m === minimapMode" name="check" size="18px" />
+                                  </q-item-section>
+                                  <q-item-section>{{ t(`audio.minimapMode_${m}`) }}</q-item-section>
+                                </q-item>
+                              </q-list>
+                            </q-btn-dropdown>
                             <q-btn
                               dense flat round size="sm"
                               icon="tune"
@@ -437,6 +455,8 @@
                             :file-path="audio.displayFilePath"
                             :analysis="spectrogramTracks[0]?.analysis"
                             :render="spectrogramStore.renderOptions"
+                            :mode="minimapMode"
+                            :waveform-color="waveformColor"
                             v-model:view="spectrogramView"
                           />
                         </div>
@@ -892,7 +912,7 @@ const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfCha
 type AudioViewMode = 'waveform' | 'spectrogram' | 'both' | 'overlay'
 const AUDIO_VIEW_MODES: readonly AudioViewMode[] = ['both', 'overlay', 'spectrogram', 'waveform']
 const STORAGE_AUDIO_WAVEFORM = 'mindwave-audio-waveform'
-function loadWaveformPrefs(): { mode?: string; scale?: string; color?: string; opacity?: number } {
+function loadWaveformPrefs(): { mode?: string; scale?: string; color?: string; opacity?: number; minimap?: string } {
   try {
     const raw = localStorage.getItem(STORAGE_AUDIO_WAVEFORM)
     const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
@@ -901,6 +921,9 @@ function loadWaveformPrefs(): { mode?: string; scale?: string; color?: string; o
     return {}
   }
 }
+// SF26: minimap thumbnail content.
+type MinimapMode = 'spectrogram' | 'waveform' | 'overlay'
+const MINIMAP_MODES: readonly MinimapMode[] = ['spectrogram', 'waveform', 'overlay']
 const wfPrefs = loadWaveformPrefs()
 const viewMode = ref<AudioViewMode>(
   AUDIO_VIEW_MODES.includes(wfPrefs.mode as AudioViewMode) ? (wfPrefs.mode as AudioViewMode) : 'both',
@@ -908,16 +931,19 @@ const viewMode = ref<AudioViewMode>(
 const waveformScale = ref<'linear' | 'db'>(wfPrefs.scale === 'db' ? 'db' : 'linear')
 const waveformColor = ref<string>(typeof wfPrefs.color === 'string' ? wfPrefs.color : '#67e8f9')
 const waveformOpacity = ref<number>(typeof wfPrefs.opacity === 'number' ? wfPrefs.opacity : 0.55)
+const minimapMode = ref<MinimapMode>(
+  MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
+)
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
 const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
-watch([viewMode, waveformScale, waveformColor, waveformOpacity], () => {
+watch([viewMode, waveformScale, waveformColor, waveformOpacity, minimapMode], () => {
   try {
     localStorage.setItem(
       STORAGE_AUDIO_WAVEFORM,
-      JSON.stringify({ mode: viewMode.value, scale: waveformScale.value, color: waveformColor.value, opacity: waveformOpacity.value }),
+      JSON.stringify({ mode: viewMode.value, scale: waveformScale.value, color: waveformColor.value, opacity: waveformOpacity.value, minimap: minimapMode.value }),
     )
   } catch {
     // ignore

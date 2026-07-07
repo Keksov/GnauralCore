@@ -502,13 +502,19 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+/* SF25: match the spectrogram's channel label — just right of the vertical axis, at the top. */
 .waveform-view__label-overlay {
-  color: #cbd5e1;
-  font-size: 11px;
-  left: 6px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 3px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  left: 50px;
+  padding: 0 4px;
   pointer-events: none;
   position: absolute;
   top: 4px;
+  z-index: 4;
 }
 
 .waveform-view__tooltip {

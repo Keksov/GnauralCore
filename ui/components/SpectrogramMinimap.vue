@@ -22,6 +22,8 @@ import type { SpectrogramAnalysisParams } from '@protocol'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
+import { peaksToColumns } from '../composables/waveform-render'
+import type { AudioPeak } from '../composables/audio-model'
 import { formatTimeSec, timeAxisTicks } from '../composables/spectrogram-axes'
 import {
   clampWindow,
@@ -46,6 +48,10 @@ interface Props {
   filePath?: string | null
   /** Client-side render transform for the thumbnail tiles. */
   render?: Partial<SpectrogramRenderOptions>
+  /** SF26: what the thumbnail shows — spectrogram / waveform / waveform over spectrogram. */
+  mode?: 'spectrogram' | 'waveform' | 'overlay'
+  /** Waveform colour for the waveform/overlay modes. */
+  waveformColor?: string
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ (event: 'update:view', view: TimeWindow): void }>()
@@ -67,6 +73,20 @@ function getOffscreen(aWidth: number, aHeight: number): HTMLCanvasElement {
 const PAD = 6
 const EDGE_PX = 6
 const hasView = computed(() => props.view !== null && props.durationSec > 0)
+
+// SF26: whole-clip waveform peaks for the waveform / overlay minimap modes.
+const minimapMode = computed(() => props.mode ?? 'spectrogram')
+let minimapPeaks: AudioPeak[] = []
+async function fetchMinimapPeaks(): Promise<void> {
+  const canvas = canvasEl.value
+  const analysis = spec.analysis.value
+  if (canvas === null || analysis === null || minimapMode.value === 'spectrogram') {
+    minimapPeaks = []
+    return
+  }
+  minimapPeaks = await spec.getPeaks(0, analysis.durationSec, plotWidth(canvas))
+  scheduleDraw()
+}
 
 function plotWidth(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - PAD * 2)
@@ -96,13 +116,14 @@ function draw(): void {
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, cssW, cssH)
 
-  // B7: whole-clip spectrogram thumbnail behind the navigator (falls back to a plain
-  // baseline until the tiles arrive).
+  // B7 + SF26: whole-clip thumbnail behind the navigator — spectrogram and/or waveform per mode.
   const thumbTop = 4
   const thumbH = Math.max(1, cssH - 18)
   const tiles = spec.tiles.value
   const analysis = spec.analysis.value
-  if (tiles.length > 0 && analysis !== null && analysis.frameCount > 0) {
+  const showSpectro = minimapMode.value !== 'waveform'
+  const showWave = minimapMode.value !== 'spectrogram'
+  if (showSpectro && tiles.length > 0 && analysis !== null && analysis.frameCount > 0) {
     const d = Math.max(MIN_WINDOW_SEC, props.durationSec)
     const secPerFrame = analysis.durationSec / analysis.frameCount
     ctx.save()
@@ -125,6 +146,32 @@ function draw(): void {
   } else {
     ctx.fillStyle = '#1e293b'
     ctx.fillRect(PAD, thumbTop, cssW - PAD * 2, thumbH)
+  }
+
+  // SF26: waveform envelope over the thumbnail (waveform-only or overlay modes).
+  if (showWave && minimapPeaks.length > 0) {
+    const cols = peaksToColumns(minimapPeaks, 'linear')
+    const n = cols.length
+    const plotW = plotWidth(canvas)
+    const centerY = thumbTop + thumbH / 2
+    const halfH = (thumbH / 2) * 0.92
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(PAD, thumbTop, cssW - PAD * 2, thumbH)
+    ctx.clip()
+    ctx.strokeStyle = props.waveformColor ?? '#67e8f9'
+    ctx.globalAlpha = minimapMode.value === 'overlay' ? 0.6 : 1
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (let i = 0; i < n; i++) {
+      const c = cols[i]!
+      const x = PAD + (i / n) * plotW + 0.5
+      ctx.moveTo(x, centerY - c.maxU * halfH)
+      ctx.lineTo(x, centerY - c.minU * halfH)
+    }
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    ctx.restore()
   }
 
   if (props.view === null || props.durationSec <= 0) return
@@ -204,6 +251,7 @@ async function openForPath(aFilePath: string | null | undefined): Promise<void> 
   try {
     await spec.open({ filePath: aFilePath, ...(props.analysis ?? { window: 2048, hop: 512 }) })
     applyMinimapView()
+    void fetchMinimapPeaks()
   } catch {
     // surfaced via spec.error; the thumbnail just falls back to the baseline
   }
@@ -231,6 +279,9 @@ watch(() => props.analysis, () => {
 
 watch([spec.tiles, spec.analysis], () => scheduleDraw())
 watch(() => props.render, () => scheduleDraw(), { deep: true })
+// SF26: refetch whole-clip peaks when the minimap mode turns waveform on, or the colour changes.
+watch(minimapMode, () => { void fetchMinimapPeaks() })
+watch(() => props.waveformColor, () => scheduleDraw())
 
 type DragMode = 'pan' | 'resize-left' | 'resize-right'
 let dragMode: DragMode | null = null
@@ -316,6 +367,7 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => {
       // width change -> re-pick the whole-clip zoom so the thumbnail stays ~1 col/px.
       applyMinimapView()
+      void fetchMinimapPeaks()
       scheduleDraw()
     })
     resizeObserver.observe(canvasEl.value)
