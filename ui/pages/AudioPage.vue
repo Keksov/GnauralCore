@@ -339,7 +339,7 @@
                               <waveform-view
                                 :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
                                 :file-path="audio.displayFilePath"
-                                :analysis="wtrack.analysis"
+                                :analysis="spectrogramAnalysisForChannel(wtrack.channel)"
                                 :channel="wtrack.channel"
                                 :label="wtrack.label"
                                 :scale="wfScale(wtrack.channel)"
@@ -1212,17 +1212,17 @@ interface WaveformTrack {
   readonly key: string
   readonly channel: number
   readonly label?: string
-  readonly analysis: SpectrogramAnalysisParams
 }
-// SF28.1: driven by the unified layout model — ordered + hidden-filtered per channel. Carries the
-// per-channel analysis directly (was indexed off spectrogramTracks, which breaks under reorder).
+// SF28.1: driven by the unified layout model — ordered + hidden-filtered per channel. Kept LIGHT
+// (no analysis) so this getter — evaluated eagerly by the height watch during setup — does not call
+// applyHighZoom() before its deps (spectrogramHighZoomActive) are initialised (TDZ). The template
+// resolves the per-channel analysis at render time via spectrogramAnalysisForChannel().
 const waveformTracks = computed<WaveformTrack[]>(() => {
   const stereo = isSpectrogramStereo.value
   return orderedChannels('waveform', stereo ? 2 : 1).map((ch) => ({
     key: stereo ? (ch === 0 ? 'wL' : 'wR') : 'wMono',
     channel: ch,
     label: stereo ? (ch === 0 ? 'L' : 'R') : undefined,
-    analysis: spectrogramAnalysisForChannel(ch),
   }))
 })
 
