@@ -345,7 +345,7 @@
                               v-for="(wtrack, wIndex) in waveformTracks"
                               :key="wtrack.key"
                               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
-                              :buffer="audio.spectrogramBuffer"
+                              :file-path="audio.displayFilePath"
                               :channel="wtrack.channel"
                               :label="wtrack.label"
                               :scale="waveformScale"

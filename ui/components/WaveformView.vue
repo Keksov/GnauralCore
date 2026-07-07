@@ -24,11 +24,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useAudioModel } from '../composables/use-audio-model'
-import { amplitudeToDb } from '../composables/audio-model'
+import { useSpectrogram } from '../composables/use-spectrogram'
+import { amplitudeToDb, type AudioPeak } from '../composables/audio-model'
 import { peaksToColumns, WAVEFORM_DB_FLOOR, type WaveformScale } from '../composables/waveform-render'
 import {
   formatTimeSec,
@@ -44,12 +44,13 @@ import {
   type TimeWindow,
 } from '../composables/spectrogram-viewport'
 
-// SF22.2: an Audacity-style waveform track. Client-only — it reads the decoded AudioBuffer via
-// the audio model and reuses the SHARED time window / selection (provide/inject) so it stays
-// frame-aligned with the spectrogram tracks. No worker.
+// SF22.2 + SF24.1: an Audacity-style waveform track. The peaks come from the BACKEND (the
+// worker's get-peaks over the same decoded PCM as the spectrogram — variant A), so the client
+// holds no authoritative audio. It reuses the SHARED time window / selection (provide/inject)
+// so it stays frame-aligned with the spectrogram tracks.
 
 interface Props {
-  buffer: AudioBuffer | null
+  filePath: string | null
   /** Channel to draw (0 = L / mono, 1 = R). */
   channel?: number
   /** Amplitude scale: linear (-1..1) or dBFS. */
@@ -83,7 +84,9 @@ const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
-const model = useAudioModel(toRef(props, 'buffer'))
+// SF24.1: the waveform opens its own (lazy) backend analysis just to pull peaks; the decode is
+// shared with the spectrogram's analysis (SF11.7), so this only adds a peak query, not a decode.
+const spec = useSpectrogram({ refetchDebounceMs: 200 })
 
 const AXIS_MARGIN = { left: 46, right: 8 }
 const AXIS_TIME_MARGIN = 18
@@ -91,7 +94,7 @@ const AXIS_PLAIN_MARGIN = 6
 const marginTop = (): number => (props.showTimeAxisTop ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 const marginBottom = (): number => (props.showTimeAxisBottom ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 
-const durationSec = computed(() => model.info.value?.durationSec ?? 0)
+const durationSec = computed(() => spec.analysis.value?.durationSec ?? 0)
 const hasAudio = computed(() => durationSec.value > 0)
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
@@ -114,24 +117,46 @@ function plotWidthPx(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
 }
 
-// Peak columns are memoized: they only depend on the view/size/scale/channel/buffer, so a
-// playhead-only redraw (e.g. during playback) reuses them instead of re-scanning the PCM.
+// SF24.1: peak columns are fetched from the backend and cached by (view + size + scale). A
+// playhead-only redraw reuses the cache; a view/size/scale change triggers a debounced refetch.
 let cacheSig = ''
+let cacheRaw: AudioPeak[] = []
 let cacheColumns = peaksToColumns([], 'linear')
+let fetchTimer: ReturnType<typeof setTimeout> | null = null
 
-function ensureColumns(plotW: number): void {
-  const info = model.info.value
-  if (info === null) {
-    cacheSig = 'none'
+function plotWidthNow(): number {
+  const canvas = canvasEl.value
+  return canvas === null ? 1 : plotWidthPx(canvas)
+}
+
+async function fetchColumns(): Promise<void> {
+  if (!hasAudio.value) {
+    cacheRaw = []
     cacheColumns = []
     return
   }
   const win = view.value
-  const sig = `${win.startSec}|${win.endSec}|${plotW}|${props.scale}|${props.channel}|${info.length}`
-  if (sig === cacheSig) return
-  const peaks = model.peaks(win.startSec, win.endSec, plotW, props.channel)
+  const plotW = plotWidthNow()
+  const sig = `${win.startSec}|${win.endSec}|${plotW}|${props.channel}`
+  if (sig === cacheSig && cacheRaw.length > 0) {
+    cacheColumns = peaksToColumns(cacheRaw, props.scale) // scale-only change: reuse raw peaks
+    return
+  }
+  const peaks = await spec.getPeaks(win.startSec, win.endSec, plotW)
+  // Ignore a stale response (the view moved on while we awaited).
+  if (`${view.value.startSec}|${view.value.endSec}|${plotWidthNow()}|${props.channel}` !== sig) return
+  cacheRaw = peaks
   cacheColumns = peaksToColumns(peaks, props.scale)
   cacheSig = sig
+  scheduleDraw()
+}
+
+function scheduleFetch(): void {
+  if (fetchTimer !== null) clearTimeout(fetchTimer)
+  fetchTimer = setTimeout(() => {
+    fetchTimer = null
+    void fetchColumns()
+  }, 120)
 }
 
 function draw(): void {
@@ -162,7 +187,6 @@ function draw(): void {
     return
   }
 
-  ensureColumns(plotW)
   const win = view.value
 
   // Shared time-range selection (draw the overlap with the current window).
@@ -359,11 +383,19 @@ const hoverText = computed(() => {
   const h = hover.value
   if (h === null) return ''
   const db = amplitudeToDb(h.amp)
-  // SF22.4: query surface at the cursor — time, sample index, amplitude, dBFS.
-  const sr = model.info.value?.sampleRate ?? 0
-  const sampleIdx = Math.round(h.timeSec * sr)
-  return `${formatTimeSec(h.timeSec)} · #${sampleIdx} · ${h.amp.toFixed(3)} · ${db.toFixed(1)} dB`
+  // SF24.1: readout at the cursor — time + amplitude (peak of the hovered column) + dBFS.
+  return `${formatTimeSec(h.timeSec)} · ${h.amp.toFixed(3)} · ${db.toFixed(1)} dB`
 })
+
+// Amplitude at the cursor = the max magnitude of the hovered backend peak column.
+function ampAtFraction(aFraction: number): number {
+  const n = cacheRaw.length
+  if (n === 0) return 0
+  const idx = Math.min(n - 1, Math.max(0, Math.floor(aFraction * n)))
+  const p = cacheRaw[idx]
+  if (p === undefined) return 0
+  return Math.abs(p.max) >= Math.abs(p.min) ? p.max : p.min
+}
 
 function onPointerMove(aEvent: PointerEvent): void {
   if (!hasAudio.value) {
@@ -377,7 +409,7 @@ function onPointerMove(aEvent: PointerEvent): void {
     return
   }
   const timeSec = fractionToTime(f, view.value)
-  hover.value = { timeSec, amp: model.sampleAt(timeSec, props.channel) }
+  hover.value = { timeSec, amp: ampAtFraction(f) }
   hoverPos.value = { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 }
 }
 
@@ -386,35 +418,54 @@ function onPointerLeave(): void {
   hoverPos.value = null
 }
 
-// Initialise the shared view to the whole clip when a buffer arrives and nothing is set yet.
-watch(durationSec, (dur) => {
-  if (dur > 0 && (shared === null || shared.view.value === null)) {
-    view.value = fullWindow(dur)
+// SF24.1: (re)open the backend analysis for this file+channel to pull peaks.
+async function openForFile(aFilePath: string | null): Promise<void> {
+  await spec.close()
+  cacheSig = ''
+  cacheRaw = []
+  cacheColumns = []
+  if (aFilePath === null || aFilePath === '') {
+    scheduleDraw()
+    return
   }
-  scheduleDraw()
-})
-watch(view, () => scheduleDraw(), { deep: true })
-watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
-watch(() => props.scale, () => scheduleDraw())
-watch(() => props.color, () => scheduleDraw())
-watch(() => props.channel, () => scheduleDraw())
-watch(() => props.playheadSec, () => scheduleDraw())
-watch(() => props.buffer, () => scheduleDraw())
-
-onMounted(() => {
-  if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
-    resizeObserver = new ResizeObserver(() => scheduleDraw())
-    resizeObserver.observe(canvasEl.value)
+  try {
+    await spec.open({ filePath: aFilePath, window: 2048, hop: 512, data: 'magnitude', channel: props.channel })
+  } catch {
+    // ignore — draw shows the empty frame
   }
   if (durationSec.value > 0 && (shared === null || shared.view.value === null)) {
     view.value = fullWindow(durationSec.value)
   }
+  void fetchColumns().then(() => scheduleDraw())
+}
+
+// Initialise the shared view + fetch when the analysis becomes ready.
+watch(durationSec, (dur) => {
+  if (dur > 0 && (shared === null || shared.view.value === null)) view.value = fullWindow(dur)
+  scheduleFetch()
+})
+watch(view, () => { scheduleFetch(); scheduleDraw() }, { deep: true })
+watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
+watch(() => props.scale, () => { void fetchColumns(); scheduleDraw() })
+watch(() => props.color, () => scheduleDraw())
+watch(() => props.channel, () => { void openForFile(props.filePath) })
+watch(() => props.playheadSec, () => scheduleDraw())
+watch(() => props.filePath, (v) => { void openForFile(v) })
+
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
+    resizeObserver = new ResizeObserver(() => { scheduleFetch(); scheduleDraw() })
+    resizeObserver.observe(canvasEl.value)
+  }
+  void openForFile(props.filePath)
   scheduleDraw()
 })
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (fetchTimer !== null) clearTimeout(fetchTimer)
   resizeObserver?.disconnect()
+  void spec.close()
 })
 </script>
 

@@ -262,6 +262,8 @@ export class SpectrogramSession {
           return await this.onReconfigure(aMessage)
         case "spectrogram:get-tile":
           return await this.onGetTile(aMessage)
+        case "spectrogram:get-peaks":
+          return await this.onGetPeaks(aMessage)
         case "spectrogram:point-query":
           return await this.onPointQuery(aMessage)
         case "spectrogram:area-query":
@@ -489,6 +491,31 @@ export class SpectrogramSession {
       }
     }
     return { type: "spectrogram:tile", requestId: aMessage.requestId, tile }
+  }
+
+  // SF24.1: waveform peaks — forward to the worker's get-peaks, pass the base64 blob through.
+  private async onGetPeaks(
+    aMessage: Extract<SpectrogramClientMessage, { type: "spectrogram:get-peaks" }>,
+  ): Promise<SpectrogramServerMessage> {
+    const analysisId = this.requireAnalysis(aMessage.analysisId)
+    const response = this.requireOk(
+      await this.manager.send({
+        cmd: "get-peaks",
+        analysisId,
+        timeStartSec: aMessage.timeStartSec,
+        timeEndSec: aMessage.timeEndSec,
+        buckets: aMessage.buckets,
+      }),
+      "get-peaks",
+    )
+    return {
+      type: "spectrogram:peaks",
+      requestId: aMessage.requestId,
+      buckets: numberOf(response.buckets),
+      sampleRate: numberOf(response.sampleRate),
+      durationSec: numberOf(response.durationSec),
+      peaksB64: typeof response.peaksB64 === "string" ? response.peaksB64 : "",
+    }
   }
 
   private async onPointQuery(

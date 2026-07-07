@@ -8,6 +8,7 @@ import type {
   SpectrogramTile,
 } from '@protocol'
 
+import type { AudioPeak } from './audio-model'
 import { useWsService } from './use-ws'
 import {
   DEFAULT_TILE_CACHE_SIZE,
@@ -51,6 +52,8 @@ export interface UseSpectrogram {
   /** SF19.3: background refetch while a frame is already shown — drives a tiny spinner. */
   readonly fetchingTiles: Ref<boolean>
   readonly error: Ref<string | null>
+  /** SF24.1: backend waveform peaks (min/max/rms) over a time range at `buckets` resolution. */
+  getPeaks(aTimeStartSec: number, aTimeEndSec: number, aBuckets: number): Promise<AudioPeak[]>
   open(aParams: SpectrogramAnalysisParams & { readonly filePath?: string }): Promise<SpectrogramAnalysisInfo>
   reconfigure(aParams: SpectrogramAnalysisParams): Promise<SpectrogramAnalysisInfo>
   setView(aView: SpectrogramView): void
@@ -375,6 +378,30 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
     return resp !== null && resp.type === 'spectrogram:area' ? resp.area : null
   }
 
+  // SF24.1: backend waveform peaks (min/max/rms per bucket) over a time range.
+  async function getPeaks(
+    aTimeStartSec: number,
+    aTimeEndSec: number,
+    aBuckets: number,
+  ): Promise<AudioPeak[]> {
+    if (analysisId === null || aBuckets <= 0) return []
+    const requestId = nextRequestId()
+    const resp = await sendControl(
+      { type: 'spectrogram:get-peaks', requestId, analysisId, timeStartSec: aTimeStartSec, timeEndSec: aTimeEndSec, buckets: aBuckets },
+      requestId,
+    ).catch(() => null)
+    if (resp === null || resp.type !== 'spectrogram:peaks' || resp.peaksB64 === '') return []
+    const binary = atob(resp.peaksB64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    const floats = new Float32Array(bytes.buffer, 0, Math.floor(binary.length / 4))
+    const out: AudioPeak[] = []
+    for (let b = 0; b < resp.buckets; b++) {
+      out.push({ min: floats[b * 3] ?? 0, max: floats[b * 3 + 1] ?? 0, rms: floats[b * 3 + 2] ?? 0 })
+    }
+    return out
+  }
+
   async function close(): Promise<void> {
     if (debounceTimer !== null) {
       clearTimeout(debounceTimer)
@@ -411,5 +438,5 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
 
   onScopeDispose(dispose)
 
-  return { analysis, tiles, loading, preparing, fetchingTiles, error, open, reconfigure, setView, pointQuery, areaQuery, close, dispose }
+  return { analysis, tiles, loading, preparing, fetchingTiles, error, open, reconfigure, setView, pointQuery, areaQuery, getPeaks, close, dispose }
 }
