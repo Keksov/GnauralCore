@@ -12,8 +12,8 @@
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="waveform-view__label-overlay">{{ label }}</span>
-    <!-- SF27/SF28.2/SF28.3: per-track actions — drag grip, hide, gear (colour/scale settings). -->
-    <div class="waveform-view__actions">
+    <!-- SF28.4: drag grip + hide stacked in a column on the LEFT of the track. -->
+    <div class="waveform-view__side-actions">
       <q-icon
         name="drag_indicator"
         size="18px"
@@ -31,6 +31,9 @@
       >
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
+    </div>
+    <!-- SF27: per-track colour/scale gear, top-right. -->
+    <div class="waveform-view__actions">
       <q-btn
         dense flat round size="xs"
         icon="settings"
@@ -550,7 +553,7 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-/* SF27/SF28.2: per-track action buttons (hide + gear), top-right corner. */
+/* SF27: per-track gear, top-right corner. */
 .waveform-view__actions {
   display: flex;
   gap: 2px;
@@ -560,12 +563,26 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
-.waveform-view__actions .q-btn {
+/* SF28.4: drag grip + hide stacked in a column on the left edge. */
+.waveform-view__side-actions {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  z-index: 5;
+}
+
+.waveform-view__actions .q-btn,
+.waveform-view__side-actions .q-btn {
   color: #cbd5e1;
   opacity: 0.6;
 }
 
-.waveform-view__actions .q-btn:hover {
+.waveform-view__actions .q-btn:hover,
+.waveform-view__side-actions .q-btn:hover {
   opacity: 1;
 }
 

@@ -62,8 +62,8 @@
     </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
-    <!-- SF27/SF28.2/SF28.3: per-track actions — drag grip, hide, (overlay) waveform-style gear. -->
-    <div class="spectrogram-view__actions">
+    <!-- SF28.4: drag grip + hide stacked in a column on the LEFT of the track. -->
+    <div class="spectrogram-view__side-actions">
       <q-icon
         name="drag_indicator"
         size="18px"
@@ -81,8 +81,10 @@
       >
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
+    </div>
+    <!-- SF27: waveform-overlay colour/scale gear, top-right (only when overlaid). -->
+    <div v-if="waveformOverlay" class="spectrogram-view__actions">
       <q-btn
-        v-if="waveformOverlay"
         dense flat round size="xs"
         icon="settings"
         :aria-label="t('audio.waveformStyle')"
@@ -1052,7 +1054,7 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-/* SF27/SF28.2: per-track action buttons (hide + overlay gear), top-right corner. */
+/* SF27: waveform-overlay gear, top-right corner. */
 .spectrogram-view__actions {
   display: flex;
   gap: 2px;
@@ -1062,12 +1064,26 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
-.spectrogram-view__actions .q-btn {
+/* SF28.4: drag grip + hide stacked in a column on the left edge. */
+.spectrogram-view__side-actions {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  z-index: 5;
+}
+
+.spectrogram-view__actions .q-btn,
+.spectrogram-view__side-actions .q-btn {
   color: #cbd5e1;
   opacity: 0.6;
 }
 
-.spectrogram-view__actions .q-btn:hover {
+.spectrogram-view__actions .q-btn:hover,
+.spectrogram-view__side-actions .q-btn:hover {
   opacity: 1;
 }
 
