@@ -62,8 +62,17 @@
     </q-menu>
     <!-- SF10.2: channel label as a top-left overlay on the plot, same place for L and R -->
     <span v-if="label" class="spectrogram-view__label-overlay">{{ label }}</span>
-    <!-- SF27/SF28.2: per-track actions — hide, and (when overlaid) the waveform-style gear. -->
+    <!-- SF27/SF28.2/SF28.3: per-track actions — drag grip, hide, (overlay) waveform-style gear. -->
     <div class="spectrogram-view__actions">
+      <q-icon
+        name="drag_indicator"
+        size="18px"
+        class="spectrogram-view__grip"
+        :aria-label="t('audio.trackReorder')"
+        @pointerdown.stop.prevent="emit('reorder-grip', $event)"
+      >
+        <q-tooltip>{{ t('audio.trackReorder') }}</q-tooltip>
+      </q-icon>
       <q-btn
         dense flat round size="xs"
         icon="visibility_off"
@@ -201,6 +210,7 @@ const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
   (event: 'hide'): void
+  (event: 'reorder-grip', ev: PointerEvent): void
 }>()
 
 // SF8.1: stacked tracks (stereo L/R) share one time window + area selection so they
@@ -1059,6 +1069,20 @@ onBeforeUnmount(() => {
 
 .spectrogram-view__actions .q-btn:hover {
   opacity: 1;
+}
+
+.spectrogram-view__grip {
+  color: #cbd5e1;
+  cursor: grab;
+  opacity: 0.6;
+}
+
+.spectrogram-view__grip:hover {
+  opacity: 1;
+}
+
+.spectrogram-view__grip:active {
+  cursor: grabbing;
 }
 
 /* SF-D25: point/area readout tooltip anchored at the cursor. */

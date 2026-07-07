@@ -34,6 +34,7 @@
     "waveformStyle": "Цвет / прозрачность волны",
     "trackHide": "Скрыть дорожку",
     "trackShow": "Показать дорожку",
+    "trackReorder": "Перетащите, чтобы поменять местами L↔R",
     "hiddenTracks": "Скрытые дорожки",
     "trackKindWaveform": "Волна",
     "trackKindSpectrogram": "Спектр",

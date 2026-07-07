@@ -12,8 +12,17 @@
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="waveform-view__label-overlay">{{ label }}</span>
-    <!-- SF27/SF28.2: per-track actions — hide, and gear (colour/scale settings). -->
+    <!-- SF27/SF28.2/SF28.3: per-track actions — drag grip, hide, gear (colour/scale settings). -->
     <div class="waveform-view__actions">
+      <q-icon
+        name="drag_indicator"
+        size="18px"
+        class="waveform-view__grip"
+        :aria-label="t('audio.trackReorder')"
+        @pointerdown.stop.prevent="emit('reorder-grip', $event)"
+      >
+        <q-tooltip>{{ t('audio.trackReorder') }}</q-tooltip>
+      </q-icon>
       <q-btn
         dense flat round size="xs"
         icon="visibility_off"
@@ -102,6 +111,7 @@ const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
   (event: 'hide'): void
+  (event: 'reorder-grip', ev: PointerEvent): void
 }>()
 
 interface SpectrogramSharedState {
@@ -557,6 +567,20 @@ onBeforeUnmount(() => {
 
 .waveform-view__actions .q-btn:hover {
   opacity: 1;
+}
+
+.waveform-view__grip {
+  color: #cbd5e1;
+  cursor: grab;
+  opacity: 0.6;
+}
+
+.waveform-view__grip:hover {
+  opacity: 1;
+}
+
+.waveform-view__grip:active {
+  cursor: grabbing;
 }
 
 .waveform-view__tooltip {

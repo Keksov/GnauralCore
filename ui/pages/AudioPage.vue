@@ -349,9 +349,13 @@
                                 :show-time-axis-top="wIndex === 0"
                                 :show-time-axis-bottom="wIndex === waveformTracks.length - 1 && !showSpectrogram"
                                 :height="waveformTrackHeights[wIndex]"
+                                data-track-kind="waveform"
+                                :data-track-channel="wtrack.channel"
+                                :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'waveform' && trackDrag?.channel === wtrack.channel }"
                                 @seek="handleSeek"
                                 @open-settings="openWaveformSettings(wtrack.channel)"
                                 @hide="hideTrack('waveform', wtrack.channel)"
+                                @reorder-grip="onTrackGripDown('waveform', wtrack.channel, $event)"
                               />
                               <div
                                 v-if="wIndex < waveformTracks.length - 1"
@@ -397,9 +401,13 @@
                               :show-time-axis-top="index === 0 && !showWaveform"
                               :show-time-axis-bottom="index === spectrogramTracks.length - 1"
                               :height="spectrogramTrackHeights[index]"
+                              data-track-kind="spectrogram"
+                              :data-track-channel="track.channel"
+                              :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'spectrogram' && trackDrag?.channel === track.channel }"
                               @seek="handleSeek"
                               @open-settings="openWaveformSettings(track.channel)"
                               @hide="hideTrack('spectrogram', track.channel)"
+                              @reorder-grip="onTrackGripDown('spectrogram', track.channel, $event)"
                             />
                             <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
                             <div
@@ -1121,6 +1129,42 @@ function showTrack(kind: TrackKind, ch: number): void {
   const s = new Set(hiddenTracks.value)
   s.delete(trackKey(kind, ch))
   hiddenTracks.value = s
+}
+
+// SF28.3: drag-and-drop reorder within a kind (swap L↔R). The grip in a track emits a pointerdown;
+// we hit-test the track under the pointer (same kind) and swap their positions in trackOrder.
+const trackDrag = ref<{ kind: TrackKind; channel: number } | null>(null)
+function swapTrackOrder(kind: TrackKind, a: number, b: number): void {
+  const ord = trackOrder.value[kind].slice()
+  for (const c of [a, b]) if (!ord.includes(c)) ord.push(c)
+  const ia = ord.indexOf(a)
+  const ib = ord.indexOf(b)
+  if (ia < 0 || ib < 0 || ia === ib) return
+  ;[ord[ia], ord[ib]] = [ord[ib], ord[ia]]
+  trackOrder.value = { ...trackOrder.value, [kind]: ord }
+}
+function onTrackGripMove(ev: PointerEvent): void {
+  const d = trackDrag.value
+  if (d === null) return
+  const el = document.elementFromPoint(ev.clientX, ev.clientY)
+  const trackEl = el === null ? null : (el.closest('[data-track-kind]') as HTMLElement | null)
+  if (trackEl === null || trackEl.dataset.trackKind !== d.kind) return
+  const targetCh = Number(trackEl.dataset.trackChannel)
+  if (!Number.isInteger(targetCh) || targetCh === d.channel) return
+  swapTrackOrder(d.kind, d.channel, targetCh)
+}
+function onTrackGripUp(): void {
+  trackDrag.value = null
+  window.removeEventListener('pointermove', onTrackGripMove)
+  window.removeEventListener('pointerup', onTrackGripUp)
+  window.removeEventListener('pointercancel', onTrackGripUp)
+}
+function onTrackGripDown(kind: TrackKind, channel: number, ev: PointerEvent): void {
+  ev.preventDefault()
+  trackDrag.value = { kind, channel }
+  window.addEventListener('pointermove', onTrackGripMove)
+  window.addEventListener('pointerup', onTrackGripUp)
+  window.addEventListener('pointercancel', onTrackGripUp)
 }
 // The restore strip lists hidden tracks whose KIND is currently shown by the view-mode preset
 // (restoring a track under a preset-hidden kind wouldn't surface it).
@@ -1889,6 +1933,13 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 }
 
 /* SF23.2: waveform style popover (colour + overlay opacity). */
+/* SF28.3: the track currently being dragged for reorder. */
+.audio-page__track--dragging {
+  opacity: 0.6;
+  outline: 2px dashed rgba(103, 232, 249, 0.7);
+  outline-offset: -2px;
+}
+
 /* SF28.2: hidden-tracks restore strip above the stacks. */
 .audio-page__hidden-tracks {
   align-items: center;
