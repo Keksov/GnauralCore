@@ -35,6 +35,8 @@
     "trackHide": "Скрыть дорожку",
     "trackShow": "Показать дорожку",
     "trackReorder": "Перетащите, чтобы поменять местами L↔R",
+    "gtrackCanvasLabel": "Кривые gnaural-трека",
+    "gtrackSettings": "Настройки дорожки (режим / голоса)",
     "hiddenTracks": "Скрытые дорожки",
     "trackKindWaveform": "Волна",
     "trackKindSpectrogram": "Спектр",

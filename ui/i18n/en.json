@@ -35,6 +35,8 @@
     "trackHide": "Hide this track",
     "trackShow": "Show this track",
     "trackReorder": "Drag to reorder / swap L↔R",
+    "gtrackCanvasLabel": "Gnaural track curves",
+    "gtrackSettings": "Lane settings (mode / voices)",
     "hiddenTracks": "Hidden tracks",
     "trackKindWaveform": "Waveform",
     "trackKindSpectrogram": "Spectrum",
