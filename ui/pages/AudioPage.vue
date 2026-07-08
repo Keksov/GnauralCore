@@ -893,6 +893,13 @@ function ensureSpectrogramPrepared(): void {
     return
   }
 
+  // GT2.6: on the Треки tab, auto-render a gnaural to WAV for its spectrum (no playback needed).
+  // The frozen Спектрограмма tab keeps its "press play to render" behaviour.
+  if (activePlayerViewTab.value === 'tracks' && audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
+    void audio.ensureGnauralSpectrogram(audio.displayFilePath)
+    return
+  }
+
   const path = audio.selectedPath
   const kind = audio.selectedFileKind
   if (path === null || !isLocalAudioFileKind(kind)) {

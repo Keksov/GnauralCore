@@ -630,6 +630,61 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
+  // GT2.6: render a .gnaural to WAV for its spectrum WITHOUT playback. The server renders on
+  // demand (GET /api/audio/file?format=wav → renderGnauralAudioFile, cached by content hash), so
+  // the Треки tab can show the waveform + spectrum automatically instead of asking the user to
+  // press play. Reuses the rendered-spectrogram decode + request/abort bookkeeping.
+  async function ensureGnauralSpectrogram(filePath: string): Promise<void> {
+    if (gnauralSpectrogramSourcePath.value === filePath && gnauralSpectrogramBuffer.value !== null) {
+      return
+    }
+    if (gnauralSpectrogramLoading.value) {
+      return
+    }
+
+    cancelPendingRenderedSpectrogramLoad()
+    const requestId = renderSpectrogramLoadRequestId + 1
+    const abortController = new AbortController()
+    renderSpectrogramLoadRequestId = requestId
+    renderSpectrogramAbortController = abortController
+    gnauralSpectrogramLoading.value = true
+    spectrogramError.value = null
+
+    try {
+      const blob = await audioApi.fetchAudioFileBlob(filePath, abortController.signal, { format: 'wav' })
+      const arrayBuffer = await blob.arrayBuffer()
+      const decodedBuffer = await decodeAudioBuffer(arrayBuffer)
+
+      if (
+        abortController.signal.aborted ||
+        requestId !== renderSpectrogramLoadRequestId ||
+        decodedBuffer === null ||
+        displayFilePath.value !== filePath
+      ) {
+        return
+      }
+
+      gnauralSpectrogramBuffer.value = decodedBuffer
+      gnauralSpectrogramSourcePath.value = filePath
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return
+      }
+
+      spectrogramError.value = error instanceof Error
+        ? error.message
+        : 'Failed to render the selected Gnaural file for spectrogram display.'
+    } finally {
+      if (renderSpectrogramAbortController === abortController) {
+        renderSpectrogramAbortController = null
+      }
+
+      if (requestId === renderSpectrogramLoadRequestId) {
+        gnauralSpectrogramLoading.value = false
+      }
+    }
+  }
+
   async function ensureLocalAudioReady(filePath: string, fileKind: LocalAudioFileKind): Promise<boolean> {
     if (audioElement === null) {
       lastError.value = 'HTML audio playback is not available in this browser.'
@@ -1026,6 +1081,7 @@ export const useAudioStore = defineStore('audio', () => {
     queueLocalStartAfterRemoteStop,
     cancelPendingLocalStart,
     ensureLocalAudioReady,
+    ensureGnauralSpectrogram,
     startLocalPlayback,
     pauseLocalPlayback,
     resumeLocalPlayback,

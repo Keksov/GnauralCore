@@ -517,10 +517,9 @@ watch(spectrogramTrackHeights, (value) => {
   persistSpectrogramTrackHeights(value)
 }, { deep: true })
 
-const noSpectrogramLabel = computed(() => {
-  // GT2.4: tracks-specific wording (waveform + spectrum + gtracks), not just "spectrum".
-  return audio.displayMode === 'gnaural' ? t('audio.noGnauralSpectrogram') : t('audio.tracksNoData')
-})
+// GT2.6: the Треки tab auto-renders a gnaural for its spectrum (no playback), so it never shows
+// the "press play to render" hint — a tracks-neutral message is used for every kind.
+const noSpectrogramLabel = computed(() => t('audio.tracksNoData'))
 
 const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
 
