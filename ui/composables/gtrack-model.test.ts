@@ -251,6 +251,85 @@ describe('gtrack model dirty tracking', () => {
   })
 })
 
+describe('gtrack model insert/remove points (GT1.3 / GT-D8)', () => {
+  test('insertPoint adds an interpolated point strictly inside a segment', () => {
+    const model = new GTrackModel(fixture([
+      entry(0, 10, { baseFreqStart: 100, baseFreqEnd: 200, volLStart: 0, volLEnd: 1, volRStart: 0, volREnd: 1 }),
+    ]))
+    // points at t=0 (base100,vol0) and t=10 (base200,vol1).
+    let idx = -1
+    model.edit(() => { idx = model.insertPoint(7, 5) })
+    expect(idx).toBe(1)
+    const pts = model.schedule.voices[0]!.points
+    expect(pts.length).toBe(3)
+    expect(pts[1]!.timeSec).toBe(5)
+    expect(pts[1]!.baseFreq).toBeCloseTo(150, 9) // halfway
+    expect(pts[1]!.volL).toBeCloseTo(0.5, 9)
+  })
+
+  test('insertPoint rejects a time not strictly inside a segment', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]))
+    expect(() => model.edit(() => model.insertPoint(7, 0))).toThrow(/strictly inside/) // on a boundary
+    expect(() => model.edit(() => model.insertPoint(7, 99))).toThrow(/strictly inside/) // outside
+  })
+
+  test('removePoint deletes a vertex; keeps >= 2 points', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)])) // 3 points
+    model.edit(() => model.removePoint(7, 1))
+    expect(model.schedule.voices[0]!.points.map((p) => p.timeSec)).toEqual([0, 20])
+    // now only 2 points -> cannot remove further
+    expect(() => model.edit(() => model.removePoint(7, 0))).toThrow(/at least 2 points/)
+  })
+
+  test('insert then remove round-trips via undo', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]))
+    model.edit(() => model.insertPoint(7, 5))
+    expect(model.schedule.voices[0]!.points.length).toBe(3)
+    model.undo()
+    expect(model.schedule.voices[0]!.points.length).toBe(2)
+  })
+})
+
+describe('gtrack model preparse flag + fix (GT1.3 / GT-D9)', () => {
+  test('constructor marks preparse voices; editing them is locked', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]), [7])
+    expect(model.schedule.voices[0]!.preparse).toBe(true)
+    expect(model.isVoiceEditable(7)).toBe(false)
+    expect(() => model.edit(() => model.setPointField(7, 0, 'baseFreq', 1))).toThrow(/preparse-locked/)
+    expect(() => model.edit(() => model.insertPoint(7, 5))).toThrow(/preparse-locked/)
+    expect(() => model.edit(() => model.movePoint(7, 0, 1))).toThrow(/preparse-locked/)
+  })
+
+  test('non-preparse voices are editable by default', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]))
+    expect(model.schedule.voices[0]!.preparse).toBe(false)
+    expect(model.isVoiceEditable(7)).toBe(true)
+  })
+
+  test('fixPreparseVoice unlocks editing, marks dirty, and is undoable', () => {
+    const model = new GTrackModel(fixture([entry(0, 10, { baseFreqStart: 100 })]), [7])
+    expect(model.isDirty).toBe(false)
+    model.fixPreparseVoice(7)
+    expect(model.schedule.voices[0]!.preparse).toBe(false)
+    expect(model.isVoiceEditable(7)).toBe(true)
+    expect(model.isDirty).toBe(true)
+    // now editable
+    model.edit(() => model.setPointField(7, 0, 'baseFreq', 222))
+    expect(model.schedule.voices[0]!.points[0]!.baseFreq).toBe(222)
+    // undo the edit, then undo the fix -> locked again
+    model.undo()
+    model.undo()
+    expect(model.schedule.voices[0]!.preparse).toBe(true)
+    expect(model.isDirty).toBe(false)
+  })
+
+  test('fixPreparseVoice is a no-op on an already-editable voice', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]))
+    model.fixPreparseVoice(7)
+    expect(model.canUndo).toBe(false)
+  })
+})
+
 describe('clampPointTime (standalone, GT3.2 reuse)', () => {
   const pts: GTrackPoint[] = [
     { timeSec: 0, baseFreq: 0, beatFreqHalf: 0, volL: 0, volR: 0 },

@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import type { GnauralScheduleData } from '@protocol'
 
 import { GTrackModel } from './gtrack-model'
-import { GTrackXmlError, formatXmlNumber, patchGnauralXml, serializeVoiceEntries } from './gtrack-xml'
+import { GTrackXmlError, findPreparseVoiceIds, formatXmlNumber, patchGnauralXml, serializeVoiceEntries } from './gtrack-xml'
 
 const STANDARD_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <!-- keep me: a comment that must survive the patch -->
@@ -98,6 +98,13 @@ describe('serializeVoiceEntries (GT1.2)', () => {
   })
 })
 
+describe('findPreparseVoiceIds (GT1.3 / GT-D9)', () => {
+  test('detects voices whose entries use a preparse generator', () => {
+    expect([...findPreparseVoiceIds(PREPARSE_XML)]).toEqual([0])
+    expect([...findPreparseVoiceIds(STANDARD_XML)]).toEqual([]) // none
+  })
+})
+
 describe('patchGnauralXml (GT1.2)', () => {
   test('replaces only <entries>; preserves comment, metadata, unknown fields, untouched voices', () => {
     const model = new GTrackModel(standardXmlAsDump())
@@ -135,6 +142,25 @@ describe('patchGnauralXml (GT1.2)', () => {
     expect(out).toContain('basefreq="100"')
     expect(out).toContain('beatfreq="4"') // 2*2
     expect(out.match(/<entry /g)?.length).toBe(2) // 3 points -> 2 concrete entries
+  })
+
+  test('leaves a still-preparse voice untouched (keeps its generator node)', () => {
+    // A preparse-flagged (locked) voice 0 must NOT be baked by the patch.
+    const pre = new GTrackModel({
+      title: '', author: '', description: '', totalTimeSec: 60, loopCount: 1,
+      overallVolL: 1, overallVolR: 1, stereoSwap: false, voiceCount: 1,
+      voices: [{
+        id: 0, type: 'tone', typeIndex: 0, description: 'gen', hidden: false, muted: false,
+        mono: false, color: null, audioFilePath: '', totalDurationSec: 60, entryCount: 2,
+        entries: [
+          { startSec: 0, endSec: 30, durationSec: 30, baseFreqStart: 100, baseFreqEnd: 200, beatFreqHalfStart: 2, beatFreqHalfEnd: 3, volLStart: 0.5, volLEnd: 0.5, volRStart: 0.5, volREnd: 0.5 },
+          { startSec: 30, endSec: 60, durationSec: 30, baseFreqStart: 200, baseFreqEnd: 200, beatFreqHalfStart: 3, beatFreqHalfEnd: 3, volLStart: 0.5, volLEnd: 0.5, volRStart: 0.5, volREnd: 0.5 },
+        ],
+      }],
+    }, [0]) // mark voice 0 preparse
+    const out = patchGnauralXml(PREPARSE_XML, pre.schedule)
+    expect(out).toContain('type="preparse"') // generator node preserved
+    expect(out).not.toContain('basefreq="100"') // not baked
   })
 
   test('throws when a scheduled voice is missing from the XML', () => {
@@ -233,6 +259,42 @@ describe.if(HAS_EXE)('patchGnauralXml round-trip via Gnaural.exe (GT1.2 gate)', 
           expect(pb.volR).toBeCloseTo(pa.volR, 3)
         }
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('add/remove nodes survive the round-trip (GT1.3)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gtrack-rt2-'))
+    try {
+      const srcPath = join(dir, 'src.gnaural')
+      writeFileSync(srcPath, STANDARD_XML)
+      const model = new GTrackModel(dumpFile(srcPath))
+
+      // Voice 1 starts with 4 points (t=0,8,20,40). Insert a real kink at t=4, then remove the
+      // original t=8 point (now index 2). Removing a NON-tail point keeps the flat-tail invariant
+      // (last point mirrors the second-to-last) so the round-trip is exact.
+      model.edit(() => {
+        const idx = model.insertPoint(1, 4) // strictly inside the first segment (0..8) -> index 1
+        model.setPointField(1, idx, 'baseFreq', 500) // make it a genuine vertex
+      })
+      model.edit(() => model.removePoint(1, 2))
+      const edited = model.schedule.voices.find((v) => v.id === 1)!
+
+      const outPath = join(dir, 'out.gnaural')
+      writeFileSync(outPath, patchGnauralXml(STANDARD_XML, model.schedule))
+      const re = new GTrackModel(dumpFile(outPath)).schedule.voices.find((v) => v.id === 1)!
+
+      expect(re.points.length).toBe(edited.points.length)
+      for (let i = 0; i < edited.points.length; i += 1) {
+        expect(re.points[i]!.timeSec).toBeCloseTo(edited.points[i]!.timeSec, 3)
+        expect(re.points[i]!.baseFreq).toBeCloseTo(edited.points[i]!.baseFreq, 3)
+        expect(re.points[i]!.beatFreqHalf).toBeCloseTo(edited.points[i]!.beatFreqHalf, 3)
+        expect(re.points[i]!.volL).toBeCloseTo(edited.points[i]!.volL, 3)
+        expect(re.points[i]!.volR).toBeCloseTo(edited.points[i]!.volR, 3)
+      }
+      // The inserted vertex (base 500) is present.
+      expect(re.points.some((p) => Math.abs(p.baseFreq - 500) < 1e-3)).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

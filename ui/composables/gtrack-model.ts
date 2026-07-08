@@ -37,6 +37,11 @@ export interface GTrackVoice {
   color: string | null
   audioFilePath: string
   points: GTrackPoint[]
+  // GT-D9: true when this voice's points came from expanding a generator (<entry type="preparse">)
+  // in the source XML. Such points are rendered distinctly and locked from direct editing until
+  // fixPreparseVoice() clears the flag ("fix / make editable"). Only non-preparse voices are written
+  // back on Save (so an untouched generator voice keeps its generator node in the file).
+  preparse: boolean
 }
 
 export interface GTrackSchedule {
@@ -101,7 +106,7 @@ export function pointsToSegments(points: readonly GTrackPoint[]): GnauralSchedul
   return segments
 }
 
-function voiceToEditable(voice: GnauralScheduleVoice): GTrackVoice {
+function voiceToEditable(voice: GnauralScheduleVoice, preparseIds: ReadonlySet<number>): GTrackVoice {
   return {
     id: voice.id,
     type: voice.type,
@@ -111,10 +116,11 @@ function voiceToEditable(voice: GnauralScheduleVoice): GTrackVoice {
     color: voice.color,
     audioFilePath: voice.audioFilePath,
     points: segmentsToPoints(voice.entries),
+    preparse: preparseIds.has(voice.id),
   }
 }
 
-function scheduleToEditable(data: GnauralScheduleData): GTrackSchedule {
+function scheduleToEditable(data: GnauralScheduleData, preparseIds: ReadonlySet<number>): GTrackSchedule {
   return {
     title: data.title,
     author: data.author,
@@ -124,7 +130,7 @@ function scheduleToEditable(data: GnauralScheduleData): GTrackSchedule {
     overallVolL: data.overallVolL,
     overallVolR: data.overallVolR,
     stereoSwap: data.stereoSwap,
-    voices: data.voices.map(voiceToEditable),
+    voices: data.voices.map((v) => voiceToEditable(v, preparseIds)),
   }
 }
 
@@ -207,8 +213,8 @@ export class GTrackModel {
   // Open-transaction state: the snapshot taken at beginEdit, restored on cancel / pushed on commit.
   private txnBefore: GTrackSchedule | null = null
 
-  public constructor(data: GnauralScheduleData) {
-    this.current = scheduleToEditable(data)
+  public constructor(data: GnauralScheduleData, preparseVoiceIds?: Iterable<number>) {
+    this.current = scheduleToEditable(data, new Set(preparseVoiceIds ?? []))
     this.savedSig = signature(this.current)
   }
 
@@ -241,6 +247,17 @@ export class GTrackModel {
     const voice = this.current.voices.find((v) => v.id === voiceId)
     if (voice === undefined) throw new Error(`gtrack: unknown voice id ${voiceId}`)
     return voice
+  }
+
+  /** True when a voice's points may be edited directly (regular, or a fixed former-preparse voice). */
+  public isVoiceEditable(voiceId: number): boolean {
+    return !this.findVoice(voiceId).preparse
+  }
+
+  private assertEditable(voiceId: number): void {
+    if (this.findVoice(voiceId).preparse) {
+      throw new Error(`gtrack: voice ${voiceId} is preparse-locked; fix it first`)
+    }
   }
 
   // --- Transactions ---------------------------------------------------------
@@ -314,6 +331,7 @@ export class GTrackModel {
   /** Set one numeric field of a point. */
   public setPointField(voiceId: number, index: number, field: GTrackPointField, value: number): void {
     this.ensureOpen()
+    this.assertEditable(voiceId)
     if (!Number.isFinite(value)) throw new Error(`gtrack: non-finite value for ${field}`)
     this.replacePoint(voiceId, index, (p) => ({ ...p, [field]: value }))
   }
@@ -321,6 +339,7 @@ export class GTrackModel {
   /** Set several fields of a point at once (e.g. from the parameters dialog). */
   public setPointFields(voiceId: number, index: number, patch: Partial<Record<GTrackPointField, number>>): void {
     this.ensureOpen()
+    this.assertEditable(voiceId)
     for (const field of POINT_FIELDS) {
       const v = patch[field]
       if (v !== undefined && !Number.isFinite(v)) throw new Error(`gtrack: non-finite value for ${field}`)
@@ -347,6 +366,7 @@ export class GTrackModel {
     value?: number,
   ): number {
     this.ensureOpen()
+    this.assertEditable(voiceId)
     const voice = this.findVoice(voiceId)
     const clampedTime = clampPointTime(voice.points, index, timeSec)
     this.replacePoint(voiceId, index, (p) => {
@@ -358,6 +378,75 @@ export class GTrackModel {
       return next
     })
     return clampedTime
+  }
+
+  /**
+   * Insert a new point at `timeSec`, which must fall strictly inside an existing segment. Its
+   * values are linearly interpolated from that segment (so the curve is unchanged until the point
+   * is moved). Returns the index of the inserted point. (GT-D8 / owner req. 9)
+   */
+  public insertPoint(voiceId: number, timeSec: number): number {
+    this.ensureOpen()
+    this.assertEditable(voiceId)
+    if (!Number.isFinite(timeSec)) throw new Error('gtrack: non-finite insert time')
+    const pts = this.findVoice(voiceId).points
+    if (pts.length < 2) throw new Error('gtrack: cannot insert into a voice with fewer than 2 points')
+    let seg = -1
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      if (timeSec > pts[i]!.timeSec && timeSec < pts[i + 1]!.timeSec) {
+        seg = i
+        break
+      }
+    }
+    if (seg < 0) throw new Error(`gtrack: insert time ${timeSec} is not strictly inside a segment`)
+    const a = pts[seg]!
+    const b = pts[seg + 1]!
+    const f = (timeSec - a.timeSec) / (b.timeSec - a.timeSec)
+    const lerp = (x: number, y: number): number => x + f * (y - x)
+    const inserted: GTrackPoint = {
+      timeSec,
+      baseFreq: lerp(a.baseFreq, b.baseFreq),
+      beatFreqHalf: lerp(a.beatFreqHalf, b.beatFreqHalf),
+      volL: lerp(a.volL, b.volL),
+      volR: lerp(a.volR, b.volR),
+    }
+    const index = seg + 1
+    this.replaceVoice(voiceId, (v) => {
+      const points = v.points.slice()
+      points.splice(index, 0, inserted)
+      return { ...v, points }
+    })
+    return index
+  }
+
+  /** Remove a point. A voice must keep at least 2 points (>= 1 segment). (GT-D8 / owner req. 9) */
+  public removePoint(voiceId: number, index: number): void {
+    this.ensureOpen()
+    this.assertEditable(voiceId)
+    const voice = this.findVoice(voiceId)
+    if (voice.points.length <= 2) {
+      throw new Error('gtrack: cannot remove; a voice must keep at least 2 points')
+    }
+    if (index < 0 || index >= voice.points.length) {
+      throw new Error(`gtrack: point index ${index} out of range for voice ${voiceId}`)
+    }
+    this.replaceVoice(voiceId, (v) => {
+      const points = v.points.slice()
+      points.splice(index, 1)
+      return { ...v, points }
+    })
+  }
+
+  /**
+   * Fix a preparse voice: clear its `preparse` flag so its (already-concrete) points become
+   * editable and it is written back on Save. Irreversible within the file — the caller should warn
+   * the user (GT-D9 / owner req. 11). A no-op on an already-editable voice.
+   */
+  public fixPreparseVoice(voiceId: number): void {
+    if (!this.findVoice(voiceId).preparse) return
+    this.edit(() => {
+      this.replaceVoice(voiceId, (v) => ({ ...v, preparse: false }))
+    })
   }
 
   // --- Undo / redo ----------------------------------------------------------
