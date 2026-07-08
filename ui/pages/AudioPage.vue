@@ -286,6 +286,30 @@
                             <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
                             <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
                             <q-space />
+                            <!-- SF28.5: hidden-tracks dropdown, just left of the view-mode dropdown. -->
+                            <q-btn-dropdown
+                              v-if="hiddenTrackList.length > 0"
+                              dense flat no-caps size="sm"
+                              icon="visibility_off"
+                              :label="`${t('audio.hiddenTracks')} (${hiddenTrackList.length})`"
+                              :aria-label="t('audio.hiddenTracks')"
+                            >
+                              <q-list dense style="min-width: 190px">
+                                <q-item
+                                  v-for="h in hiddenTrackList"
+                                  :key="h.key"
+                                  clickable
+                                  v-close-popup
+                                  @click="showTrack(h.kind, h.channel)"
+                                >
+                                  <q-item-section avatar style="min-width: 26px">
+                                    <q-icon name="visibility" size="18px" />
+                                  </q-item-section>
+                                  <q-item-section>{{ h.label }}</q-item-section>
+                                  <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                                </q-item>
+                              </q-list>
+                            </q-btn-dropdown>
                             <!-- SF23.3: Audacity-style view-mode dropdown (waveform / spectrogram / both / overlay). -->
                             <q-btn-dropdown dense flat no-caps size="sm" icon="layers" :label="viewModeLabel" :aria-label="t('audio.viewMode')">
                               <q-list dense style="min-width: 190px">
@@ -314,23 +338,6 @@
                               :aria-expanded="spectrogramSettingsOpen"
                               @click="toggleSpectrogramSettings"
                             />
-                          </div>
-                          <!-- SF28.2: restore strip for hidden tracks (click a chip to bring it back). -->
-                          <div v-if="hiddenTrackList.length > 0" class="audio-page__hidden-tracks">
-                            <q-icon name="visibility_off" size="16px" />
-                            <span class="audio-page__hidden-tracks-label">{{ t('audio.hiddenTracks') }}:</span>
-                            <q-chip
-                              v-for="h in hiddenTrackList"
-                              :key="h.key"
-                              clickable dense
-                              icon="visibility"
-                              color="grey-8"
-                              text-color="grey-3"
-                              @click="showTrack(h.kind, h.channel)"
-                            >
-                              {{ h.label }}
-                              <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
-                            </q-chip>
                           </div>
                           <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
                                SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
@@ -1938,20 +1945,6 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   opacity: 0.6;
   outline: 2px dashed rgba(103, 232, 249, 0.7);
   outline-offset: -2px;
-}
-
-/* SF28.2: hidden-tracks restore strip above the stacks. */
-.audio-page__hidden-tracks {
-  align-items: center;
-  color: #94a3b8;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 6px;
-}
-
-.audio-page__hidden-tracks-label {
-  font-size: 12px;
 }
 
 .audio-page__wf-color {
