@@ -24,6 +24,7 @@
     "playbackTab": "Воспроизведение",
     "scheduleTab": "Расписание",
     "spectrogramTab": "Спектрограмма",
+    "tracksTab": "Треки",
     "editorTab": "Редактор",
     "noFileSelected": "Файл не выбран",
     "recentFilesEmpty": "Нет недавних файлов",

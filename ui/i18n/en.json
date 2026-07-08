@@ -24,6 +24,7 @@
     "playbackTab": "Playback",
     "scheduleTab": "Schedule",
     "spectrogramTab": "Spectrogram",
+    "tracksTab": "Tracks",
     "editorTab": "Editor",
     "noFileSelected": "No file selected",
     "recentFilesEmpty": "No recent files",
