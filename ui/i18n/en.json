@@ -223,6 +223,7 @@
     "spectrogramPreparing": "Preparing spectrogram…",
     "spectrogramLoading": "Loading the selected audio file and computing the spectrogram...",
     "noSpectrogram": "Select an audio file to view its spectrum.",
+    "tracksNoData": "Select an audio file to see its tracks — waveform and spectrum (plus Gnaural curves for .gnaural).",
     "gnauralSpectrogramLoading": "Rendering and loading the Gnaural spectrogram WAV...",
     "noGnauralSpectrogram": "Start Gnaural playback to render and display the spectrogram.",
     "spectrogramTabHint": "Open the Spectrogram tab to inspect the current audio file.",

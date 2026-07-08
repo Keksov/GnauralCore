@@ -173,7 +173,12 @@
 
                 <q-separator />
 
-                <q-tab-panels v-model="activePlayerViewTab" animated class="audio-page__player-view-panels">
+                <!-- GT2.4: NOT `animated` — the Спектрограмма and Треки tabs render the SAME heavy
+                     stack (each opens spectrogram analyses on the single serial worker). An animated
+                     transition keeps BOTH mounted for ~300ms, so two stacks open/close analyses at
+                     once and can thrash/crash the worker. Instant swap = the leaving stack fully
+                     unmounts (closing its analyses) before the entering one opens. -->
+                <q-tab-panels v-model="activePlayerViewTab" class="audio-page__player-view-panels">
                   <q-tab-panel name="main" class="audio-page__panel audio-page__player-view-panel q-pa-none">
                     <div
                       class="audio-page__output-section audio-page__output-section--main"
@@ -1635,7 +1640,10 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   // to the player's spectrogram view and decode the file without waiting for playback.
   if (path !== null && isLocalAudioFileKind(nextFileKind)) {
     activeContentTab.value = 'player'
-    activePlayerViewTab.value = 'spectrogram'
+    // GT2.4: if the user is on the Треки tab, stay there (it shows the same stack).
+    if (activePlayerViewTab.value !== 'tracks') {
+      activePlayerViewTab.value = 'spectrogram'
+    }
     if (!shouldAutoPlay) {
       void audio.ensureLocalAudioReady(path, nextFileKind)
     }
@@ -1897,6 +1905,12 @@ watch(() => wsService.connectionState.value, (state) => {
 
 watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
   if (displayMode === previousDisplayMode) {
+    return
+  }
+
+  // GT2.4: the Треки tab handles every file kind (audio + gnaural), so keep the user on it
+  // instead of yanking them to Воспроизведение/Спектрограмма on a selection change.
+  if (activePlayerViewTab.value === 'tracks') {
     return
   }
 

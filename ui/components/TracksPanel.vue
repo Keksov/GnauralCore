@@ -518,7 +518,8 @@ watch(spectrogramTrackHeights, (value) => {
 }, { deep: true })
 
 const noSpectrogramLabel = computed(() => {
-  return audio.displayMode === 'gnaural' ? t('audio.noGnauralSpectrogram') : t('audio.noSpectrogram')
+  // GT2.4: tracks-specific wording (waveform + spectrum + gtracks), not just "spectrum".
+  return audio.displayMode === 'gnaural' ? t('audio.noGnauralSpectrogram') : t('audio.tracksNoData')
 })
 
 const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
