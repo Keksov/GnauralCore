@@ -38,6 +38,7 @@
     "trackReorder": "Drag to reorder / swap L↔R",
     "gtrackCanvasLabel": "Gnaural track curves",
     "gtrackSettings": "Lane settings (mode / voices)",
+    "gtrackPointMode": "Point edit mode (select points)",
     "gtrackAddLane": "gtrack lane",
     "gtrackModeLabel": "Display mode",
     "gtrackVoices": "Voices in this lane",

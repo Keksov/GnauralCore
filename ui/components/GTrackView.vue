@@ -5,9 +5,11 @@
       class="gtrack-view__canvas"
       role="img"
       :aria-label="t('audio.gtrackCanvasLabel')"
-      :class="{ 'gtrack-view__canvas--seekable': seekable }"
+      :class="{ 'gtrack-view__canvas--seekable': seekable || pointMode, 'gtrack-view__canvas--point': pointMode && hoverPoint !== null }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @pointermove="onPointerMove"
+      @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="gtrack-view__label-overlay">{{ label }}</span>
     <!-- SF28.4-style chrome: drag grip + hide stacked on the LEFT. -->
@@ -30,8 +32,18 @@
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
     </div>
-    <!-- Gear opens the lane settings (mode + voices) — handled by AudioPage in GT2.2. -->
+    <!-- GT3.1: point-edit mode toggle + the lane settings gear. -->
     <div class="gtrack-view__actions">
+      <q-btn
+        dense flat round size="xs"
+        icon="edit_location_alt"
+        :color="pointMode ? 'primary' : undefined"
+        :aria-label="t('audio.gtrackPointMode')"
+        :aria-pressed="pointMode"
+        @click.stop="emit('toggle-point-mode')"
+      >
+        <q-tooltip>{{ t('audio.gtrackPointMode') }}</q-tooltip>
+      </q-btn>
       <q-btn
         dense flat round size="xs"
         icon="settings"
@@ -66,10 +78,17 @@ import {
   type TimeWindow,
 } from '../composables/spectrogram-viewport'
 
-// GT2.1 — a read-only gtrack lane in the Audio stack (GT-D2). It draws one or more voices' schedule
-// curves under a display mode (Base / Beat / Volume / Stereo balance, GT-D6) over the SHARED time
-// window (provide/inject) so it zooms/pans frame-aligned with the waveform + spectrogram lanes.
-// Vertex editing (drag / add / remove / preparse-fix) arrives in Phase 3.
+// GT2.1 — a gtrack lane in the Audio stack (GT-D2). It draws one or more voices' schedule curves
+// under a display mode (Base / Beat / Volume / Stereo balance, GT-D6) over the SHARED time window
+// (provide/inject) so it zooms/pans frame-aligned with the waveform + spectrogram lanes.
+// GT3.1 — a point-edit mode: vertices become interactive (hover + click to select). Dragging /
+// add / remove / preparse-fix arrive in the later Phase-3 steps.
+
+/** A vertex reference within this lane. */
+export interface GTrackPointRef {
+  readonly voiceId: number
+  readonly pointIndex: number
+}
 
 interface Props {
   voices: readonly GTrackVoice[]
@@ -82,18 +101,26 @@ interface Props {
   seekable?: boolean
   showTimeAxisTop?: boolean
   showTimeAxisBottom?: boolean
+  /** GT3.1: when true, vertices are interactive (hover/select) and clicks don't seek. */
+  pointMode?: boolean
+  /** GT3.1: the currently-selected vertex in THIS lane (null = none). */
+  selection?: GTrackPointRef | null
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
   seekable: false,
   showTimeAxisTop: false,
   showTimeAxisBottom: false,
+  pointMode: false,
+  selection: null,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
   (event: 'hide'): void
   (event: 'reorder-grip', ev: PointerEvent): void
+  (event: 'toggle-point-mode'): void
+  (event: 'select-point', point: GTrackPointRef | null): void
 }>()
 
 interface SpectrogramSharedState {
@@ -105,6 +132,9 @@ const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+// GT3.1: the vertex under the cursor while in point mode (null = none).
+const hoverPoint = ref<GTrackPointRef | null>(null)
+const HIT_RADIUS_PX = 8
 
 const AXIS_MARGIN = { left: 46, right: 8 }
 const AXIS_TIME_MARGIN = 18
@@ -215,14 +245,22 @@ function draw(): void {
       else ctx.lineTo(x, y)
     }
     ctx.stroke()
-    // Vertex dots (small; editing markers come in Phase 3).
-    ctx.fillStyle = color
+    // Vertex dots. In point mode they grow and gain hover/selected highlights (GT3.1).
+    const baseR = props.pointMode ? 3.5 : 2
     for (let i = 0; i < pts.length; i += 1) {
       const x = timeToX(pts[i]!.timeSec)
       const y = valueToY(pointValue(pts[i]!, props.mode))
+      const isHover = props.pointMode && hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
+      const isSelected = props.selection?.voiceId === voice.id && props.selection?.pointIndex === i
       ctx.beginPath()
-      ctx.arc(x, y, 2, 0, Math.PI * 2)
+      ctx.arc(x, y, isSelected ? baseR + 2 : isHover ? baseR + 1.5 : baseR, 0, Math.PI * 2)
+      ctx.fillStyle = color
       ctx.fill()
+      if (isSelected || isHover) {
+        ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.7)'
+        ctx.lineWidth = isSelected ? 2 : 1
+        ctx.stroke()
+      }
     }
   })
   ctx.restore()
@@ -319,7 +357,60 @@ function onWheel(aEvent: WheelEvent): void {
   }
 }
 
+// GT3.1: find the vertex nearest to a canvas pixel (within HIT_RADIUS_PX), across all voices.
+// Uses the same geometry as draw() so hit-testing matches what's rendered.
+function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
+  const canvas = canvasEl.value
+  if (canvas === null || !hasData.value) return null
+  const cssW = Math.max(1, Math.floor(canvas.clientWidth))
+  const cssH = Math.max(1, Math.floor(canvas.clientHeight))
+  const plotX = AXIS_MARGIN.left
+  const plotY = marginTop()
+  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  const win = view.value
+  const ax = axis.value
+  let best: GTrackPointRef | null = null
+  let bestDist = HIT_RADIUS_PX
+  for (const voice of props.voices) {
+    for (let i = 0; i < voice.points.length; i += 1) {
+      const p = voice.points[i]!
+      const x = plotX + timeToFraction(p.timeSec, win) * plotW
+      const y = plotY + (1 - valueToUnit(pointValue(p, props.mode), ax)) * plotH
+      const dist = Math.hypot(x - offsetX, y - offsetY)
+      if (dist <= bestDist) {
+        bestDist = dist
+        best = { voiceId: voice.id, pointIndex: i }
+      }
+    }
+  }
+  return best
+}
+
+function onPointerMove(aEvent: PointerEvent): void {
+  if (!props.pointMode) {
+    if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
+    return
+  }
+  const next = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+  const prev = hoverPoint.value
+  if (next?.voiceId !== prev?.voiceId || next?.pointIndex !== prev?.pointIndex) {
+    hoverPoint.value = next
+    scheduleDraw()
+  }
+}
+
+function onPointerLeave(): void {
+  if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
+}
+
 function onClick(aEvent: MouseEvent): void {
+  // GT3.1: in point mode a click selects/deselects a vertex instead of seeking.
+  if (props.pointMode) {
+    if (!hasData.value) return
+    emit('select-point', pointAtPixel(aEvent.offsetX, aEvent.offsetY))
+    return
+  }
   if (props.seekable !== true || !hasData.value) return
   const f = xFraction(aEvent)
   if (f === null) return
@@ -376,6 +467,11 @@ watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.mode, () => scheduleDraw())
 watch(() => props.voices, () => scheduleDraw(), { deep: true })
 watch(() => props.playheadSec, () => scheduleDraw())
+watch(() => props.selection, () => scheduleDraw())
+watch(() => props.pointMode, (on) => {
+  if (!on) hoverPoint.value = null
+  scheduleDraw()
+})
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
@@ -414,6 +510,11 @@ onBeforeUnmount(() => {
 
 .gtrack-view__canvas--seekable {
   cursor: pointer;
+}
+
+/* GT3.1: over a vertex in point mode. */
+.gtrack-view__canvas--point {
+  cursor: cell;
 }
 
 .gtrack-view__label-overlay {

@@ -17,6 +17,16 @@ export interface GTrackLane {
   hidden: boolean
 }
 
+/** GT3.1: a vertex reference within a lane. */
+export interface GTrackPointRef {
+  readonly voiceId: number
+  readonly pointIndex: number
+}
+/** GT3.1: the globally-selected vertex (which lane + which point). */
+export interface GTrackSelection extends GTrackPointRef {
+  readonly laneId: number
+}
+
 export interface ResolvedGTrackLane {
   readonly id: number
   readonly mode: GTrackMode
@@ -198,7 +208,41 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persist()
   }
 
+  // --- GT3.1: point-edit mode + vertex selection (ephemeral; not persisted) ---
+  const pointModeLanes = ref<Set<number>>(new Set())
+  const selection = ref<GTrackSelection | null>(null)
+  function isLanePointMode(id: number): boolean {
+    return pointModeLanes.value.has(id)
+  }
+  function toggleLanePointMode(id: number): void {
+    const s = new Set(pointModeLanes.value)
+    if (s.has(id)) {
+      s.delete(id)
+      if (selection.value?.laneId === id) selection.value = null // drop the selection when leaving
+    } else {
+      s.add(id)
+    }
+    pointModeLanes.value = s
+  }
+  /** The selected vertex within a given lane, or null (for passing to that lane's GTrackView). */
+  function selectionForLane(id: number): GTrackPointRef | null {
+    const sel = selection.value
+    return sel !== null && sel.laneId === id ? { voiceId: sel.voiceId, pointIndex: sel.pointIndex } : null
+  }
+  function selectPoint(laneId: number, point: GTrackPointRef | null): void {
+    selection.value = point === null ? null : { laneId, voiceId: point.voiceId, pointIndex: point.pointIndex }
+  }
+  function clearSelection(): void {
+    selection.value = null
+  }
+
   return {
+    isLanePointMode,
+    toggleLanePointMode,
+    selection,
+    selectionForLane,
+    selectPoint,
+    clearSelection,
     model,
     lanes,
     voices,

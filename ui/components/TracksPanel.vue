@@ -98,11 +98,15 @@
             :seekable="canSeek"
             :show-time-axis-top="gIndex === 0"
             :show-time-axis-bottom="false"
+            :point-mode="gtracks.isLanePointMode(lane.id)"
+            :selection="gtracks.selectionForLane(lane.id)"
             :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
             @seek="handleSeek"
             @open-settings="gtrackSettingsId = lane.id"
             @hide="gtracks.setLaneHidden(lane.id, true)"
             @reorder-grip="onGtrackGripDown(lane.id, $event)"
+            @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
+            @select-point="(p: GTrackPointRef | null) => gtracks.selectPoint(lane.id, p)"
           />
           <div
             class="audio-page__spectrogram-bottom-handle"
@@ -407,7 +411,7 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
-import { useGtrackLanes } from '../composables/use-gtrack-lanes'
+import { useGtrackLanes, type GTrackPointRef } from '../composables/use-gtrack-lanes'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
   fullWindow,
