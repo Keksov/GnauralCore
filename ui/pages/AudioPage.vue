@@ -165,6 +165,9 @@
                   >
                     <q-tab name="main" :icon="playerViewMainTabIcon" :label="playerViewMainTabLabel" />
                     <q-tab name="spectrogram" icon="graphic_eq" :label="t('audio.spectrogramTab')" />
+                    <!-- GT2.4 (GT-D10): the "Треки" tab hosts ALL new track-stack functionality;
+                         the Playback + Spectrogram tabs above stay frozen for debugging. -->
+                    <q-tab name="tracks" icon="stacked_line_chart" :label="t('audio.tracksTab')" />
                   </q-tabs>
                 </div>
 
@@ -300,7 +303,7 @@
                                   :key="h.key"
                                   clickable
                                   v-close-popup
-                                  @click="h.restore()"
+                                  @click="showTrack(h.kind, h.channel)"
                                 >
                                   <q-item-section avatar style="min-width: 26px">
                                     <q-icon name="visibility" size="18px" />
@@ -328,17 +331,6 @@
                                 </q-item>
                               </q-list>
                             </q-btn-dropdown>
-                            <!-- GT2.2: add a gtrack editor lane (only for a gnaural file). -->
-                            <q-btn
-                              v-if="audio.displayMode === 'gnaural'"
-                              dense flat no-caps size="sm"
-                              icon="add"
-                              :label="t('audio.gtrackAddLane')"
-                              :aria-label="t('audio.gtrackAddLane')"
-                              @click="gtracks.addLane()"
-                            >
-                              <q-tooltip>{{ t('audio.gtrackAddLane') }}</q-tooltip>
-                            </q-btn>
                             <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
                             <q-btn
                               dense flat round size="sm"
@@ -348,38 +340,6 @@
                               aria-controls="spectrogram-settings-panel"
                               :aria-expanded="spectrogramSettingsOpen"
                               @click="toggleSpectrogramSettings"
-                            />
-                          </div>
-                          <!-- GT2.2: gtrack editor lanes (schedule curves) above the waveform + spectrum. -->
-                          <div v-if="showGtracks" class="audio-page__gtrack-stack">
-                            <gtrack-view
-                              v-for="(lane, gIndex) in gtracks.visibleLanes.value"
-                              :key="lane.id"
-                              :data-gtrack-lane="lane.id"
-                              :voices="lane.voices"
-                              :mode="lane.mode"
-                              :duration-sec="gtracks.durationSec.value"
-                              :label="gtrackLaneLabel(lane)"
-                              :height="gtracks.laneHeight.value"
-                              :playhead-sec="displayedPositionSec"
-                              :seekable="canSeek"
-                              :show-time-axis-top="gIndex === 0"
-                              :show-time-axis-bottom="false"
-                              :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
-                              @seek="handleSeek"
-                              @open-settings="gtrackSettingsId = lane.id"
-                              @hide="gtracks.setLaneHidden(lane.id, true)"
-                              @reorder-grip="onGtrackGripDown(lane.id, $event)"
-                            />
-                            <div
-                              class="audio-page__spectrogram-bottom-handle"
-                              role="separator"
-                              aria-orientation="horizontal"
-                              :aria-label="t('audio.spectrogramResizeHandle')"
-                              @pointerdown="onGtrackBottomPointerDown"
-                              @pointermove="onGtrackBottomPointerMove"
-                              @pointerup="onGtrackBottomPointerUp"
-                              @pointercancel="onGtrackBottomPointerUp"
                             />
                           </div>
                           <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
@@ -536,56 +496,6 @@
                             </q-card>
                           </q-dialog>
 
-                          <!-- GT2.2: gtrack lane settings — display mode + which voices are shown. -->
-                          <q-dialog v-model="gtrackSettingsOpen">
-                            <q-card v-if="gtrackSettingsLane !== null" class="audio-page__gtrack-dialog">
-                              <q-card-section class="row items-center q-pb-sm">
-                                <div class="text-subtitle1">{{ t('audio.gtrackSettings') }}</div>
-                                <q-space />
-                                <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
-                              </q-card-section>
-                              <q-separator />
-                              <q-card-section>
-                                <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackModeLabel') }}</div>
-                                <q-btn-toggle
-                                  :model-value="gtrackSettingsLane.mode"
-                                  dense unelevated no-caps spread
-                                  toggle-color="primary"
-                                  :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
-                                  @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
-                                />
-                              </q-card-section>
-                              <q-separator />
-                              <q-card-section>
-                                <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackVoices') }}</div>
-                                <q-list dense>
-                                  <q-item v-for="v in gtracks.voices.value" :key="v.id" tag="label" clickable>
-                                    <q-item-section side>
-                                      <q-checkbox
-                                        :model-value="gtrackSettingsLane.voiceIds.includes(v.id)"
-                                        @update:model-value="() => gtracks.toggleLaneVoice(gtrackSettingsLane!.id, v.id)"
-                                      />
-                                    </q-item-section>
-                                    <q-item-section>
-                                      <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
-                                      <q-item-label caption>{{ v.type }}</q-item-label>
-                                    </q-item-section>
-                                  </q-item>
-                                </q-list>
-                              </q-card-section>
-                              <q-separator />
-                              <q-card-actions align="right">
-                                <q-btn
-                                  flat no-caps color="negative"
-                                  icon="delete"
-                                  :label="t('audio.gtrackRemoveLane')"
-                                  v-close-popup
-                                  @click="gtracks.removeLane(gtrackSettingsLane.id)"
-                                />
-                              </q-card-actions>
-                            </q-card>
-                          </q-dialog>
-
                           <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
                           <q-dialog v-model="waveformSettingsOpen">
                             <q-card class="audio-page__minimap-dialog">
@@ -655,6 +565,38 @@
                       </transition>
                     </div>
                   </q-tab-panel>
+
+                  <!-- GT2.4 (GT-D10): the "Треки" tab — the whole new track stack lives in
+                       TracksPanel.vue (its own zoom/selection state + storage keys). Transport
+                       stays here (same slot pattern as GnauralScheduleView). -->
+                  <q-tab-panel name="tracks" class="audio-page__panel audio-page__player-view-panel q-pa-none">
+                    <tracks-panel
+                      :position-sec="displayedPositionSec"
+                      :can-seek="canSeek"
+                      @seek="handleSeek"
+                      @toggle-play="handleTracksTogglePlay"
+                    >
+                      <template #toolbar>
+                        <gnaural-transport-controls
+                          class="audio-page__player-controls"
+                          :start-stop-icon="startStopButtonIcon"
+                          :start-stop-label="startStopButtonLabel"
+                          :start-stop-color="startStopButtonColor"
+                          :start-stop-flat="startStopButtonFlat"
+                          :start-stop-disabled="startStopDisabled"
+                          :pause-resume-icon="pauseResumeButtonIcon"
+                          :pause-resume-label="pauseResumeButtonLabel"
+                          :pause-resume-disabled="pauseResumeDisabled"
+                          :show-export="canExportCurrentFile"
+                          :export-disabled="exportingFormat !== null"
+                          :export-loading="exportingFormat !== null"
+                          @start-stop="handleStartStop"
+                          @pause-resume="handlePauseResume"
+                          @export="downloadSelectedAudio"
+                        />
+                      </template>
+                    </tracks-panel>
+                  </q-tab-panel>
                 </q-tab-panels>
               </div>
 
@@ -694,9 +636,6 @@ import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeU
 import SpectrogramMinimap from '../components/SpectrogramMinimap.vue'
 import SpectrogramView from '../components/SpectrogramView.vue'
 import WaveformView from '../components/WaveformView.vue'
-import GTrackView from '../components/GTrackView.vue'
-import { useGtrackLanes } from '../composables/use-gtrack-lanes'
-import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
   fullWindow,
   isFullWindow,
@@ -763,6 +702,8 @@ function createAsyncAudioPanel(loader: AsyncComponentLoader<Component>) {
 const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/GnauralEditorPanel.vue'))
 const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
 const SpectrogramSettingsPanel = createAsyncAudioPanel(() => import('../components/SpectrogramSettingsPanel.vue'))
+// GT2.4 (GT-D10): the "Треки" tab content — all new track-stack functionality lives there.
+const TracksPanel = createAsyncAudioPanel(() => import('../components/TracksPanel.vue'))
 
 const loadStoredExpandedPaths = (): string[] => {
   try {
@@ -820,13 +761,6 @@ const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
-// GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
-// waveform + spectrum (GT-D2). Lanes appear only for a gnaural file with a loaded schedule.
-const gtracks = useGtrackLanes(
-  computed(() => audio.gnauralSchedule),
-  computed(() => audio.displayFilePath),
-)
-const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
 // SF9.2: independent per-track heights; length is kept in sync with the track count
@@ -842,7 +776,7 @@ const spectrogramShared = {
   freqView: ref<{ lo: number; hi: number } | null>(null),
 }
 provide('spectrogramShared', spectrogramShared)
-const activePlayerViewTab = ref<'main' | 'spectrogram'>('main')
+const activePlayerViewTab = ref<'main' | 'spectrogram' | 'tracks'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
 const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
@@ -948,8 +882,9 @@ function closeFilesPanel(): void {
 // Opening the Spectrogram view for a selected local audio file that isn't decoded
 // yet prepares it (same non-playback decode as selecting from the tree), instead of
 // leaving the stale "start playback" message with nothing happening.
+// GT2.4: the Треки tab shows the same stack, so it needs the same preparation.
 function ensureSpectrogramPrepared(): void {
-  if (activePlayerViewTab.value !== 'spectrogram') {
+  if (activePlayerViewTab.value !== 'spectrogram' && activePlayerViewTab.value !== 'tracks') {
     return
   }
 
@@ -1276,70 +1211,9 @@ function onTrackGripDown(kind: TrackKind, channel: number, ev: PointerEvent): vo
   window.addEventListener('pointerup', onTrackGripUp)
   window.addEventListener('pointercancel', onTrackGripUp)
 }
-
-// --- GT2.2: gtrack lane chrome (label, settings dialog, drag reorder) ---
-function gtrackModeLabel(mode: GTrackMode): string {
-  return t(`audio.gtrackMode_${mode}`)
-}
-function gtrackLaneLabel(lane: { mode: GTrackMode; voices: readonly { id: number; description: string }[] }): string {
-  const names = lane.voices.map((v) => (v.description.trim() !== '' ? v.description : `#${v.id}`))
-  const voicePart = names.length === 0 ? t('audio.gtrackNoVoices') : names.join(', ')
-  return `${gtrackModeLabel(lane.mode)} · ${voicePart}`
-}
-
-const gtrackSettingsId = ref<number | null>(null)
-const gtrackSettingsOpen = computed<boolean>({
-  get: () => gtrackSettingsId.value !== null,
-  set: (v) => { if (!v) gtrackSettingsId.value = null },
-})
-const gtrackSettingsLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSettingsId.value) ?? null)
-
-// gtrack reorder: mirror the SF-D66 grip drag, but swap lanes in the composable via a hit-test.
-const gtrackDrag = ref<number | null>(null)
-function onGtrackGripMove(ev: PointerEvent): void {
-  const dragId = gtrackDrag.value
-  if (dragId === null) return
-  const el = document.elementFromPoint(ev.clientX, ev.clientY)
-  const laneEl = el === null ? null : (el.closest('[data-gtrack-lane]') as HTMLElement | null)
-  if (laneEl === null) return
-  const targetId = Number(laneEl.dataset.gtrackLane)
-  if (!Number.isInteger(targetId) || targetId === dragId) return
-  gtracks.swapLanes(dragId, targetId)
-}
-function onGtrackGripUp(): void {
-  gtrackDrag.value = null
-  window.removeEventListener('pointermove', onGtrackGripMove)
-  window.removeEventListener('pointerup', onGtrackGripUp)
-  window.removeEventListener('pointercancel', onGtrackGripUp)
-}
-function onGtrackGripDown(laneId: number, ev: PointerEvent): void {
-  ev.preventDefault()
-  gtrackDrag.value = laneId
-  window.addEventListener('pointermove', onGtrackGripMove)
-  window.addEventListener('pointerup', onGtrackGripUp)
-  window.addEventListener('pointercancel', onGtrackGripUp)
-}
-
-// Uniform gtrack lane height with a single bottom handle (like the spectrogram bottom handle).
-let gtrackBottomStartY = 0
-let gtrackBottomStartH = 0
-function onGtrackBottomPointerDown(ev: PointerEvent): void {
-  gtrackBottomStartY = ev.clientY
-  gtrackBottomStartH = gtracks.laneHeight.value
-  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
-  ev.preventDefault()
-}
-function onGtrackBottomPointerMove(ev: PointerEvent): void {
-  if (gtrackBottomStartY === 0) return
-  gtracks.setLaneHeight(gtrackBottomStartH + (ev.clientY - gtrackBottomStartY))
-}
-function onGtrackBottomPointerUp(): void {
-  gtrackBottomStartY = 0
-}
-// The restore list carries a restore callback so waveform/spectrogram channels (SF-D66) and gtrack
-// lanes (GT2.2) share one "hidden tracks" dropdown. Channels are listed only when their KIND is
-// shown by the view-mode preset (restoring under a preset-hidden kind wouldn't surface it).
-interface HiddenTrackEntry { readonly key: string; readonly label: string; readonly restore: () => void }
+// The restore strip lists hidden tracks whose KIND is currently shown by the view-mode preset
+// (restoring a track under a preset-hidden kind wouldn't surface it).
+interface HiddenTrackEntry { readonly key: string; readonly kind: TrackKind; readonly channel: number; readonly label: string }
 const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
   const count = isSpectrogramStereo.value ? 2 : 1
   const out: HiddenTrackEntry[] = []
@@ -1352,13 +1226,7 @@ const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
     for (let ch = 0; ch < count; ch++) {
       if (!isTrackHidden(kind, ch)) continue
       const chLabel = count > 1 ? (ch === 0 ? 'L' : 'R') : ''
-      out.push({ key: trackKey(kind, ch), label: chLabel ? `${name} ${chLabel}` : name, restore: () => showTrack(kind, ch) })
-    }
-  }
-  // GT2.2: hidden gtrack lanes (only relevant while a gnaural is open).
-  if (audio.displayMode === 'gnaural') {
-    for (const lane of gtracks.hiddenLanes.value) {
-      out.push({ key: `gtrack:${lane.id}`, label: gtrackLaneLabel(lane), restore: () => gtracks.setLaneHidden(lane.id, false) })
+      out.push({ key: trackKey(kind, ch), kind, channel: ch, label: chLabel ? `${name} ${chLabel}` : name })
     }
   }
   return out
@@ -1816,7 +1684,21 @@ function setPrimaryWaveformRef(el: unknown, index: number): void {
 const trackEditorNav = computed(() => spectrogramNavRef.value ?? waveformNavRef.value)
 const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
 
+// GT2.4: Space from the Треки tab (TracksPanel owns its hotkeys; transport lives here).
+function handleTracksTogglePlay(): void {
+  if (audio.canPause || audio.canResume) {
+    handlePauseResume()
+  } else if (canStart.value) {
+    startPlayback()
+  }
+}
+
 function handlePlayerKeyDown(event: KeyboardEvent): void {
+  // GT2.4 (GT-D10): while the Треки tab is active, TracksPanel owns the player hotkeys
+  // (its own window listener); skip entirely so the two handlers never double-act.
+  if (activePlayerViewTab.value === 'tracks') {
+    return
+  }
   // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
   if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
     event.preventDefault()
@@ -2107,18 +1989,6 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   flex-direction: column;
   gap: 1px;
   margin-bottom: 2px;
-}
-
-/* GT2.2: gtrack editor lanes stack (above the waveform + spectrum). */
-.audio-page__gtrack-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-bottom: 2px;
-}
-
-.audio-page__gtrack-dialog {
-  min-width: 320px;
 }
 
 /* SF23.2: waveform style popover (colour + overlay opacity). */
