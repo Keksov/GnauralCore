@@ -897,6 +897,10 @@ function ensureSpectrogramPrepared(): void {
   // The frozen Спектрограмма tab keeps its "press play to render" behaviour.
   if (activePlayerViewTab.value === 'tracks' && audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
     void audio.ensureGnauralSpectrogram(audio.displayFilePath)
+    // GT2.2 fix: the gtrack lanes come from the schedule DUMP, which is loaded on file selection —
+    // not on tab activation. Ensure it's loaded here too so an already-selected gnaural shows its
+    // gtrack curves when the Треки tab is opened (idempotent — no-op if already cached).
+    void audio.loadGnauralSchedule(audio.displayFilePath)
     return
   }
 
