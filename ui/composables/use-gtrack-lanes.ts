@@ -143,11 +143,19 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
-  function defaultLanes(): GTrackLane[] {
+  // A sensible starting lane: tonal voices under Base freq; if there are none (e.g. an all-noise /
+  // audiofile soundscape like waves.gnaural), show every voice under Volume — noise/audiofile have
+  // no base frequency but do have a meaningful volume envelope.
+  function defaultLaneConfig(): { voiceIds: number[]; mode: GTrackMode } {
     const all = voices.value
     const tonalIds = all.filter(isTonal).map((v) => v.id)
-    const ids = tonalIds.length > 0 ? tonalIds : all.map((v) => v.id)
-    return [{ id: nextLaneId++, voiceIds: ids, mode: 'base', hidden: false }]
+    if (tonalIds.length > 0) return { voiceIds: tonalIds, mode: 'base' }
+    return { voiceIds: all.map((v) => v.id), mode: 'volume' }
+  }
+
+  function defaultLanes(): GTrackLane[] {
+    const cfg = defaultLaneConfig()
+    return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false }]
   }
 
   function restoreOrDefault(): void {
@@ -187,11 +195,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
   // --- operations ---
   function addLane(): void {
-    const all = voices.value
-    const tonalIds = all.filter(isTonal).map((v) => v.id)
+    const cfg = defaultLaneConfig()
     lanes.value = [
       ...lanes.value,
-      { id: nextLaneId++, voiceIds: tonalIds.length > 0 ? tonalIds : all.map((v) => v.id), mode: 'base', hidden: false },
+      { id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false },
     ]
     persist()
   }
