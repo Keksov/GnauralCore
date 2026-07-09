@@ -39,6 +39,8 @@ type LocalAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface AudioFileRequestOptions {
   readonly format?: LocalAudioFileKind
+  /** GT2.6: for a gnaural WAV render, cap to a single loop (spectrogram display, not export). */
+  readonly singleLoop?: boolean
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -84,6 +86,9 @@ function buildAudioFileUrl(filePath: string, options?: AudioFileRequestOptions):
   const params = new URLSearchParams({ path: filePath })
   if (options?.format !== undefined) {
     params.set('format', options.format)
+  }
+  if (options?.singleLoop === true) {
+    params.set('singleLoop', '1')
   }
 
   return `/api/audio/file?${params.toString()}`

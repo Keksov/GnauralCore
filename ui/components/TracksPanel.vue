@@ -5,13 +5,12 @@
       <slot name="toolbar" />
     </div>
 
+    <!-- GT2.6 fix: a spectrum error (e.g. a huge WAV that won't decode) is a non-blocking notice —
+         the gtrack lanes still render from the schedule below it. -->
     <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
       {{ audio.spectrogramError }}
     </q-banner>
-    <div v-else-if="audio.spectrogramBuffer === null && !audio.spectrogramLoading" class="audio-page__empty text-grey-7">
-      {{ noSpectrogramLabel }}
-    </div>
-    <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
+    <div v-if="showGtracks || hasBuffer" class="row no-wrap items-start" style="gap: 16px;">
       <div class="col column" style="min-width: 0;">
         <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
         <div class="audio-page__spectrogram-header">
@@ -124,7 +123,7 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <div v-if="showWaveform" class="audio-page__waveform-stack">
+        <div v-if="showWaveform && hasBuffer" class="audio-page__waveform-stack">
           <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
             <waveform-view
               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
@@ -170,7 +169,7 @@
             @pointercancel="onWaveformBottomPointerUp"
           />
         </div>
-        <div v-if="showSpectrogram" class="audio-page__spectrogram-stack">
+        <div v-if="showSpectrogram && hasBuffer" class="audio-page__spectrogram-stack">
         <template v-for="(track, index) in spectrogramTracks" :key="track.key">
           <spectrogram-view
             :ref="(el) => setPrimarySpectrogramRef(el, index)"
@@ -226,7 +225,7 @@
         </div>
         <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
              B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
-        <div v-if="showSpectrogram" class="audio-page__minimap-wrap">
+        <div v-if="showSpectrogram && hasBuffer" class="audio-page__minimap-wrap">
           <spectrogram-minimap
             :duration-sec="spectrogramDuration"
             :file-path="audio.displayFilePath"
@@ -359,6 +358,12 @@
           </q-card>
         </q-dialog>
       </div>
+    </div>
+    <div
+      v-else-if="!audio.spectrogramLoading && audio.spectrogramError === null"
+      class="audio-page__empty text-grey-7"
+    >
+      {{ noSpectrogramLabel }}
     </div>
 
     <!-- SF3.1 (SF-D4/D5): settings panel as a toggleable overlay "Параметры" -->
@@ -505,6 +510,10 @@ const gtracks = useGtrackLanes(
   computed(() => audio.displayFilePath),
 )
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
+// GT2.6 fix: gtracks come from the schedule, not the rendered WAV — show them even when the
+// spectrogram buffer is missing (e.g. AndromedaHell renders a 868 MB WAV from 4900 loops that the
+// browser can't decode). The waveform/spectrum lanes stay gated on the decoded buffer.
+const hasBuffer = computed(() => audio.spectrogramBuffer !== null)
 // SF9.2: independent per-track heights; length is kept in sync with the track count
 // (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
 const spectrogramTrackHeights = ref<number[]>(loadStoredSpectrogramTrackHeights())
@@ -954,7 +963,9 @@ watch(() => audio.displayFilePath, () => {
 // SF10.1: the shared time window (provide/inject) is driven from the common header above
 // the stack. Duration comes from the decoded buffer (~ worker durationSec); good enough
 // for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
-const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration ?? 0)
+// Effective time span for the header zoom/fit math: the decoded WAV duration, or (when there is no
+// WAV yet, e.g. gtracks-only) the schedule's single-loop duration so the shared view still works.
+const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration || gtracks.durationSec.value)
 
 // SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
 // re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data

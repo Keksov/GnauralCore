@@ -651,7 +651,9 @@ export const useAudioStore = defineStore('audio', () => {
     spectrogramError.value = null
 
     try {
-      const blob = await audioApi.fetchAudioFileBlob(filePath, abortController.signal, { format: 'wav' })
+      // GT2.6 fix: cap the gnaural render to a single loop so files like "1 s x 4900 loops" don't
+      // produce a huge WAV the browser cannot decode.
+      const blob = await audioApi.fetchAudioFileBlob(filePath, abortController.signal, { format: 'wav', singleLoop: true })
       const arrayBuffer = await blob.arrayBuffer()
       const decodedBuffer = await decodeAudioBuffer(arrayBuffer)
 
