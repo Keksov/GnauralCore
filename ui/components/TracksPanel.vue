@@ -132,6 +132,8 @@
             @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
             @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
             @drag-end="gtracks.endPointDrag()"
+            @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
+            @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
           />
           <div
             class="audio-page__spectrogram-bottom-handle"
@@ -348,6 +350,43 @@
           </q-card>
         </q-dialog>
 
+        <!-- GT3.3: point parameters dialog (all entry fields + derived Volume/Balance). -->
+        <q-dialog v-model="pointDialogOpen">
+          <q-card class="tracks-panel__point-dialog">
+            <q-card-section class="row items-center q-pb-sm">
+              <div class="text-subtitle1">{{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span></div>
+              <q-space />
+              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
+            </q-card-section>
+            <q-separator />
+            <q-card-section class="q-gutter-sm">
+              <q-input v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0" :label="t('audio.gtrackPointTime')" />
+              <q-input v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBase')" />
+              <q-input v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBeat')" />
+              <div class="row q-col-gutter-sm">
+                <div class="col">
+                  <q-input v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolL')" />
+                </div>
+                <div class="col">
+                  <q-input v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolR')" />
+                </div>
+              </div>
+              <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
+              <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
+              <q-slider :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense @update:model-value="(v) => setPointFormVolume(v ?? 0)" />
+              <template v-if="!pointDialogVoiceMono">
+                <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
+                <q-slider :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense @update:model-value="(v) => setPointFormBalance(v ?? 0)" />
+              </template>
+            </q-card-section>
+            <q-separator />
+            <q-card-actions align="right">
+              <q-btn flat no-caps :label="t('audio.spectrogramZoomClose')" v-close-popup />
+              <q-btn unelevated no-caps color="primary" :label="t('audio.spectrogramZoomApply')" @click="applyPointDialog" />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
+
         <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
         <q-dialog v-model="waveformSettingsOpen">
           <q-card class="audio-page__minimap-dialog">
@@ -534,7 +573,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, defineAsyncComponent, defineComponent, h, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import { QSpinnerHourglass } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -544,7 +583,7 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
-import { useGtrackLanes, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef } from '../composables/use-gtrack-lanes'
+import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef } from '../composables/use-gtrack-lanes'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
@@ -638,6 +677,77 @@ const gtracks = useGtrackLanes(
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
 // GT3.9 (GT-D15): the schedule's voice panel (slide-over, left).
 const voicesPanelOpen = ref(false)
+
+// GT3.3: point parameters dialog. Opened by double-clicking a vertex in point mode; edits every
+// entry field in one undo unit (time uses crossover semantics — see applyPointEdit).
+const pointDialogTarget = ref<{ laneId: number; voiceId: number; pointIndex: number } | null>(null)
+const pointDialogOpen = computed<boolean>({
+  get: () => pointDialogTarget.value !== null,
+  set: (v) => { if (!v) pointDialogTarget.value = null },
+})
+const pointForm = reactive({ timeSec: 0, baseFreq: 0, beatFreq: 0, volL: 0, volR: 0 })
+const pointDialogVoiceName = computed(() => {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return ''
+  const v = gtracks.getVoice(tgt.voiceId)
+  if (v === undefined) return ''
+  return v.description.trim() !== '' ? v.description : `#${v.id}`
+})
+const pointDialogVoiceMono = computed(() => {
+  const tgt = pointDialogTarget.value
+  return tgt !== null && (gtracks.getVoice(tgt.voiceId)?.mono ?? false)
+})
+function openPointDialog(laneId: number, p: GTrackPointRef): void {
+  const point = gtracks.getPoint(p)
+  if (point === null) return
+  pointForm.timeSec = Number(point.timeSec.toFixed(3))
+  pointForm.baseFreq = Number(point.baseFreq.toFixed(3))
+  pointForm.beatFreq = Number((point.beatFreqHalf * 2).toFixed(3)) // display = full beat (GT-D6)
+  pointForm.volL = Number(point.volL.toFixed(3))
+  pointForm.volR = Number(point.volR.toFixed(3))
+  pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
+}
+// Derived controls (GT-D6): Volume scales L/R preserving balance; Balance re-splits the total.
+const pointFormVolume = computed(() => (pointForm.volL + pointForm.volR) / 2)
+const pointFormBalance = computed(() => {
+  const s = pointForm.volL + pointForm.volR
+  return s <= 0 ? 0 : (pointForm.volR - pointForm.volL) / s
+})
+function setPointFormVolume(v: number): void {
+  const clamp = (x: number): number => Math.max(0, Math.min(1, x))
+  const cur = pointFormVolume.value
+  if (pointDialogVoiceMono.value || cur <= 0) {
+    pointForm.volL = clamp(v)
+    pointForm.volR = clamp(v)
+    return
+  }
+  const f = v / cur
+  pointForm.volL = clamp(pointForm.volL * f)
+  pointForm.volR = clamp(pointForm.volR * f)
+}
+function setPointFormBalance(b: number): void {
+  const clamp = (x: number): number => Math.max(0, Math.min(1, x))
+  const s = pointForm.volL + pointForm.volR
+  if (s <= 0) return
+  const bb = Math.max(-1, Math.min(1, b))
+  pointForm.volL = clamp((s * (1 - bb)) / 2)
+  pointForm.volR = clamp((s * (1 + bb)) / 2)
+}
+function applyPointDialog(): void {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return
+  const ok = gtracks.applyPointEdit(
+    { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex },
+    {
+      timeSec: Math.max(0, Number(pointForm.timeSec) || 0),
+      baseFreq: Math.max(0, Number(pointForm.baseFreq) || 0),
+      beatFreqHalf: Math.max(0, Number(pointForm.beatFreq) || 0) / 2,
+      volL: Math.max(0, Math.min(1, Number(pointForm.volL) || 0)),
+      volR: Math.max(0, Math.min(1, Number(pointForm.volR) || 0)),
+    },
+  )
+  if (ok) pointDialogTarget.value = null
+}
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
 const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
 const VOICE_HEX = /^#[0-9a-fA-F]{6}$/
@@ -1354,6 +1464,13 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     return
   }
 
+  // GT3.6: Delete removes the selected gtrack vertex (min-2-points guard lives in the model).
+  if ((event.key === 'Delete' || event.key === 'Backspace') && gtracks.selection.value !== null) {
+    event.preventDefault()
+    gtracks.removeSelectedPoint()
+    return
+  }
+
   // GT3.2: undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y).
   if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
     event.preventDefault()
@@ -1641,5 +1758,10 @@ onBeforeUnmount(() => {
 
 .tracks-panel__voice-mode {
   min-width: 96px;
+}
+
+/* GT3.3: point parameters dialog. */
+.tracks-panel__point-dialog {
+  min-width: 340px;
 }
 </style>

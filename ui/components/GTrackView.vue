@@ -8,6 +8,7 @@
       :class="{ 'gtrack-view__canvas--seekable': seekable || pointMode, 'gtrack-view__canvas--point': pointMode && hoverPoint !== null }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @dblclick="onDblClick"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -127,6 +128,10 @@ const emit = defineEmits<{
   (event: 'drag-start', point: GTrackPointRef): void
   (event: 'drag-move', payload: { point: GTrackPointRef; timeSec: number; value: number }): void
   (event: 'drag-end'): void
+  /** GT3.3: double-click on a vertex — open the point parameters dialog. */
+  (event: 'edit-point', point: GTrackPointRef): void
+  /** GT3.6: double-click on a curve — add an interpolated point there. */
+  (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
 }>()
 
 interface SpectrogramSharedState {
@@ -477,6 +482,56 @@ function onClick(aEvent: MouseEvent): void {
   const f = xFraction(aEvent)
   if (f === null) return
   emit('seek', Math.max(0, Math.min(props.durationSec, fractionToTime(f, view.value))))
+}
+
+// GT3.6: the voice whose curve is nearest to a canvas pixel (linear interpolation of the mode
+// value between surrounding points), within a vertical threshold. Approximate for balance/volume
+// (lerp of derived values) — fine for hit-testing.
+const CURVE_HIT_PX = 14
+function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number; timeSec: number } | null {
+  const rect = plotRect()
+  if (rect === null || !hasData.value) return null
+  const { plotX, plotY, plotW, plotH } = rect
+  const fx = (offsetX - plotX) / plotW
+  if (fx < 0 || fx > 1) return null
+  const timeSec = fractionToTime(fx, view.value)
+  const ax = axis.value
+  let best: number | null = null
+  let bestDist = CURVE_HIT_PX
+  for (const voice of props.voices) {
+    const pts = voice.points
+    if (pts.length < 2) continue
+    if (timeSec <= pts[0]!.timeSec || timeSec >= pts[pts.length - 1]!.timeSec) continue
+    let seg = -1
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      if (timeSec >= pts[i]!.timeSec && timeSec <= pts[i + 1]!.timeSec) { seg = i; break }
+    }
+    if (seg < 0) continue
+    const a = pts[seg]!
+    const b = pts[seg + 1]!
+    const span = b.timeSec - a.timeSec
+    const f = span > 0 ? (timeSec - a.timeSec) / span : 0
+    const v = pointValue(a, props.mode) + f * (pointValue(b, props.mode) - pointValue(a, props.mode))
+    const y = plotY + (1 - valueToUnit(v, ax)) * plotH
+    const dist = Math.abs(y - offsetY)
+    if (dist <= bestDist) {
+      bestDist = dist
+      best = voice.id
+    }
+  }
+  return best === null ? null : { voiceId: best, timeSec }
+}
+
+function onDblClick(aEvent: MouseEvent): void {
+  if (!props.pointMode || !hasData.value) return
+  // On a vertex -> edit its parameters; on a curve -> add an interpolated point there.
+  const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+  if (hit !== null) {
+    emit('edit-point', hit)
+    return
+  }
+  const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
+  if (curve !== null) emit('add-point', curve)
 }
 
 // Audacity-style keyboard nav (parity with the waveform lane), exposed for AudioPage delegation.

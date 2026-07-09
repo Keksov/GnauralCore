@@ -7,7 +7,7 @@ import { computed, ref, shallowRef, watch, type Ref } from 'vue'
 
 import type { GnauralScheduleData } from '@protocol'
 
-import { GTrackModel, clampPointTime, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 
 export interface GTrackLane {
@@ -35,6 +35,12 @@ export interface GTrackDragMove {
 
 /** GT3.10 (GT-D16): point-drag behaviour — clamp within neighbours, or cross over them. */
 export type GTrackPointDragMode = 'clamp' | 'crossover'
+
+/** GT3.6: payload emitted by GTrackView when double-clicking a curve to add a point. */
+export interface GTrackAddPoint {
+  readonly voiceId: number
+  readonly timeSec: number
+}
 
 export interface ResolvedGTrackLane {
   readonly id: number
@@ -400,6 +406,75 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     m.cancelEdit()
     syncSchedule()
   }
+  // --- GT3.3/GT3.6: point dialog + add/remove operations ---
+  function getVoice(voiceId: number): GTrackVoice | undefined {
+    return voiceById(voiceId)
+  }
+  function getPoint(ref_: GTrackPointRef): GTrackPoint | null {
+    return voiceById(ref_.voiceId)?.points[ref_.pointIndex] ?? null
+  }
+  /**
+   * Apply the point dialog: set every field in ONE undo unit. Time uses crossover semantics
+   * (an exact time may legitimately pass neighbours); the selection follows the new index.
+   */
+  function applyPointEdit(
+    ref_: GTrackPointRef,
+    patch: { timeSec: number; baseFreq: number; beatFreqHalf: number; volL: number; volR: number },
+  ): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    try {
+      m.edit(() => {
+        const ni = m.movePointCrossing(ref_.voiceId, ref_.pointIndex, patch.timeSec)
+        m.setPointFields(ref_.voiceId, ni, {
+          baseFreq: patch.baseFreq,
+          beatFreqHalf: patch.beatFreqHalf,
+          volL: patch.volL,
+          volR: patch.volR,
+        })
+        const sel = selection.value
+        if (sel !== null && sel.voiceId === ref_.voiceId) {
+          selection.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: ni }
+        }
+      })
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+  /** GT3.6: insert an interpolated point at timeSec and select it. False when not possible. */
+  function insertPointAt(laneId: number, voiceId: number, timeSec: number): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(voiceId)) return false
+    try {
+      let idx = -1
+      m.edit(() => { idx = m.insertPoint(voiceId, timeSec) })
+      selection.value = { laneId, voiceId, pointIndex: idx }
+    } catch {
+      return false // outside segments / preparse-locked / degenerate voice
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+  /** GT3.6: remove the currently selected point (Delete key). False when blocked (min 2 points). */
+  function removeSelectedPoint(): boolean {
+    const sel = selection.value
+    const m = model.value
+    if (sel === null || m === null || !m.isVoiceEditable(sel.voiceId)) return false
+    try {
+      m.edit(() => m.removePoint(sel.voiceId, sel.pointIndex))
+    } catch {
+      return false
+    }
+    selection.value = null
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+
   function undoEdit(): void {
     const m = model.value
     if (m === null || m.inTransaction) return // never undo mid-drag (the model would throw)
@@ -435,6 +510,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     canRedo,
     pointDragMode,
     setPointDragMode,
+    getVoice,
+    getPoint,
+    applyPointEdit,
+    insertPointAt,
+    removeSelectedPoint,
     isVoiceVisible,
     voiceMode,
     setVoiceVisible,
