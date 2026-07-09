@@ -68,6 +68,18 @@
               </q-item>
             </q-list>
           </q-btn-dropdown>
+          <!-- GT3.9: slide-over voice panel of the schedule (GT-D15). -->
+          <q-btn
+            v-if="audio.displayMode === 'gnaural'"
+            dense flat round size="sm"
+            icon="queue_music"
+            :color="voicesPanelOpen ? 'primary' : undefined"
+            :aria-label="t('audio.gtrackVoicesPanel')"
+            :aria-expanded="voicesPanelOpen"
+            @click="voicesPanelOpen = !voicesPanelOpen"
+          >
+            <q-tooltip>{{ t('audio.gtrackVoicesPanel') }}</q-tooltip>
+          </q-btn>
           <!-- GT2.2: add a gtrack editor lane (only for a gnaural file). -->
           <q-btn
             v-if="audio.displayMode === 'gnaural'"
@@ -377,6 +389,108 @@
       {{ noSpectrogramLabel }}
     </div>
 
+    <!-- GT3.9 (GT-D15): the schedule's voice panel slides in OVER the tracks (left side). -->
+    <transition name="spectrogram-settings-backdrop">
+      <div
+        v-if="voicesPanelOpen"
+        class="audio-page__spectrogram-settings-backdrop"
+        aria-hidden="true"
+        @click="voicesPanelOpen = false"
+      />
+    </transition>
+    <transition name="gtrack-voices-panel">
+      <aside
+        v-if="voicesPanelOpen"
+        class="tracks-panel__voices-panel"
+        role="dialog"
+        aria-modal="false"
+        :aria-label="t('audio.gtrackVoicesPanel')"
+      >
+        <div class="audio-page__spectrogram-settings-header">
+          <div class="audio-page__spectrogram-settings-title">{{ t('audio.gtrackVoicesPanel') }}</div>
+          <q-btn
+            flat round dense
+            icon="close"
+            :aria-label="t('audio.spectrogramSettingsClose')"
+            @click="voicesPanelOpen = false"
+          />
+        </div>
+        <div class="audio-page__spectrogram-settings-body">
+          <!-- Bulk actions (owner req. 20). -->
+          <div class="tracks-panel__voices-bulk">
+            <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.gtrackMergeAll')" @click="gtracks.mergeAllIntoOneLane()">
+              <q-tooltip>{{ t('audio.gtrackMergeAll') }}</q-tooltip>
+            </q-btn>
+            <q-btn dense flat round size="sm" icon="call_split" :aria-label="t('audio.gtrackSpreadAll')" @click="gtracks.spreadPerVoiceLanes()">
+              <q-tooltip>{{ t('audio.gtrackSpreadAll') }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              dense flat round size="sm"
+              :icon="gtracks.allLanesHidden.value ? 'visibility' : 'visibility_off'"
+              :aria-label="gtracks.allLanesHidden.value ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll')"
+              @click="gtracks.setAllLanesHidden(!gtracks.allLanesHidden.value)"
+            >
+              <q-tooltip>{{ gtracks.allLanesHidden.value ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll') }}</q-tooltip>
+            </q-btn>
+            <q-select
+              class="tracks-panel__voices-mode-all"
+              dense options-dense outlined emit-value map-options
+              :model-value="null"
+              :display-value="t('audio.gtrackAllInMode')"
+              :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
+              :aria-label="t('audio.gtrackAllInMode')"
+              @update:model-value="(m: GTrackMode | null) => { if (m !== null) gtracks.setAllLanesMode(m) }"
+            />
+          </div>
+          <q-separator class="q-my-sm" />
+          <!-- Per-voice rows: colour, name/type, graph type, visibility. -->
+          <q-list dense>
+            <q-item v-for="(v, vi) in gtracks.voices.value" :key="v.id" class="tracks-panel__voice-row">
+              <q-item-section avatar style="min-width: 22px">
+                <span class="tracks-panel__voice-dot" :style="{ background: voiceDotColor(v, vi) }" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
+                <q-item-label caption>{{ v.type }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="row items-center no-wrap q-gutter-xs">
+                  <q-select
+                    class="tracks-panel__voice-mode"
+                    dense options-dense borderless emit-value map-options
+                    :model-value="gtracks.voiceMode(v.id)"
+                    :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
+                    :aria-label="t('audio.gtrackModeLabel')"
+                    @update:model-value="(m: GTrackMode) => gtracks.setVoiceMode(v.id, m)"
+                  />
+                  <q-btn
+                    dense flat round size="sm"
+                    :icon="gtracks.isVoiceVisible(v.id) ? 'visibility' : 'visibility_off'"
+                    :color="gtracks.isVoiceVisible(v.id) ? undefined : 'grey-7'"
+                    :aria-label="t('audio.trackShow')"
+                    @click="gtracks.setVoiceVisible(v.id, !gtracks.isVoiceVisible(v.id))"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <q-separator class="q-my-sm" />
+          <!-- Editor properties (GT-D16): point-drag mode. -->
+          <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackDragMode') }}</div>
+          <q-btn-toggle
+            :model-value="gtracks.pointDragMode.value"
+            dense unelevated no-caps spread
+            toggle-color="primary"
+            :options="[
+              { label: t('audio.gtrackDragMode_crossover'), value: 'crossover' },
+              { label: t('audio.gtrackDragMode_clamp'), value: 'clamp' },
+            ]"
+            @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
+          />
+        </div>
+      </aside>
+    </transition>
+
     <!-- SF3.1 (SF-D4/D5): settings panel as a toggleable overlay "Параметры" -->
     <transition name="spectrogram-settings-backdrop">
       <div
@@ -430,7 +544,8 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
-import { useGtrackLanes, type GTrackDragMove, type GTrackPointRef } from '../composables/use-gtrack-lanes'
+import { useGtrackLanes, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef } from '../composables/use-gtrack-lanes'
+import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
   fullWindow,
@@ -521,6 +636,16 @@ const gtracks = useGtrackLanes(
   computed(() => audio.displayFilePath),
 )
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
+// GT3.9 (GT-D15): the schedule's voice panel (slide-over, left).
+const voicesPanelOpen = ref(false)
+// Same fallback palette as GTrackView so the panel dots match the lane curves.
+const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
+const VOICE_HEX = /^#[0-9a-fA-F]{6}$/
+function voiceDotColor(v: GTrackVoice, index: number): string {
+  return v.color !== null && VOICE_HEX.test(v.color)
+    ? v.color
+    : VOICE_FALLBACK_COLORS[index % VOICE_FALLBACK_COLORS.length]!
+}
 // GT2.6 fix: gtracks come from the schedule, not the rendered WAV — show them even when the
 // spectrogram buffer is missing (e.g. AndromedaHell renders a 868 MB WAV from 4900 loops that the
 // browser can't decode). The waveform/spectrum lanes stay gated on the decoded buffer.
@@ -1213,6 +1338,12 @@ const trackEditorNav = computed(() => spectrogramNavRef.value ?? waveformNavRef.
 const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
 
 function handleTracksKeyDown(event: KeyboardEvent): void {
+  // GT3.9: Escape closes the voice panel first, then the settings overlay.
+  if (event.key === 'Escape' && voicesPanelOpen.value) {
+    event.preventDefault()
+    voicesPanelOpen.value = false
+    return
+  }
   // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
   if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
     event.preventDefault()
@@ -1455,5 +1586,60 @@ onBeforeUnmount(() => {
 .spectrogram-settings-panel-leave-to {
   opacity: 0;
   transform: translateX(24px);
+}
+
+/* GT3.9 (GT-D15): the schedule's voice panel — slides in over the tracks from the LEFT. */
+.tracks-panel__voices-panel {
+  background: #0f172a;
+  border-right: 1px solid rgba(148, 163, 184, 0.24);
+  bottom: 0;
+  box-shadow: 18px 0 40px rgba(2, 6, 23, 0.45);
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  max-width: calc(100% - 56px);
+  position: absolute;
+  top: 0;
+  width: 340px;
+  z-index: 30;
+}
+
+.gtrack-voices-panel-enter-active,
+.gtrack-voices-panel-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.gtrack-voices-panel-enter-from,
+.gtrack-voices-panel-leave-to {
+  opacity: 0;
+  transform: translateX(-24px);
+}
+
+.tracks-panel__voices-bulk {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tracks-panel__voices-mode-all {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.tracks-panel__voice-row {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.tracks-panel__voice-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.tracks-panel__voice-mode {
+  min-width: 96px;
 }
 </style>
