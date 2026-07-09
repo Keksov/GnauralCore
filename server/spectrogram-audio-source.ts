@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs"
-import { mkdtemp, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
 import { resolveGnauralExecutablePath } from "./gnaural-path"
 import type { AudioFileKind } from "./protocol"
@@ -49,23 +50,44 @@ interface CacheEntry {
   refs: number
 }
 
+// GT7.1: for the spectrogram STFT we only need ONE loop. Rendering every loop of a file like
+// AndromedaHell (1 s x 4900 loops) would produce an ~868 MB WAV and a 4900 s STFT on the worker.
+// So render a temp copy with <loops>1</loops>; if there's no such tag, render as-is.
+const GNAURAL_LOOPS_TAG = /<loops>\s*\d+\s*<\/loops>/i
+
 const defaultRenderGnaural =
   (aExePath: string, aCwd: string): GnauralRenderFn =>
   async (aInputPath, aOutputWavPath) => {
-    const child = Bun.spawn([aExePath, aInputPath, "-o", aOutputWavPath], {
-      cwd: aCwd,
-      stdout: "ignore",
-      stderr: "pipe",
-    })
-    const [stderrText, exitCode] = await Promise.all([
-      new Response(child.stderr).text(),
-      child.exited,
-    ])
-    if (exitCode !== 0) {
-      throw new Error(`gnaural render failed (exit ${exitCode}): ${stderrText.trim()}`)
+    const original = await readFile(aInputPath, "utf8")
+    const singleLoop = original.replace(GNAURAL_LOOPS_TAG, "<loops>1</loops>")
+    let renderInputPath = aInputPath
+    let tempInputPath: string | null = null
+    if (singleLoop !== original) {
+      tempInputPath = join(dirname(aOutputWavPath), `.sl-${process.pid}-${randomUUID()}.gnaural`)
+      await writeFile(tempInputPath, singleLoop)
+      renderInputPath = tempInputPath
     }
-    if (!existsSync(aOutputWavPath)) {
-      throw new Error("gnaural render produced no output WAV")
+
+    try {
+      const child = Bun.spawn([aExePath, renderInputPath, "-o", aOutputWavPath], {
+        cwd: aCwd,
+        stdout: "ignore",
+        stderr: "pipe",
+      })
+      const [stderrText, exitCode] = await Promise.all([
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      if (exitCode !== 0) {
+        throw new Error(`gnaural render failed (exit ${exitCode}): ${stderrText.trim()}`)
+      }
+      if (!existsSync(aOutputWavPath)) {
+        throw new Error("gnaural render produced no output WAV")
+      }
+    } finally {
+      if (tempInputPath !== null) {
+        await unlink(tempInputPath).catch(() => undefined)
+      }
     }
   }
 

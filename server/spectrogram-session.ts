@@ -119,6 +119,7 @@ const toAnalysisInfo = (aAnalysisId: string, aResponse: WorkerResponse): Spectro
   binCount: numberOf(aResponse.binCount),
   frameCount: numberOf(aResponse.frameCount),
   durationSec: numberOf(aResponse.durationS),
+  channelCount: numberOf(aResponse.channelCount),
   data: stringOf(aResponse.data) as SpectrogramDataMode,
   fscale: stringOf(aResponse.fscale) as SpectrogramFScale,
   scale: stringOf(aResponse.scale) as SpectrogramScale,
