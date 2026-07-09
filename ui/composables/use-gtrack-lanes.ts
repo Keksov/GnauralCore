@@ -143,9 +143,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
-  // A sensible starting lane: tonal voices under Base freq; if there are none (e.g. an all-noise /
-  // audiofile soundscape like waves.gnaural), show every voice under Volume — noise/audiofile have
-  // no base frequency but do have a meaningful volume envelope.
+  // GT-D13 (owner 2026-07-09): default = ONE VOICE -> ONE LANE (like the classic schedule editor's
+  // per-voice tracks). A tonal voice starts on Base freq; noise/audiofile on Volume (no base
+  // frequency, but a meaningful volume envelope). Users can then merge voices into one lane or
+  // spread one voice across several lanes (different parameters) via the lane gear / + lane.
   function defaultLaneConfig(): { voiceIds: number[]; mode: GTrackMode } {
     const all = voices.value
     const tonalIds = all.filter(isTonal).map((v) => v.id)
@@ -154,8 +155,12 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
 
   function defaultLanes(): GTrackLane[] {
-    const cfg = defaultLaneConfig()
-    return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false }]
+    return voices.value.map((v) => ({
+      id: nextLaneId++,
+      voiceIds: [v.id],
+      mode: (isTonal(v) ? 'base' : 'volume') as GTrackMode,
+      hidden: false,
+    }))
   }
 
   function restoreOrDefault(): void {

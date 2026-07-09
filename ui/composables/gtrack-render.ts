@@ -65,6 +65,8 @@ export function valuePatchForMode(
 export interface GTrackAxis {
   readonly min: number
   readonly max: number
+  /** GT2.8: 'log' for Base freq (matches the classic schedule editor); 'linear' otherwise. */
+  readonly scale: 'linear' | 'log'
   /** Labels for the top / middle / bottom of the value axis. */
   readonly topLabel: string
   readonly midLabel: string
@@ -79,37 +81,74 @@ function formatFreq(v: number): string {
 
 /** Map a value to a [0,1] unit position on the axis (0 = min/bottom, 1 = max/top), clamped. */
 export function valueToUnit(value: number, axis: GTrackAxis): number {
+  if (axis.scale === 'log') {
+    const minLog = Math.log10(axis.min)
+    const maxLog = Math.log10(axis.max)
+    const span = maxLog - minLog
+    if (span <= 0) return 0.5
+    const valueLog = Math.log10(Math.max(value, axis.min))
+    return Math.max(0, Math.min(1, (valueLog - minLog) / span))
+  }
   const span = axis.max - axis.min
   if (span <= 0) return 0.5
   return Math.max(0, Math.min(1, (value - axis.min) / span))
 }
 
+/** Inverse of valueToUnit (GT3.2 drag: cursor unit position -> axis value). */
+export function unitToValue(unit: number, axis: GTrackAxis): number {
+  const u = Math.max(0, Math.min(1, unit))
+  if (axis.scale === 'log') {
+    const minLog = Math.log10(axis.min)
+    const maxLog = Math.log10(axis.max)
+    return Math.pow(10, minLog + u * (maxLog - minLog))
+  }
+  return axis.min + u * (axis.max - axis.min)
+}
+
 /**
- * The value axis for a set of voices under a mode. Volume is fixed 0..1 and balance -1..1 (L/C/R);
- * frequency modes auto-range from the data with padding, floored at 0.
+ * The value axis for a set of voices under a mode. Volume is fixed 0..1 and balance -1..1 (L/C/R).
+ * Base freq is LOGARITHMIC, matching the classic schedule editor (GnauralScheduleView): range from
+ * the data, min clamped to >= 1, a flat range padded to min*1.25. Beat freq stays linear-auto
+ * (small 0..N Hz values).
  */
 export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode): GTrackAxis {
   if (mode === 'volume') {
-    return { min: 0, max: 1, topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
+    return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
   }
   if (mode === 'balance') {
-    return { min: -1, max: 1, topLabel: 'R', midLabel: 'C', botLabel: 'L' }
+    return { min: -1, max: 1, scale: 'linear', topLabel: 'R', midLabel: 'C', botLabel: 'L' }
   }
-  // base / beat — auto-range across all points.
+  // base / beat — collect the value range across all points (log ignores non-positive values).
   let lo = Number.POSITIVE_INFINITY
   let hi = Number.NEGATIVE_INFINITY
   for (const voice of voices) {
     for (const p of voice.points) {
       const v = pointValue(p, mode)
+      if (mode === 'base' && v <= 0) continue
       if (v < lo) lo = v
       if (v > hi) hi = v
     }
   }
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
-    return { min: 0, max: 1, topLabel: '1', midLabel: '0.5', botLabel: '0' }
+    return { min: 0, max: 1, scale: 'linear', topLabel: '1', midLabel: '0.5', botLabel: '0' }
   }
+  if (mode === 'base') {
+    // Classic-editor log frequency axis (frequencyToY in GnauralScheduleView).
+    let min = Math.max(lo, 1)
+    let max = Math.max(hi, min)
+    if (max <= min) max = min * 1.25
+    const mid = Math.pow(10, (Math.log10(min) + Math.log10(max)) / 2) // geometric midpoint
+    return {
+      min,
+      max,
+      scale: 'log',
+      topLabel: formatFreq(max),
+      midLabel: formatFreq(mid),
+      botLabel: formatFreq(min),
+    }
+  }
+  // beat — linear auto-range with padding, floored at 0.
   if (lo === hi) {
-    // A single flat value — give it a visible band around it (floored at 0).
     const pad = lo === 0 ? 1 : Math.max(1, Math.abs(lo) * 0.1)
     lo = Math.max(0, lo - pad)
     hi += pad
@@ -122,6 +161,7 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode): GT
   return {
     min: lo,
     max: hi,
+    scale: 'linear',
     topLabel: formatFreq(hi),
     midLabel: formatFreq(mid),
     botLabel: formatFreq(lo),

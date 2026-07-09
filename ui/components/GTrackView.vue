@@ -66,6 +66,7 @@ import type { GTrackVoice } from '../composables/gtrack-model'
 import {
   gtrackAxis,
   pointValue,
+  unitToValue,
   valueToUnit,
   type GTrackMode,
 } from '../composables/gtrack-render'
@@ -240,6 +241,21 @@ function draw(): void {
     const pts = voice.points
     if (pts.length === 0) return
     const color = colorForVoice(voice, vi)
+    // GT2.8: Volume lanes draw classic-editor style FILLED envelopes under each voice's curve.
+    if (props.mode === 'volume') {
+      ctx.beginPath()
+      const y0 = valueToY(0)
+      ctx.moveTo(timeToX(pts[0]!.timeSec), y0)
+      for (let i = 0; i < pts.length; i += 1) {
+        ctx.lineTo(timeToX(pts[i]!.timeSec), valueToY(pointValue(pts[i]!, props.mode)))
+      }
+      ctx.lineTo(timeToX(pts[pts.length - 1]!.timeSec), y0)
+      ctx.closePath()
+      ctx.fillStyle = color
+      ctx.globalAlpha = 0.22
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
     ctx.beginPath()
@@ -407,8 +423,8 @@ function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number;
   const { plotX, plotY, plotW, plotH } = rect
   const fx = Math.max(0, Math.min(1, (offsetX - plotX) / plotW))
   const uy = Math.max(0, Math.min(1, 1 - (offsetY - plotY) / plotH))
-  const ax = axis.value
-  return { timeSec: fractionToTime(fx, view.value), value: ax.min + uy * (ax.max - ax.min) }
+  // GT2.8: inverse-map through the axis (handles the log frequency scale).
+  return { timeSec: fractionToTime(fx, view.value), value: unitToValue(uy, axis.value) }
 }
 
 // GT3.2: drag state. A drag runs from pointerdown-on-a-vertex to pointerup as one undo unit.

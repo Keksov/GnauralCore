@@ -10,6 +10,14 @@
     <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
       {{ audio.spectrogramError }}
     </q-banner>
+    <!-- GT2.7: schedule (dump) problems were previously invisible here — the gtrack lanes silently
+         didn't appear. Surface them so a failed/slow dump is obvious. -->
+    <q-banner
+      v-if="audio.displayMode === 'gnaural' && audio.gnauralScheduleError !== null"
+      dense rounded class="bg-orange-1 text-orange-10 q-mb-md"
+    >
+      {{ audio.gnauralScheduleError }}
+    </q-banner>
     <div v-if="showGtracks || hasBuffer" class="row no-wrap items-start" style="gap: 16px;">
       <div class="col column" style="min-width: 0;">
         <!-- SF10.1: common header above the whole stack; all buttons here (once) -->

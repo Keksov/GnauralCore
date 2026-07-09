@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GTrackPoint, GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, gtrackAxis, pointValue, valuePatchForMode, valueToUnit } from './gtrack-render'
+import { GTRACK_MODES, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit } from './gtrack-render'
 
 function pt(over: Partial<GTrackPoint>): GTrackPoint {
   return { timeSec: 0, baseFreq: 200, beatFreqHalf: 5, volL: 0.5, volR: 0.5, ...over }
@@ -41,25 +41,58 @@ describe('gtrackAxis (GT2.1)', () => {
     expect([a.botLabel, a.midLabel, a.topLabel]).toEqual(['L', 'C', 'R'])
   })
 
-  test('frequency auto-ranges across voices with padding, floored at 0', () => {
+  test('base freq is a LOG axis from the data (classic editor), ignoring non-positive values', () => {
     const a = gtrackAxis([
       voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })]),
-      voice([pt({ baseFreq: 0 })]), // e.g. a noise voice
+      voice([pt({ baseFreq: 0 })]), // e.g. a noise voice — ignored on the log axis
     ], 'base')
-    expect(a.min).toBe(0) // floored
-    expect(a.max).toBeGreaterThan(200) // padded above the max
+    expect(a.scale).toBe('log')
+    expect(a.min).toBe(100)
+    expect(a.max).toBe(200)
+    // geometric midpoint ~141.4
+    expect(a.midLabel).toBe('141')
   })
 
-  test('a single flat frequency still gets a visible band', () => {
+  test('a single flat frequency pads the log range to min*1.25', () => {
     const a = gtrackAxis([voice([pt({ baseFreq: 144 }), pt({ baseFreq: 144 })])], 'base')
-    expect(a.min).toBeLessThan(144)
-    expect(a.max).toBeGreaterThan(144)
+    expect(a.min).toBe(144)
+    expect(a.max).toBeCloseTo(180, 6)
+  })
+
+  test('beat stays linear-auto with padding', () => {
+    const a = gtrackAxis([voice([pt({ beatFreqHalf: 2 }), pt({ beatFreqHalf: 5 })])], 'beat')
+    expect(a.scale).toBe('linear')
+    expect(a.min).toBeLessThan(4)
+    expect(a.max).toBeGreaterThan(10)
+  })
+
+  test('all-noise voices under base fall back to a default linear range', () => {
+    const a = gtrackAxis([voice([pt({ baseFreq: 0 }), pt({ baseFreq: 0 })])], 'base')
+    expect(a.scale).toBe('linear')
+    expect(a.min).toBe(0)
+    expect(a.max).toBe(1)
   })
 
   test('empty voices fall back to a default range', () => {
     const a = gtrackAxis([], 'base')
     expect(a.min).toBe(0)
     expect(a.max).toBe(1)
+  })
+})
+
+describe('valueToUnit/unitToValue on a log axis (GT2.8)', () => {
+  const axis = { min: 10, max: 1000, scale: 'log' as const, topLabel: '', midLabel: '', botLabel: '' }
+  test('log mapping: geometric midpoint sits at 0.5; round-trips', () => {
+    expect(valueToUnit(10, axis)).toBe(0)
+    expect(valueToUnit(1000, axis)).toBe(1)
+    expect(valueToUnit(100, axis)).toBeCloseTo(0.5, 9)
+    expect(unitToValue(0.5, axis)).toBeCloseTo(100, 6)
+    expect(unitToValue(valueToUnit(250, axis), axis)).toBeCloseTo(250, 6)
+    expect(valueToUnit(1, axis)).toBe(0) // clamped below min
+  })
+  test('linear inverse round-trips too', () => {
+    const lin = { min: 0, max: 200, scale: 'linear' as const, topLabel: '', midLabel: '', botLabel: '' }
+    expect(unitToValue(valueToUnit(50, lin), lin)).toBeCloseTo(50, 9)
   })
 })
 
@@ -102,7 +135,7 @@ describe('valuePatchForMode (GT3.2, inverse of pointValue)', () => {
 })
 
 describe('valueToUnit (GT2.1)', () => {
-  const axis = { min: 0, max: 200, topLabel: '', midLabel: '', botLabel: '' }
+  const axis = { min: 0, max: 200, scale: 'linear' as const, topLabel: '', midLabel: '', botLabel: '' }
   test('maps value into [0,1], clamped', () => {
     expect(valueToUnit(0, axis)).toBe(0)
     expect(valueToUnit(100, axis)).toBeCloseTo(0.5, 9)
@@ -111,6 +144,6 @@ describe('valueToUnit (GT2.1)', () => {
     expect(valueToUnit(999, axis)).toBe(1) // clamp
   })
   test('degenerate axis maps to the centre', () => {
-    expect(valueToUnit(5, { min: 3, max: 3, topLabel: '', midLabel: '', botLabel: '' })).toBe(0.5)
+    expect(valueToUnit(5, { min: 3, max: 3, scale: 'linear', topLabel: '', midLabel: '', botLabel: '' })).toBe(0.5)
   })
 })
