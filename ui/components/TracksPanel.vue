@@ -90,9 +90,12 @@
             @click="toggleSpectrogramSettings"
           />
         </div>
-        <!-- GT2.2: gtrack editor lanes (schedule curves) above the waveform + spectrum. -->
+        <!-- GT2.2: gtrack editor lanes (schedule curves) above the waveform + spectrum.
+             NOTE: MUST be PascalCase. Kebab <gtrack-view> resolves to "GtrackView" (lowercase t)
+             and silently fails against the GTrackView import (kebab of GTrackView is g-track-view)
+             — the lanes never rendered because of exactly this. -->
         <div v-if="showGtracks" class="audio-page__gtrack-stack">
-          <gtrack-view
+          <GTrackView
             v-for="(lane, gIndex) in gtracks.visibleLanes.value"
             :key="lane.id"
             :data-gtrack-lane="lane.id"
