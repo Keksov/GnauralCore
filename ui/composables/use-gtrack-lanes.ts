@@ -3,12 +3,12 @@
 // mode). Config (which voices, which mode, order, hidden) persists per file. Kept in a composable
 // so AudioPage only renders + delegates.
 
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, shallowRef, watch, type Ref } from 'vue'
 
 import type { GnauralScheduleData } from '@protocol'
 
-import { GTrackModel, type GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, type GTrackMode } from './gtrack-render'
+import { GTrackModel, clampPointTime, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
+import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 
 export interface GTrackLane {
   id: number
@@ -25,6 +25,12 @@ export interface GTrackPointRef {
 /** GT3.1: the globally-selected vertex (which lane + which point). */
 export interface GTrackSelection extends GTrackPointRef {
   readonly laneId: number
+}
+/** GT3.2: payload emitted by GTrackView while dragging a vertex. */
+export interface GTrackDragMove {
+  readonly point: GTrackPointRef
+  readonly timeSec: number
+  readonly value: number
 }
 
 export interface ResolvedGTrackLane {
@@ -88,8 +94,20 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     try { localStorage.setItem(STORAGE_HEIGHT_KEY, String(laneHeight.value)) } catch { /* ignore */ }
   }
 
-  const voices = computed<readonly GTrackVoice[]>(() => model.value?.schedule.voices ?? [])
+  // GT3.2: the GTrackModel is a plain class — its internal edits are NOT Vue-reactive. This
+  // shallowRef mirrors the model's schedule (a fresh reference is produced on every edit, so
+  // assigning it re-triggers voices/visibleLanes). Call syncSchedule() after any model mutation.
+  const scheduleRef = shallowRef<GTrackSchedule | null>(model.value?.schedule ?? null)
+  function syncSchedule(): void {
+    scheduleRef.value = model.value !== null ? model.value.schedule : null
+  }
+  const voices = computed<readonly GTrackVoice[]>(() => scheduleRef.value?.voices ?? [])
   const durationSec = computed(() => schedule.value?.totalTimeSec ?? 0)
+
+  // GT3.1/3.2: point-edit mode + selection (ephemeral). Declared before the immediate schedule
+  // watch (which clears the selection) to avoid a temporal-dead-zone reference.
+  const pointModeLanes = ref<Set<number>>(new Set())
+  const selection = ref<GTrackSelection | null>(null)
 
   function voiceById(id: number): GTrackVoice | undefined {
     return voices.value.find((v) => v.id === id)
@@ -156,6 +174,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     schedule,
     (data) => {
       model.value = data === null ? null : new GTrackModel(data)
+      selection.value = null
+      syncSchedule()
       if (model.value === null) {
         lanes.value = []
         return
@@ -209,8 +229,6 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
 
   // --- GT3.1: point-edit mode + vertex selection (ephemeral; not persisted) ---
-  const pointModeLanes = ref<Set<number>>(new Set())
-  const selection = ref<GTrackSelection | null>(null)
   function isLanePointMode(id: number): boolean {
     return pointModeLanes.value.has(id)
   }
@@ -236,6 +254,66 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selection.value = null
   }
 
+  // --- GT3.2: vertex drag (one undo unit per drag) + undo/redo ---
+  const dirty = ref(false)
+  const canUndo = ref(false)
+  const canRedo = ref(false)
+  function refreshEditState(): void {
+    const m = model.value
+    dirty.value = m?.isDirty ?? false
+    canUndo.value = m?.canUndo ?? false
+    canRedo.value = m?.canRedo ?? false
+  }
+
+  /** Begin a drag transaction for a vertex (no-op if the voice is not editable, e.g. preparse). */
+  function beginPointDrag(ref_: GTrackPointRef): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    m.beginEdit()
+    return true
+  }
+  /** Live-move the dragged vertex: clamp time between neighbours, map the mode-value to fields. */
+  function dragPoint(ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
+    const m = model.value
+    if (m === null || !m.inTransaction) return
+    const voice = m.schedule.voices.find((v) => v.id === ref_.voiceId)
+    const p = voice?.points[ref_.pointIndex]
+    if (voice === undefined || p === undefined) return
+    const clampedTime = clampPointTime(voice.points, ref_.pointIndex, timeSec)
+    const patch = valuePatchForMode(p, mode, modeValue, voice.mono)
+    m.setPointFields(ref_.voiceId, ref_.pointIndex, { timeSec: clampedTime, ...patch })
+    syncSchedule()
+  }
+  function endPointDrag(): void {
+    const m = model.value
+    if (m === null || !m.inTransaction) return
+    m.commitEdit()
+    syncSchedule()
+    refreshEditState()
+  }
+  function cancelPointDrag(): void {
+    const m = model.value
+    if (m === null || !m.inTransaction) return
+    m.cancelEdit()
+    syncSchedule()
+  }
+  function undoEdit(): void {
+    const m = model.value
+    if (m === null || m.inTransaction) return // never undo mid-drag (the model would throw)
+    if (m.undo()) {
+      syncSchedule()
+      refreshEditState()
+    }
+  }
+  function redoEdit(): void {
+    const m = model.value
+    if (m === null || m.inTransaction) return
+    if (m.redo()) {
+      syncSchedule()
+      refreshEditState()
+    }
+  }
+
   return {
     isLanePointMode,
     toggleLanePointMode,
@@ -243,6 +321,15 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selectionForLane,
     selectPoint,
     clearSelection,
+    beginPointDrag,
+    dragPoint,
+    endPointDrag,
+    cancelPointDrag,
+    undoEdit,
+    redoEdit,
+    dirty,
+    canUndo,
+    canRedo,
     model,
     lanes,
     voices,

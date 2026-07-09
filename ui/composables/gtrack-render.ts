@@ -21,6 +21,47 @@ export function pointValue(p: GTrackPoint, mode: GTrackMode): number {
   }
 }
 
+/** GT3.2: fields a drag can change (a subset of GTrackPointField, excluding timeSec). */
+export type GTrackValuePatch = Partial<Record<'baseFreq' | 'beatFreqHalf' | 'volL' | 'volR', number>>
+
+/**
+ * Inverse of pointValue (GT-D6): map a dragged mode-value back to the raw point fields.
+ * - base  -> baseFreq (>= 0)
+ * - beat  -> beatFreqHalf = value / 2 (>= 0)
+ * - volume-> scale volL/volR to the new mean, preserving the L/R ratio (balance); mono sets both
+ * - balance-> re-split the current total volL+volR by the balance in [-1, 1]; mono / silence: no-op
+ * Volumes are clamped to [0, 1].
+ */
+export function valuePatchForMode(
+  p: GTrackPoint,
+  mode: GTrackMode,
+  value: number,
+  mono: boolean,
+): GTrackValuePatch {
+  const clampVol = (v: number): number => Math.max(0, Math.min(1, v))
+  switch (mode) {
+    case 'base':
+      return { baseFreq: Math.max(0, value) }
+    case 'beat':
+      return { beatFreqHalf: Math.max(0, value / 2) }
+    case 'volume': {
+      const target = clampVol(value)
+      if (mono) return { volL: target, volR: target }
+      const cur = (p.volL + p.volR) / 2
+      if (cur <= 0) return { volL: target, volR: target } // silence has no ratio to preserve
+      const f = target / cur
+      return { volL: clampVol(p.volL * f), volR: clampVol(p.volR * f) }
+    }
+    case 'balance': {
+      if (mono) return {} // mono has no stereo balance
+      const b = Math.max(-1, Math.min(1, value))
+      const s = p.volL + p.volR
+      if (s <= 0) return {} // silence: balance is undefined
+      return { volL: clampVol((s * (1 - b)) / 2), volR: clampVol((s * (1 + b)) / 2) }
+    }
+  }
+}
+
 export interface GTrackAxis {
   readonly min: number
   readonly max: number

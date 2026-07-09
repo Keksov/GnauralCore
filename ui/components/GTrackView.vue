@@ -8,7 +8,9 @@
       :class="{ 'gtrack-view__canvas--seekable': seekable || pointMode, 'gtrack-view__canvas--point': pointMode && hoverPoint !== null }"
       @wheel.prevent="onWheel"
       @click="onClick"
+      @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="gtrack-view__label-overlay">{{ label }}</span>
@@ -121,6 +123,9 @@ const emit = defineEmits<{
   (event: 'reorder-grip', ev: PointerEvent): void
   (event: 'toggle-point-mode'): void
   (event: 'select-point', point: GTrackPointRef | null): void
+  (event: 'drag-start', point: GTrackPointRef): void
+  (event: 'drag-move', payload: { point: GTrackPointRef; timeSec: number; value: number }): void
+  (event: 'drag-end'): void
 }>()
 
 interface SpectrogramSharedState {
@@ -357,17 +362,25 @@ function onWheel(aEvent: WheelEvent): void {
   }
 }
 
-// GT3.1: find the vertex nearest to a canvas pixel (within HIT_RADIUS_PX), across all voices.
-// Uses the same geometry as draw() so hit-testing matches what's rendered.
-function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
+// Shared plot geometry (same as draw()), for hit-testing + cursor→value mapping.
+function plotRect(): { plotX: number; plotY: number; plotW: number; plotH: number } | null {
   const canvas = canvasEl.value
-  if (canvas === null || !hasData.value) return null
+  if (canvas === null) return null
   const cssW = Math.max(1, Math.floor(canvas.clientWidth))
   const cssH = Math.max(1, Math.floor(canvas.clientHeight))
-  const plotX = AXIS_MARGIN.left
-  const plotY = marginTop()
-  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
-  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  return {
+    plotX: AXIS_MARGIN.left,
+    plotY: marginTop(),
+    plotW: Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right),
+    plotH: Math.max(1, cssH - marginTop() - marginBottom()),
+  }
+}
+
+// GT3.1: find the vertex nearest to a canvas pixel (within HIT_RADIUS_PX), across all voices.
+function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
+  const rect = plotRect()
+  if (rect === null || !hasData.value) return null
+  const { plotX, plotY, plotW, plotH } = rect
   const win = view.value
   const ax = axis.value
   let best: GTrackPointRef | null = null
@@ -387,7 +400,37 @@ function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
   return best
 }
 
+// GT3.2: map a cursor pixel to (time, mode-value), clamped to the plot + axis range.
+function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number; value: number } | null {
+  const rect = plotRect()
+  if (rect === null) return null
+  const { plotX, plotY, plotW, plotH } = rect
+  const fx = Math.max(0, Math.min(1, (offsetX - plotX) / plotW))
+  const uy = Math.max(0, Math.min(1, 1 - (offsetY - plotY) / plotH))
+  const ax = axis.value
+  return { timeSec: fractionToTime(fx, view.value), value: ax.min + uy * (ax.max - ax.min) }
+}
+
+// GT3.2: drag state. A drag runs from pointerdown-on-a-vertex to pointerup as one undo unit.
+let dragRef: GTrackPointRef | null = null
+
+function onPointerDown(aEvent: PointerEvent): void {
+  if (!props.pointMode || !hasData.value || aEvent.button !== 0) return
+  const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+  emit('select-point', hit) // select the vertex (or deselect on empty space)
+  if (hit === null) return
+  dragRef = hit
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+  emit('drag-start', hit)
+}
+
 function onPointerMove(aEvent: PointerEvent): void {
+  if (dragRef !== null) {
+    const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
+    if (tv !== null) emit('drag-move', { point: dragRef, timeSec: tv.timeSec, value: tv.value })
+    return
+  }
   if (!props.pointMode) {
     if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
     return
@@ -400,17 +443,20 @@ function onPointerMove(aEvent: PointerEvent): void {
   }
 }
 
+function onPointerUp(aEvent: PointerEvent): void {
+  if (dragRef === null) return
+  dragRef = null
+  try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+  emit('drag-end')
+}
+
 function onPointerLeave(): void {
   if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
 }
 
 function onClick(aEvent: MouseEvent): void {
-  // GT3.1: in point mode a click selects/deselects a vertex instead of seeking.
-  if (props.pointMode) {
-    if (!hasData.value) return
-    emit('select-point', pointAtPixel(aEvent.offsetX, aEvent.offsetY))
-    return
-  }
+  // GT3.1/3.2: in point mode, selection + drag are handled on pointerdown/up, so clicks are inert.
+  if (props.pointMode) return
   if (props.seekable !== true || !hasData.value) return
   const f = xFraction(aEvent)
   if (f === null) return

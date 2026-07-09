@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GTrackPoint, GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, gtrackAxis, pointValue, valueToUnit } from './gtrack-render'
+import { GTRACK_MODES, gtrackAxis, pointValue, valuePatchForMode, valueToUnit } from './gtrack-render'
 
 function pt(over: Partial<GTrackPoint>): GTrackPoint {
   return { timeSec: 0, baseFreq: 200, beatFreqHalf: 5, volL: 0.5, volR: 0.5, ...over }
@@ -60,6 +60,44 @@ describe('gtrackAxis (GT2.1)', () => {
     const a = gtrackAxis([], 'base')
     expect(a.min).toBe(0)
     expect(a.max).toBe(1)
+  })
+})
+
+describe('valuePatchForMode (GT3.2, inverse of pointValue)', () => {
+  const apply = (p: GTrackPoint, patch: Record<string, number>): GTrackPoint => ({ ...p, ...patch })
+
+  test('base / beat map back so pointValue round-trips', () => {
+    const p = pt({ baseFreq: 100, beatFreqHalf: 5 })
+    expect(pointValue(apply(p, valuePatchForMode(p, 'base', 250, false)), 'base')).toBeCloseTo(250, 6)
+    expect(pointValue(apply(p, valuePatchForMode(p, 'beat', 12, false)), 'beat')).toBeCloseTo(12, 6)
+    // clamps negatives to 0
+    expect(valuePatchForMode(p, 'base', -5, false).baseFreq).toBe(0)
+    expect(valuePatchForMode(p, 'beat', -5, false).beatFreqHalf).toBe(0)
+  })
+
+  test('volume scales L/R preserving balance; mono sets both', () => {
+    const p = pt({ volL: 0.2, volR: 0.6 }) // mean 0.4, right-heavy
+    const patch = valuePatchForMode(p, 'volume', 0.6, false) // factor 1.5, no channel saturates
+    const np = apply(p, patch)
+    expect(pointValue(np, 'volume')).toBeCloseTo(0.6, 6)
+    expect(pointValue(np, 'balance')).toBeCloseTo(pointValue(p, 'balance'), 6) // ratio preserved
+    // saturating the louder channel caps the achievable mean (expected clamp behaviour)
+    expect(apply(p, valuePatchForMode(p, 'volume', 0.9, false)).volR).toBe(1)
+    // mono: equal L/R
+    const mp = valuePatchForMode(pt({ volL: 0.5, volR: 0.5 }), 'volume', 0.3, true)
+    expect(mp).toEqual({ volL: 0.3, volR: 0.3 })
+    // silence keeps no ratio -> equal
+    expect(valuePatchForMode(pt({ volL: 0, volR: 0 }), 'volume', 0.5, false)).toEqual({ volL: 0.5, volR: 0.5 })
+  })
+
+  test('balance re-splits the total; mono / silence are no-ops', () => {
+    const p = pt({ volL: 0.5, volR: 0.5 }) // total 1
+    const full右 = apply(p, valuePatchForMode(p, 'balance', 1, false))
+    expect(pointValue(full右, 'balance')).toBeCloseTo(1, 6)
+    expect(full右.volL).toBeCloseTo(0, 6)
+    expect(full右.volR).toBeCloseTo(1, 6)
+    expect(valuePatchForMode(p, 'balance', 0.5, true)).toEqual({}) // mono
+    expect(valuePatchForMode(pt({ volL: 0, volR: 0 }), 'balance', 0.5, false)).toEqual({}) // silence
   })
 })
 

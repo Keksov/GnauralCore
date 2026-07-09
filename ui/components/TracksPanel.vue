@@ -107,6 +107,9 @@
             @reorder-grip="onGtrackGripDown(lane.id, $event)"
             @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
             @select-point="(p: GTrackPointRef | null) => gtracks.selectPoint(lane.id, p)"
+            @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
+            @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
+            @drag-end="gtracks.endPointDrag()"
           />
           <div
             class="audio-page__spectrogram-bottom-handle"
@@ -411,7 +414,7 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
-import { useGtrackLanes, type GTrackPointRef } from '../composables/use-gtrack-lanes'
+import { useGtrackLanes, type GTrackDragMove, type GTrackPointRef } from '../composables/use-gtrack-lanes'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
   fullWindow,
@@ -1195,6 +1198,19 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     return
   }
   if (shouldIgnoreHotkey(event)) {
+    return
+  }
+
+  // GT3.2: undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y).
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+    event.preventDefault()
+    if (event.shiftKey) gtracks.redoEdit()
+    else gtracks.undoEdit()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
+    event.preventDefault()
+    gtracks.redoEdit()
     return
   }
 
