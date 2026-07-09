@@ -529,7 +529,14 @@ watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.mode, () => scheduleDraw())
 watch(() => props.voices, () => scheduleDraw(), { deep: true })
 watch(() => props.playheadSec, () => scheduleDraw())
-watch(() => props.selection, () => scheduleDraw())
+watch(() => props.selection, (sel) => {
+  // GT3.10 crossover: while dragging, the composable re-homes the point (new index) and updates
+  // the selection — keep the local drag reference following the same point.
+  if (dragRef !== null && sel !== null && sel.voiceId === dragRef.voiceId) {
+    dragRef = { voiceId: sel.voiceId, pointIndex: sel.pointIndex }
+  }
+  scheduleDraw()
+})
 watch(() => props.pointMode, (on) => {
   if (!on) hoverPoint.value = null
   scheduleDraw()

@@ -381,6 +381,40 @@ export class GTrackModel {
   }
 
   /**
+   * GT3.10 (GT-D16 'crossover'): move a point WITHOUT neighbour clamping. The point may cross its
+   * neighbours; points are stably re-sorted by time and the moved point's NEW index is returned so
+   * the drag can keep following it. Time is floored at 0.
+   */
+  public movePointCrossing(
+    voiceId: number,
+    index: number,
+    timeSec: number,
+    valueField?: Exclude<GTrackPointField, 'timeSec'>,
+    value?: number,
+  ): number {
+    this.ensureOpen()
+    this.assertEditable(voiceId)
+    if (!Number.isFinite(timeSec)) throw new Error('gtrack: non-finite move time')
+    let newIndex = index
+    this.replaceVoice(voiceId, (voice) => {
+      if (index < 0 || index >= voice.points.length) {
+        throw new Error(`gtrack: point index ${index} out of range for voice ${voiceId}`)
+      }
+      const moved: GTrackPoint = { ...voice.points[index]!, timeSec: Math.max(0, timeSec) }
+      if (valueField !== undefined && value !== undefined) {
+        if (!Number.isFinite(value)) throw new Error(`gtrack: non-finite value for ${valueField}`)
+        moved[valueField] = value
+      }
+      const points = voice.points.slice()
+      points[index] = moved
+      points.sort((a, b) => a.timeSec - b.timeSec) // stable — equal times keep their order
+      newIndex = points.indexOf(moved)
+      return { ...voice, points }
+    })
+    return newIndex
+  }
+
+  /**
    * Insert a new point at `timeSec`, which must fall strictly inside an existing segment. Its
    * values are linearly interpolated from that segment (so the curve is unchanged until the point
    * is moved). Returns the index of the inserted point. (GT-D8 / owner req. 9)

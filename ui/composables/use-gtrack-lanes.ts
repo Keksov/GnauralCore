@@ -33,6 +33,9 @@ export interface GTrackDragMove {
   readonly value: number
 }
 
+/** GT3.10 (GT-D16): point-drag behaviour — clamp within neighbours, or cross over them. */
+export type GTrackPointDragMode = 'clamp' | 'crossover'
+
 export interface ResolvedGTrackLane {
   readonly id: number
   readonly mode: GTrackMode
@@ -266,6 +269,66 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selection.value = null
   }
 
+  // --- GT3.9 (GT-D15): voice-panel operations. The slide-over panel drives voices; these map its
+  // per-voice controls onto the lane model (visibility = hidden of all lanes containing the voice;
+  // graph type = mode of all lanes containing the voice; no lane -> one is created).
+  function lanesForVoice(voiceId: number): GTrackLane[] {
+    return lanes.value.filter((l) => l.voiceIds.includes(voiceId))
+  }
+  function isVoiceVisible(voiceId: number): boolean {
+    return lanesForVoice(voiceId).some((l) => !l.hidden)
+  }
+  /** The graph type shown for a voice (its first lane's mode), or null when it has no lane. */
+  function voiceMode(voiceId: number): GTrackMode | null {
+    return lanesForVoice(voiceId)[0]?.mode ?? null
+  }
+  function defaultModeForVoice(voiceId: number): GTrackMode {
+    const v = voiceById(voiceId)
+    return v !== undefined && isTonal(v) ? 'base' : 'volume'
+  }
+  function setVoiceVisible(voiceId: number, visible: boolean): void {
+    const owned = lanesForVoice(voiceId)
+    if (owned.length === 0) {
+      if (visible) {
+        lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], mode: defaultModeForVoice(voiceId), hidden: false }]
+      }
+    } else {
+      lanes.value = lanes.value.map((l) => (l.voiceIds.includes(voiceId) ? { ...l, hidden: !visible } : l))
+    }
+    persist()
+  }
+  function setVoiceMode(voiceId: number, mode: GTrackMode): void {
+    const owned = lanesForVoice(voiceId)
+    if (owned.length === 0) {
+      lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], mode, hidden: false }]
+    } else {
+      lanes.value = lanes.value.map((l) => (l.voiceIds.includes(voiceId) ? { ...l, mode } : l))
+    }
+    persist()
+  }
+  // Bulk actions (owner req. 20).
+  /** All voices merged into ONE lane (mode = the first visible lane's, else the default). */
+  function mergeAllIntoOneLane(): void {
+    const mode = lanes.value.find((l) => !l.hidden)?.mode ?? defaultLaneConfig().mode
+    lanes.value = [{ id: nextLaneId++, voiceIds: voices.value.map((v) => v.id), mode, hidden: false }]
+    persist()
+  }
+  /** One lane per voice (this IS the default layout, so it doubles as "reset"). */
+  function spreadPerVoiceLanes(): void {
+    lanes.value = defaultLanes()
+    persist()
+  }
+  /** Show every voice in the given graph type (applies to all lanes). */
+  function setAllLanesMode(mode: GTrackMode): void {
+    lanes.value = lanes.value.map((l) => ({ ...l, mode }))
+    persist()
+  }
+  function setAllLanesHidden(hidden: boolean): void {
+    lanes.value = lanes.value.map((l) => ({ ...l, hidden }))
+    persist()
+  }
+  const allLanesHidden = computed(() => lanes.value.length > 0 && lanes.value.every((l) => l.hidden))
+
   // --- GT3.2: vertex drag (one undo unit per drag) + undo/redo ---
   const dirty = ref(false)
   const canUndo = ref(false)
@@ -284,16 +347,44 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     m.beginEdit()
     return true
   }
-  /** Live-move the dragged vertex: clamp time between neighbours, map the mode-value to fields. */
+  // GT3.10 (GT-D16): point-drag mode is a persisted EDITOR SETTING (owner req. 18): 'clamp' keeps
+  // the point between its neighbours; 'crossover' lets it pass them (stable re-sort, drag follows
+  // the point under its new index). Default = crossover (the owner's requested behaviour).
+  const STORAGE_DRAG_MODE_KEY = 'mindwave-gtrack-point-drag-mode'
+  function loadDragMode(): GTrackPointDragMode {
+    try {
+      return localStorage.getItem(STORAGE_DRAG_MODE_KEY) === 'clamp' ? 'clamp' : 'crossover'
+    } catch {
+      return 'crossover'
+    }
+  }
+  const pointDragMode = ref<GTrackPointDragMode>(loadDragMode())
+  function setPointDragMode(mode: GTrackPointDragMode): void {
+    pointDragMode.value = mode
+    try { localStorage.setItem(STORAGE_DRAG_MODE_KEY, mode) } catch { /* ignore */ }
+  }
+
+  /** Live-move the dragged vertex: time per the drag mode (clamp/crossover), value per the lane mode. */
   function dragPoint(ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
     const m = model.value
     if (m === null || !m.inTransaction) return
     const voice = m.schedule.voices.find((v) => v.id === ref_.voiceId)
     const p = voice?.points[ref_.pointIndex]
     if (voice === undefined || p === undefined) return
-    const clampedTime = clampPointTime(voice.points, ref_.pointIndex, timeSec)
     const patch = valuePatchForMode(p, mode, modeValue, voice.mono)
-    m.setPointFields(ref_.voiceId, ref_.pointIndex, { timeSec: clampedTime, ...patch })
+    if (pointDragMode.value === 'crossover') {
+      // Cross neighbours: the model re-sorts and hands back the point's new index; keep the
+      // selection on the same (moved) point so the lane's drag follows it.
+      const newIndex = m.movePointCrossing(ref_.voiceId, ref_.pointIndex, timeSec)
+      if (Object.keys(patch).length > 0) m.setPointFields(ref_.voiceId, newIndex, patch)
+      const sel = selection.value
+      if (sel !== null && sel.voiceId === ref_.voiceId) {
+        selection.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: newIndex }
+      }
+    } else {
+      const clampedTime = clampPointTime(voice.points, ref_.pointIndex, timeSec)
+      m.setPointFields(ref_.voiceId, ref_.pointIndex, { timeSec: clampedTime, ...patch })
+    }
     syncSchedule()
   }
   function endPointDrag(): void {
@@ -342,6 +433,17 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     dirty,
     canUndo,
     canRedo,
+    pointDragMode,
+    setPointDragMode,
+    isVoiceVisible,
+    voiceMode,
+    setVoiceVisible,
+    setVoiceMode,
+    mergeAllIntoOneLane,
+    spreadPerVoiceLanes,
+    setAllLanesMode,
+    setAllLanesHidden,
+    allLanesHidden,
     model,
     lanes,
     voices,

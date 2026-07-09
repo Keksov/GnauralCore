@@ -330,6 +330,72 @@ describe('gtrack model preparse flag + fix (GT1.3 / GT-D9)', () => {
   })
 })
 
+describe('gtrack model movePointCrossing (GT3.10 / GT-D16 crossover)', () => {
+  function threePointModel(): GTrackModel {
+    return new GTrackModel(fixture([
+      entry(0, 10, { baseFreqStart: 100, baseFreqEnd: 200 }),
+      entry(10, 20, { baseFreqStart: 200, baseFreqEnd: 300 }),
+    ])) // points at t=0 (100), t=10 (200), t=20 (300)
+  }
+
+  test('crossing the next neighbour re-homes the point and returns its new index', () => {
+    const model = threePointModel()
+    let ni = -1
+    model.edit(() => { ni = model.movePointCrossing(7, 1, 25) })
+    expect(ni).toBe(2)
+    const pts = model.schedule.voices[0]!.points
+    expect(pts.map((p) => p.timeSec)).toEqual([0, 20, 25])
+    expect(pts[2]!.baseFreq).toBe(200) // the moved point kept its values
+  })
+
+  test('crossing backwards past the previous neighbour works too', () => {
+    const model = threePointModel()
+    let ni = -1
+    model.edit(() => { ni = model.movePointCrossing(7, 2, 5) })
+    expect(ni).toBe(1)
+    expect(model.schedule.voices[0]!.points.map((p) => p.timeSec)).toEqual([0, 5, 10])
+  })
+
+  test('time floors at 0; a whole drag is ONE undo unit', () => {
+    const model = threePointModel()
+    model.edit(() => {
+      model.movePointCrossing(7, 1, 25) // cross forward
+      model.movePointCrossing(7, 2, -5) // and back past everything (floored to 0)
+    })
+    expect(model.schedule.voices[0]!.points.map((p) => p.timeSec)).toEqual([0, 0, 20])
+    model.undo()
+    expect(model.schedule.voices[0]!.points.map((p) => p.timeSec)).toEqual([0, 10, 20])
+    expect(model.canUndo).toBe(false) // one unit
+  })
+
+  test('can update a value field while crossing', () => {
+    const model = threePointModel()
+    model.edit(() => model.movePointCrossing(7, 0, 15, 'baseFreq', 999))
+    const pts = model.schedule.voices[0]!.points
+    expect(pts.map((p) => p.timeSec)).toEqual([10, 15, 20])
+    expect(pts[1]!.baseFreq).toBe(999)
+  })
+})
+
+describe('gtrack cross-graph synchronicity invariant (GT-D16, owner req. 17/19)', () => {
+  test('every "lane view" of a voice sees the same points (single source)', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    // Two independent lookups (as two lanes resolving the same voice id do):
+    const laneA = model.schedule.voices.find((v) => v.id === 7)!
+    const laneB = model.schedule.voices.find((v) => v.id === 7)!
+    expect(laneA).toBe(laneB) // same object — a move/delete in one graph IS in the other
+
+    model.edit(() => model.movePoint(7, 1, 12))
+    const afterA = model.schedule.voices.find((v) => v.id === 7)!
+    const afterB = model.schedule.voices.find((v) => v.id === 7)!
+    expect(afterA.points).toBe(afterB.points)
+    expect(afterA.points[1]!.timeSec).toBe(12)
+
+    model.edit(() => model.removePoint(7, 1))
+    expect(model.schedule.voices.find((v) => v.id === 7)!.points.length).toBe(2)
+  })
+})
+
 describe('clampPointTime (standalone, GT3.2 reuse)', () => {
   const pts: GTrackPoint[] = [
     { timeSec: 0, baseFreq: 0, beatFreqHalf: 0, volL: 0, volR: 0 },
