@@ -61,20 +61,25 @@
         <q-tooltip>{{ t('audio.gtrackSettings') }}</q-tooltip>
       </q-btn>
     </div>
-    <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging. -->
-    <div
-      v-if="hoverPoint !== null && hoverPos !== null"
-      class="gtrack-view__tooltip"
-      :style="{ left: `${hoverPos.x}px`, top: `${hoverPos.y}px` }"
-      role="status"
-    >
-      {{ hoverTooltipText }}
-    </div>
+    <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging.
+         GT3.17 (owner req. 33): teleported to <body> + position:fixed so it renders above every
+         lane/panel and is never clipped by a lane's overflow:hidden; clamped to the viewport. -->
+    <Teleport to="body">
+      <div
+        v-if="hoverPoint !== null && hoverPos !== null"
+        ref="tooltipEl"
+        class="gtrack-view__tooltip"
+        :style="tooltipStyle"
+        role="status"
+      >
+        {{ hoverTooltipText }}
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
@@ -167,11 +172,38 @@ const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
-// GT3.1: the vertex under the cursor while in point mode (null = none).
+// GT3.1: the vertex under the cursor (null = none). GT3.17: tracked regardless of point mode.
 const hoverPoint = ref<GTrackPointRef | null>(null)
-// GT3.13: cursor pixel position for the hover tooltip (null while not hovering / while dragging).
+// GT3.13/3.17: cursor VIEWPORT position (clientX/Y) for the hover tooltip; null while not hovering /
+// while dragging. Viewport coords because the tooltip is teleported to <body> + position:fixed.
 const hoverPos = ref<{ x: number; y: number } | null>(null)
+const tooltipEl = ref<HTMLElement | null>(null)
+const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
 const HIT_RADIUS_PX = 8
+
+// GT3.17 (owner req. 33): keep the teleported tooltip fully on-screen — offset from the cursor,
+// flipping to the other side when it would overflow the right/bottom edge.
+function positionTooltip(): void {
+  const anchor = hoverPos.value
+  if (anchor === null) return
+  const guessLeft = anchor.x + 14
+  const guessTop = anchor.y + 14
+  tooltipStyle.value = { left: `${guessLeft}px`, top: `${guessTop}px` }
+  void nextTick(() => {
+    const el = tooltipEl.value
+    if (el === null || hoverPos.value === null) return
+    const pad = 8
+    const w = el.offsetWidth
+    const h = el.offsetHeight
+    let left = hoverPos.value.x + 14
+    let top = hoverPos.value.y + 14
+    if (left + w + pad > window.innerWidth) left = hoverPos.value.x - w - 14
+    if (top + h + pad > window.innerHeight) top = hoverPos.value.y - h - 14
+    left = Math.max(pad, Math.min(left, window.innerWidth - w - pad))
+    top = Math.max(pad, Math.min(top, window.innerHeight - h - pad))
+    tooltipStyle.value = { left: `${left}px`, top: `${top}px` }
+  })
+}
 
 const AXIS_MARGIN = { left: 46, right: 8 }
 const AXIS_TIME_MARGIN = 18
@@ -302,7 +334,8 @@ function draw(): void {
     for (let i = 0; i < pts.length; i += 1) {
       const x = timeToX(pts[i]!.timeSec)
       const y = valueToY(pointValue(pts[i]!, props.mode))
-      const isHover = props.pointMode && hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
+      // GT3.17: hover ring shows regardless of point mode (anchors the always-on tooltip).
+      const isHover = hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
       const isSelected = props.selection?.voiceId === voice.id && props.selection?.pointIndex === i
       // GT3.15: multi-selected vertices get their own amber ring, distinct from the single/hover ring.
       const isMulti = props.multiSelected?.has(`${voice.id}:${i}`) ?? false
@@ -506,18 +539,20 @@ function onPointerMove(aEvent: PointerEvent): void {
     hoverPos.value = null // GT3.13: no hover tooltip while actively dragging
     return
   }
-  if (!props.pointMode) {
-    if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
-    hoverPos.value = null
-    return
-  }
+  // GT3.17 (owner req. 34): hover hit-test + tooltip run REGARDLESS of point mode (hit-test on the
+  // canvas doesn't block seeking; clicks are handled separately).
   const next = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
   const prev = hoverPoint.value
   if (next?.voiceId !== prev?.voiceId || next?.pointIndex !== prev?.pointIndex) {
     hoverPoint.value = next
     scheduleDraw()
   }
-  hoverPos.value = next !== null ? { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 } : null
+  if (next !== null) {
+    hoverPos.value = { x: aEvent.clientX, y: aEvent.clientY }
+    positionTooltip()
+  } else {
+    hoverPos.value = null
+  }
 }
 
 function onPointerUp(aEvent: PointerEvent): void {
@@ -675,8 +710,8 @@ watch(() => props.selection, (sel) => {
   }
   scheduleDraw()
 })
-watch(() => props.pointMode, (on) => {
-  if (!on) { hoverPoint.value = null; hoverPos.value = null }
+watch(() => props.pointMode, () => {
+  // GT3.17: hover/tooltip are mode-independent now — just redraw (vertex dot size depends on mode).
   scheduleDraw()
 })
 watch(() => props.multiSelected, () => scheduleDraw())
@@ -793,16 +828,20 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
-/* GT3.13: hover-a-vertex tooltip (multi-line — voice, time, frequencies, volumes). */
+/* GT3.13: hover-a-vertex tooltip (multi-line — voice, time, frequencies, volumes).
+   GT3.17: teleported to <body>, position:fixed in viewport coords, above every lane/panel. */
 .gtrack-view__tooltip {
   background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   color: #e2e8f0;
   font-size: 11px;
+  max-width: 260px;
   padding: 4px 7px;
   pointer-events: none;
-  position: absolute;
+  position: fixed;
   white-space: pre-line;
-  z-index: 6;
+  z-index: 7000;
 }
 </style>
