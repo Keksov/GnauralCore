@@ -20,6 +20,8 @@
       @pointerleave="onPointerLeave"
     />
     <span v-if="label" class="gtrack-view__label-overlay">{{ label }}</span>
+    <!-- GT3.7 (owner req. 10): mark a lane that contains a generated (preparse) voice. -->
+    <span v-if="hasPreparse" class="gtrack-view__badge">{{ t('audio.gtrackGenerated') }}</span>
     <!-- SF28.4-style chrome: drag grip + hide stacked on the LEFT. -->
     <div class="gtrack-view__side-actions">
       <q-icon
@@ -228,6 +230,8 @@ function colorForVoice(voice: GTrackVoice, index: number): string {
 }
 
 const hasData = computed(() => props.durationSec > 0 && props.voices.length > 0)
+// GT3.7: true when any voice in this lane is a locked generator (preparse) voice.
+const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 const axis = computed(() => gtrackAxis(props.voices, props.mode))
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
@@ -328,6 +332,8 @@ function draw(): void {
     }
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
+    // GT3.7 (GT-D9): a generated (preparse) voice draws dashed — it's locked until "fixed".
+    if (voice.preparse) ctx.setLineDash([4, 3])
     ctx.beginPath()
     for (let i = 0; i < pts.length; i += 1) {
       const x = timeToX(pts[i]!.timeSec)
@@ -336,6 +342,7 @@ function draw(): void {
       else ctx.lineTo(x, y)
     }
     ctx.stroke()
+    ctx.setLineDash([])
     // Vertex dots. In point mode they grow and gain hover/selected highlights (GT3.1).
     const baseR = props.pointMode ? 3.5 : 2
     for (let i = 0; i < pts.length; i += 1) {
@@ -348,8 +355,18 @@ function draw(): void {
       const isMulti = props.multiSelected?.has(`${voice.id}:${i}`) ?? false
       ctx.beginPath()
       ctx.arc(x, y, isSelected || isMulti ? baseR + 2 : isHover ? baseR + 1.5 : baseR, 0, Math.PI * 2)
-      ctx.fillStyle = color
-      ctx.fill()
+      // GT3.7: generated/locked points are hollow (background fill + coloured ring); regular points
+      // are solid. Hover/selection/multi rings still draw on top for both.
+      if (voice.preparse) {
+        ctx.fillStyle = '#0f172a'
+        ctx.fill()
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+      } else {
+        ctx.fillStyle = color
+        ctx.fill()
+      }
       if (isMulti) {
         ctx.strokeStyle = '#fbbf24'
         ctx.lineWidth = 2
@@ -785,6 +802,23 @@ onBeforeUnmount(() => {
   pointer-events: none;
   position: absolute;
   top: 4px;
+  z-index: 4;
+}
+
+/* GT3.7: "generated" badge for a lane containing a preparse (locked) voice. */
+.gtrack-view__badge {
+  background: rgba(251, 191, 36, 0.18);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 3px;
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 700;
+  left: 50px;
+  letter-spacing: 0.02em;
+  padding: 0 4px;
+  pointer-events: none;
+  position: absolute;
+  top: 22px;
   z-index: 4;
 }
 

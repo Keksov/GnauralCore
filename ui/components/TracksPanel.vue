@@ -501,10 +501,23 @@
               </q-item-section>
               <q-item-section>
                 <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
-                <q-item-label caption>{{ v.type }}</q-item-label>
+                <q-item-label caption>
+                  {{ gtracks.isVoicePreparse(v.id) ? `${v.type} · ${t('audio.gtrackGenerated')}` : v.type }}
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
                 <div class="row items-center no-wrap q-gutter-xs">
+                  <!-- GT3.7 (owner req. 11): "fix / make editable" a generated (preparse) voice. -->
+                  <q-btn
+                    v-if="gtracks.isVoicePreparse(v.id)"
+                    dense flat round size="sm"
+                    icon="lock_open"
+                    color="warning"
+                    :aria-label="t('audio.gtrackFix')"
+                    @click="promptFixPreparse(v.id)"
+                  >
+                    <q-tooltip>{{ t('audio.gtrackFixTooltip') }}</q-tooltip>
+                  </q-btn>
                   <q-select
                     class="tracks-panel__voice-mode"
                     dense options-dense borderless emit-value map-options
@@ -889,8 +902,29 @@ function syncPointFormFromModel(): void {
   pointForm.volR = Number(point.volR.toFixed(3))
 }
 function openPointDialog(laneId: number, p: GTrackPointRef): void {
+  // GT3.7: a generated (preparse) voice is locked — offer to fix it instead of opening the editor
+  // (its points can't be edited until baked into concrete entries).
+  if (gtracks.isVoicePreparse(p.voiceId)) {
+    promptFixPreparse(p.voiceId)
+    return
+  }
   pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
   syncPointFormFromModel()
+}
+// GT3.7 (owner req. 11 / R6): fixing bakes the generator's expansion into concrete points and
+// loses the generator node on Save — irreversible, so confirm first.
+function promptFixPreparse(voiceId: number): void {
+  $q.dialog({
+    title: t('audio.gtrackFixTitle'),
+    message: t('audio.gtrackFixWarning'),
+    ok: { label: t('audio.gtrackFix'), color: 'primary' },
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    if (gtracks.fixPreparseVoice(voiceId)) {
+      $q.notify({ type: 'positive', message: t('audio.gtrackFixed') })
+    }
+  })
 }
 function closePointDialog(): void {
   pointDialogTarget.value = null

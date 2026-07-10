@@ -7,8 +7,10 @@ import { computed, ref, shallowRef, watch, type Ref } from 'vue'
 
 import type { GnauralScheduleData } from '@protocol'
 
+import { audioApi } from '../audio-api'
 import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
+import { findPreparseVoiceIds } from './gtrack-xml'
 
 export interface GTrackLane {
   id: number
@@ -211,19 +213,47 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     canRedo.value = m?.canRedo ?? false
   }
 
+  // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump
+  // does not flag provenance). Fed into the model so those voices are edit-locked and rendered
+  // distinctly, until the user explicitly fixes them.
+  const preparseVoiceIds = ref<number[]>([])
+
+  function buildModel(data: GnauralScheduleData | null): void {
+    model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value)
+    selection.value = null
+    syncSchedule()
+    refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
+    if (model.value === null) {
+      lanes.value = []
+      return
+    }
+    restoreOrDefault()
+  }
+
   // Rebuild the model + lane config whenever the schedule (file) changes.
+  watch(schedule, (data) => buildModel(data), { immediate: true })
+
+  // GT3.7: fetch the raw .gnaural when the file changes, mark its generator voices, and rebuild the
+  // model so they lock. Guarded by a request id (fast file switches) and skipped for non-gnaural
+  // paths (the editor endpoint only serves .gnaural).
+  let preparseReqId = 0
   watch(
-    schedule,
-    (data) => {
-      model.value = data === null ? null : new GTrackModel(data)
-      selection.value = null
-      syncSchedule()
-      refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
-      if (model.value === null) {
-        lanes.value = []
-        return
-      }
-      restoreOrDefault()
+    filePath,
+    (path) => {
+      preparseVoiceIds.value = []
+      if (path === null || !path.toLowerCase().endsWith('.gnaural')) return
+      const reqId = ++preparseReqId
+      void audioApi
+        .fetchEditorDocument(path)
+        .then((doc) => {
+          if (reqId !== preparseReqId) return // superseded by a newer file selection
+          preparseVoiceIds.value = [...findPreparseVoiceIds(doc.content)]
+          // Rebuild only when the ids arrived AFTER the schedule and no edit is in progress.
+          if (schedule.value !== null && !dirty.value) buildModel(schedule.value)
+        })
+        .catch(() => {
+          /* fetch failed (e.g. non-gnaural) -> treat as no generator voices */
+        })
     },
     { immediate: true },
   )
@@ -625,6 +655,27 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function getPoint(ref_: GTrackPointRef): GTrackPoint | null {
     return voiceById(ref_.voiceId)?.points[ref_.pointIndex] ?? null
   }
+  // --- GT3.7 (GT-D9, owner req. 10-11): preparse (generator) voices ---
+  function isVoicePreparse(voiceId: number): boolean {
+    return voiceById(voiceId)?.preparse ?? false
+  }
+  /**
+   * Owner req. 11: "fix / make editable" — bake the generator's expanded points into concrete,
+   * editable points (clears the preparse flag) as one undo unit. Irreversible in the file (the
+   * generator node is lost on Save), so the caller must warn the user first (GT-D9 / R6).
+   */
+  function fixPreparseVoice(voiceId: number): boolean {
+    const m = model.value
+    if (m === null) return false
+    try {
+      m.fixPreparseVoice(voiceId)
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
   /**
    * Apply the point dialog: set every field in ONE undo unit. Time uses crossover semantics
    * (an exact time may legitimately pass neighbours); the selection follows the new index.
@@ -740,6 +791,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     removeMultiSelection,
     getVoice,
     getPoint,
+    preparseVoiceIds,
+    isVoicePreparse,
+    fixPreparseVoice,
     applyPointEdit,
     insertPointAt,
     removeSelectedPoint,
