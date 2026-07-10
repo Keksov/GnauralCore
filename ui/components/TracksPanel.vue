@@ -363,13 +363,11 @@
               <q-input v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0" :label="t('audio.gtrackPointTime')" />
               <q-input v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBase')" />
               <q-input v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBeat')" />
-              <div class="row q-col-gutter-sm">
-                <div class="col">
-                  <q-input v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolL')" />
-                </div>
-                <div class="col">
-                  <q-input v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolR')" />
-                </div>
+              <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
+                   these overlap the beat-frequency field inside a q-gutter parent. -->
+              <div class="tracks-panel__vol-row">
+                <q-input v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolL')" />
+                <q-input v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolR')" />
               </div>
               <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
               <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
@@ -713,25 +711,30 @@ const pointFormBalance = computed(() => {
   const s = pointForm.volL + pointForm.volR
   return s <= 0 ? 0 : (pointForm.volR - pointForm.volL) / s
 })
+// GT3.11 (owner req. 23): SLIDER edits round volumes to 3 decimals; typing into the L/R inputs
+// stays free-form (no rounding there).
+function round3(x: number): number {
+  return Math.round(x * 1000) / 1000
+}
 function setPointFormVolume(v: number): void {
   const clamp = (x: number): number => Math.max(0, Math.min(1, x))
   const cur = pointFormVolume.value
   if (pointDialogVoiceMono.value || cur <= 0) {
-    pointForm.volL = clamp(v)
-    pointForm.volR = clamp(v)
+    pointForm.volL = round3(clamp(v))
+    pointForm.volR = round3(clamp(v))
     return
   }
   const f = v / cur
-  pointForm.volL = clamp(pointForm.volL * f)
-  pointForm.volR = clamp(pointForm.volR * f)
+  pointForm.volL = round3(clamp(pointForm.volL * f))
+  pointForm.volR = round3(clamp(pointForm.volR * f))
 }
 function setPointFormBalance(b: number): void {
   const clamp = (x: number): number => Math.max(0, Math.min(1, x))
   const s = pointForm.volL + pointForm.volR
   if (s <= 0) return
   const bb = Math.max(-1, Math.min(1, b))
-  pointForm.volL = clamp((s * (1 - bb)) / 2)
-  pointForm.volR = clamp((s * (1 + bb)) / 2)
+  pointForm.volL = round3(clamp((s * (1 - bb)) / 2))
+  pointForm.volR = round3(clamp((s * (1 + bb)) / 2))
 }
 function applyPointDialog(): void {
   const tgt = pointDialogTarget.value
@@ -1763,5 +1766,16 @@ onBeforeUnmount(() => {
 /* GT3.3: point parameters dialog. */
 .tracks-panel__point-dialog {
   min-width: 340px;
+}
+
+/* GT3.11: volume L/R side by side without q-col-gutter's negative margins (req. 22). */
+.tracks-panel__vol-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tracks-panel__vol-row > * {
+  flex: 1 1 0;
+  min-width: 0;
 }
 </style>
