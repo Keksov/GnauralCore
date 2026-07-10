@@ -59,7 +59,7 @@
     "gtrackMultiSelected": "Выбрано узлов: {count}",
     "gtrackDeleteSelected": "Удалить выбранные",
     "gtrackAddPointRight": "Добавить узел →",
-    "gtrackToolSelect": "Инструмент «Выбор» (выбор/перетаскивание точек)",
+    "gtrackToolSelect": "Инструмент «Выбор» (выбор/перетаскивание; Ctrl/Shift-клик — мультивыбор)",
     "gtrackToolAdd": "Инструмент «Добавить узел» (клик по кривой добавляет)",
     "gtrackToolDelete": "Инструмент «Удалить узел» (клик по узлу удаляет)",
     "gtrackAddLane": "gtrack-дорожка",

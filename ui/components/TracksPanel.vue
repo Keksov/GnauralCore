@@ -552,7 +552,7 @@
           </div>
           <q-btn
             flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')"
-            @click="inspectorMode === 'table' ? gtracks.clearMultiSelection() : closePointDialog()"
+            @click="closeInspector"
           />
         </div>
 
@@ -879,6 +879,13 @@ function openPointDialog(laneId: number, p: GTrackPointRef): void {
 function closePointDialog(): void {
   pointDialogTarget.value = null
 }
+// GT3.16 (review #4): closing the inspector clears BOTH the multi-selection and the single
+// target, so dismissing the table can't "reveal" a stale single inspector left over from before
+// the multi-selection began.
+function closeInspector(): void {
+  gtracks.clearMultiSelection()
+  pointDialogTarget.value = null
+}
 // GT3.12 (owner req. 27+29): while the inspector is open, follow the selection (clicking or
 // dragging a different vertex re-targets it) and keep the fields live during a drag. A single
 // watch source combining both signals keeps a drag's crossover re-index and a plain click in
@@ -982,42 +989,54 @@ interface MultiFormRow {
   volR: number
 }
 const multiForm = ref<MultiFormRow[]>([])
-function syncMultiFormFromModel(): void {
-  multiForm.value = gtracks.multiSelectionPoints.value.map(({ voiceId, pointIndex, point }) => ({
+function modelRow(voiceId: number, pointIndex: number, point: { baseFreq: number; beatFreqHalf: number; volL: number; volR: number }): MultiFormRow {
+  return {
     voiceId,
     pointIndex,
     baseFreq: Number(point.baseFreq.toFixed(3)),
     beatFreq: Number((point.beatFreqHalf * 2).toFixed(3)),
     volL: Number(point.volL.toFixed(3)),
     volR: Number(point.volR.toFixed(3)),
-  }))
+  }
 }
-// Keep the table live: re-sync whenever the multi-selection or the underlying model changes
-// (matches the single-mode "follow + live drag values" watch from GT3.12).
+// GT3.16 (review #5): RECONCILE rather than rebuild — a row whose "voiceId:pointIndex" key is
+// still selected KEEPS its current (possibly mid-edit) values, so accumulating another point
+// (or an external model change) no longer discards uncommitted typing. Newly-selected keys are
+// seeded from the model; deselected keys drop out. A drag can't happen in table mode (starting a
+// drag clears the multi-selection), so nothing here needs to be "live" during a drag.
+function reconcileMultiForm(): void {
+  const existing = new Map(multiForm.value.map((r) => [`${r.voiceId}:${r.pointIndex}`, r]))
+  multiForm.value = gtracks.multiSelectionPoints.value.map(({ voiceId, pointIndex, point }) =>
+    existing.get(`${voiceId}:${pointIndex}`) ?? modelRow(voiceId, pointIndex, point),
+  )
+}
 watch(() => [gtracks.multiSelection.value, gtracks.voices.value] as const, () => {
-  syncMultiFormFromModel()
+  reconcileMultiForm()
 })
 function multiRowVoiceName(voiceId: number): string {
   const v = gtracks.getVoice(voiceId)
   if (v === undefined) return `#${voiceId}`
   return v.description.trim() !== '' ? v.description : `#${v.id}`
 }
-function applyMultiRow(row: MultiFormRow): void {
-  gtracks.setPointValues(
-    { voiceId: row.voiceId, pointIndex: row.pointIndex },
-    {
-      baseFreq: Math.max(0, Number(row.baseFreq) || 0),
-      beatFreqHalf: Math.max(0, Number(row.beatFreq) || 0) / 2,
-      volL: Math.max(0, Math.min(1, Number(row.volL) || 0)),
-      volR: Math.max(0, Math.min(1, Number(row.volR) || 0)),
-    },
-  )
+function rowPatch(row: MultiFormRow): { baseFreq: number; beatFreqHalf: number; volL: number; volR: number } {
+  return {
+    baseFreq: Math.max(0, Number(row.baseFreq) || 0),
+    beatFreqHalf: Math.max(0, Number(row.beatFreq) || 0) / 2,
+    volL: Math.max(0, Math.min(1, Number(row.volL) || 0)),
+    volR: Math.max(0, Math.min(1, Number(row.volR) || 0)),
+  }
 }
 function maybeAutosaveMultiRow(row: MultiFormRow): void {
-  if (gtracks.pointAutosave.value) applyMultiRow(row)
+  // A single row blur is naturally its own undo unit.
+  if (gtracks.pointAutosave.value) {
+    gtracks.setPointValues({ voiceId: row.voiceId, pointIndex: row.pointIndex }, rowPatch(row))
+  }
 }
+// GT3.16 (review #1): "Apply all" is ONE undo unit — was one per row, so undoing needed N presses.
 function applyAllMultiRows(): void {
-  for (const row of multiForm.value) applyMultiRow(row)
+  gtracks.setMultiplePointValues(
+    multiForm.value.map((row) => ({ ref: { voiceId: row.voiceId, pointIndex: row.pointIndex }, patch: rowPatch(row) })),
+  )
 }
 
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
@@ -1732,15 +1751,30 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     closeSpectrogramSettings()
     return
   }
+  // GT3.16 (review #2): Escape also closes the point inspector (single or table), matching the
+  // other overlays' behaviour.
+  if (event.key === 'Escape' && inspectorMode.value !== 'none') {
+    event.preventDefault()
+    closeInspector()
+    return
+  }
   if (shouldIgnoreHotkey(event)) {
     return
   }
 
-  // GT3.6: Delete removes the selected gtrack vertex (min-2-points guard lives in the model).
-  if ((event.key === 'Delete' || event.key === 'Backspace') && gtracks.selection.value !== null) {
-    event.preventDefault()
-    gtracks.removeSelectedPoint()
-    return
+  // GT3.6/GT3.16 (review #3): Delete removes the multi-selection when the table is active,
+  // otherwise the single selected vertex (min-2-points guard lives in the model).
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (inspectorMode.value === 'table') {
+      event.preventDefault()
+      gtracks.removeMultiSelection()
+      return
+    }
+    if (gtracks.selection.value !== null) {
+      event.preventDefault()
+      gtracks.removeSelectedPoint()
+      return
+    }
   }
 
   // GT3.2: undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y).

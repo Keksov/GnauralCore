@@ -59,7 +59,7 @@
     "gtrackMultiSelected": "{count} nodes selected",
     "gtrackDeleteSelected": "Delete selected",
     "gtrackAddPointRight": "Add node →",
-    "gtrackToolSelect": "Select tool (select/drag points)",
+    "gtrackToolSelect": "Select tool (select/drag points; Ctrl/Shift-click for multi-select)",
     "gtrackToolAdd": "Add-node tool (click a curve to add)",
     "gtrackToolDelete": "Delete-node tool (click a node to delete)",
     "gtrackAddLane": "gtrack lane",

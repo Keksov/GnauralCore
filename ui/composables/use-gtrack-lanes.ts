@@ -337,6 +337,30 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     refreshEditState()
     return true
   }
+  /**
+   * GT3.16: apply value-field edits to SEVERAL points as ONE undo unit (table "Apply all").
+   * Value-only (never time), so — like setPointValues — indices stay stable and the
+   * multi-selection keys don't desync. Non-editable voices are skipped silently.
+   */
+  function setMultiplePointValues(
+    edits: ReadonlyArray<{ ref: GTrackPointRef; patch: { baseFreq: number; beatFreqHalf: number; volL: number; volR: number } }>,
+  ): boolean {
+    const m = model.value
+    if (m === null || edits.length === 0) return false
+    try {
+      m.edit(() => {
+        for (const { ref: ref_, patch } of edits) {
+          if (!m.isVoiceEditable(ref_.voiceId)) continue
+          m.setPointFields(ref_.voiceId, ref_.pointIndex, patch)
+        }
+      })
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
   /** GT3.15: bulk-delete every point in the multi-selection as ONE undo unit. */
   function removeMultiSelection(): void {
     const m = model.value
@@ -706,6 +730,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     clearMultiSelection,
     multiSelectionPoints,
     setPointValues,
+    setMultiplePointValues,
     removeMultiSelection,
     getVoice,
     getPoint,
