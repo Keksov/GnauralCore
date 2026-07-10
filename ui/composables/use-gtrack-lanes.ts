@@ -42,6 +42,13 @@ export interface GTrackAddPoint {
   readonly timeSec: number
 }
 
+/**
+ * GT3.14 (owner req. 24): the active point-mode cursor tool. 'select' is the normal
+ * select+drag+dblclick-edit behaviour; 'add' inserts a point on every click on a curve; 'delete'
+ * removes a point on every click on a vertex. One global tool, shared across all lanes.
+ */
+export type GTrackPointTool = 'select' | 'add' | 'delete'
+
 export interface ResolvedGTrackLane {
   readonly id: number
   readonly mode: GTrackMode
@@ -382,6 +389,45 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     try { localStorage.setItem(STORAGE_POINT_AUTOSAVE_KEY, v ? '1' : '0') } catch { /* ignore */ }
   }
 
+  // GT3.14 (owner req. 24): the active point-mode cursor tool (Select/Add/Delete). One global
+  // tool applies across every lane; persisted editor property, same pattern as pointDragMode.
+  const STORAGE_POINT_TOOL_KEY = 'mindwave-gtrack-point-tool'
+  function loadPointTool(): GTrackPointTool {
+    try {
+      const v = localStorage.getItem(STORAGE_POINT_TOOL_KEY)
+      return v === 'add' || v === 'delete' ? v : 'select'
+    } catch {
+      return 'select'
+    }
+  }
+  const pointTool = ref<GTrackPointTool>(loadPointTool())
+  function setPointTool(toolValue: GTrackPointTool): void {
+    pointTool.value = toolValue
+    try { localStorage.setItem(STORAGE_POINT_TOOL_KEY, toolValue) } catch { /* ignore */ }
+  }
+  /**
+   * GT3.14: delete a point by direct reference (Delete-tool single click). Does NOT touch the
+   * global selection unless it already pointed at this exact vertex — so using the Delete tool
+   * doesn't hijack an unrelated point that's currently selected/inspected elsewhere.
+   */
+  function deletePointAt(laneId: number, ref_: GTrackPointRef): boolean {
+    void laneId // kept for API symmetry with GTrackSelection; not needed to locate the point
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    try {
+      m.edit(() => m.removePoint(ref_.voiceId, ref_.pointIndex))
+    } catch {
+      return false
+    }
+    const sel = selection.value
+    if (sel !== null && sel.voiceId === ref_.voiceId && sel.pointIndex === ref_.pointIndex) {
+      selection.value = null
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+
   /** Live-move the dragged vertex: time per the drag mode (clamp/crossover), value per the lane mode. */
   function dragPoint(ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
     const m = model.value
@@ -524,6 +570,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setPointDragMode,
     pointAutosave,
     setPointAutosave,
+    pointTool,
+    setPointTool,
+    deletePointAt,
     getVoice,
     getPoint,
     applyPointEdit,

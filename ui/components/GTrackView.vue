@@ -5,7 +5,12 @@
       class="gtrack-view__canvas"
       role="img"
       :aria-label="t('audio.gtrackCanvasLabel')"
-      :class="{ 'gtrack-view__canvas--seekable': seekable || pointMode, 'gtrack-view__canvas--point': pointMode && hoverPoint !== null }"
+      :class="{
+        'gtrack-view__canvas--seekable': seekable || pointMode,
+        'gtrack-view__canvas--point': pointMode && pointTool === 'select' && hoverPoint !== null,
+        'gtrack-view__canvas--add': pointMode && pointTool === 'add',
+        'gtrack-view__canvas--delete': pointMode && pointTool === 'delete',
+      }"
       @wheel.prevent="onWheel"
       @click="onClick"
       @dblclick="onDblClick"
@@ -118,6 +123,8 @@ interface Props {
   pointMode?: boolean
   /** GT3.1: the currently-selected vertex in THIS lane (null = none). */
   selection?: GTrackPointRef | null
+  /** GT3.14: the active point-mode cursor tool (Select/Add/Delete), shared across all lanes. */
+  pointTool?: 'select' | 'add' | 'delete'
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -126,6 +133,7 @@ const props = withDefaults(defineProps<Props>(), {
   showTimeAxisBottom: false,
   pointMode: false,
   selection: null,
+  pointTool: 'select',
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -139,6 +147,8 @@ const emit = defineEmits<{
   (event: 'drag-end'): void
   /** GT3.3: double-click on a vertex — open the point parameters dialog. */
   (event: 'edit-point', point: GTrackPointRef): void
+  /** GT3.14: a click with the Delete tool active hit this vertex. */
+  (event: 'delete-point-at', point: GTrackPointRef): void
   /** GT3.6: double-click on a curve — add an interpolated point there. */
   (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
 }>()
@@ -448,6 +458,19 @@ let dragRef: GTrackPointRef | null = null
 
 function onPointerDown(aEvent: PointerEvent): void {
   if (!props.pointMode || !hasData.value || aEvent.button !== 0) return
+
+  // GT3.14 (owner req. 24): the Add/Delete tools act on a single click and skip select+drag.
+  if (props.pointTool === 'add') {
+    const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (curve !== null) emit('add-point', curve)
+    return
+  }
+  if (props.pointTool === 'delete') {
+    const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (hit !== null) emit('delete-point-at', hit)
+    return
+  }
+
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
   emit('select-point', hit) // select the vertex (or deselect on empty space)
   if (hit === null) return
@@ -562,7 +585,9 @@ function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number;
 }
 
 function onDblClick(aEvent: MouseEvent): void {
-  if (!props.pointMode || !hasData.value) return
+  // GT3.14: while the Add/Delete tool is active, onPointerDown already handled both clicks of the
+  // double-click (each is one add/delete) — skip this handler to avoid a redundant third action.
+  if (!props.pointMode || !hasData.value || props.pointTool !== 'select') return
   // On a vertex -> edit its parameters; on a curve -> add an interpolated point there.
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
   if (hit !== null) {
@@ -678,6 +703,15 @@ onBeforeUnmount(() => {
 /* GT3.1: over a vertex in point mode. */
 .gtrack-view__canvas--point {
   cursor: cell;
+}
+
+/* GT3.14: Add/Delete point-mode tools. */
+.gtrack-view__canvas--add {
+  cursor: copy;
+}
+
+.gtrack-view__canvas--delete {
+  cursor: no-drop;
 }
 
 .gtrack-view__label-overlay {
