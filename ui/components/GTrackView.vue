@@ -787,9 +787,14 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* GT3.1: over a vertex in point mode. */
+/* GT3.1 / GT3.20 (owner req. 40): over an editable vertex in select mode — a grab hand (elegant,
+   signals the point is draggable) instead of the heavy crosshair; grabbing while dragging it. */
 .gtrack-view__canvas--point {
-  cursor: cell;
+  cursor: grab;
+}
+
+.gtrack-view__canvas--point:active {
+  cursor: grabbing;
 }
 
 /* GT3.14: Add/Delete point-mode tools. */

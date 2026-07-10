@@ -566,14 +566,23 @@
     <transition name="gtrack-point-inspector">
       <aside
         v-if="inspectorMode !== 'none'"
+        ref="inspectorEl"
         class="tracks-panel__point-inspector"
         :class="{ 'tracks-panel__point-inspector--table': inspectorMode === 'table' }"
+        :style="inspectorStyle"
         role="dialog"
         aria-modal="false"
         :aria-label="t('audio.gtrackPointDialog')"
       >
+        <!-- GT3.21 (owner req. 41): the title bar is a drag handle — move the inspector anywhere. -->
         <div class="audio-page__spectrogram-settings-header">
-          <div class="audio-page__spectrogram-settings-title">
+          <div
+            class="audio-page__spectrogram-settings-title tracks-panel__inspector-drag"
+            @pointerdown="onInspectorDragStart"
+            @pointermove="onInspectorDragMove"
+            @pointerup="onInspectorDragEnd"
+            @pointercancel="onInspectorDragEnd"
+          >
             <template v-if="inspectorMode === 'table'">
               {{ t('audio.gtrackMultiSelected', { count: gtracks.multiSelection.value.size }) }}
             </template>
@@ -941,6 +950,42 @@ function closeInspector(): void {
   gtracks.clearMultiSelection()
   pointDialogTarget.value = null
 }
+
+// GT3.21 (owner req. 41): drag the point inspector around by its title bar. Position is stored in
+// the coordinates of its positioned ancestor (offsetParent) and clamped to that box; it resets to
+// the default corner each time the inspector closes.
+const inspectorEl = ref<HTMLElement | null>(null)
+const inspectorPos = ref<{ left: number; top: number } | null>(null)
+const inspectorStyle = computed(() =>
+  inspectorPos.value === null
+    ? undefined
+    : { left: `${inspectorPos.value.left}px`, top: `${inspectorPos.value.top}px`, right: 'auto' },
+)
+let inspectorDrag: { px: number; py: number; left: number; top: number } | null = null
+function onInspectorDragStart(event: PointerEvent): void {
+  const el = inspectorEl.value
+  if (event.button !== 0 || el === null) return
+  inspectorDrag = { px: event.clientX, py: event.clientY, left: el.offsetLeft, top: el.offsetTop }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+function onInspectorDragMove(event: PointerEvent): void {
+  if (inspectorDrag === null) return
+  const el = inspectorEl.value
+  const parent = el?.offsetParent as HTMLElement | null
+  if (el === null || parent === null) return
+  const left = inspectorDrag.left + (event.clientX - inspectorDrag.px)
+  const top = inspectorDrag.top + (event.clientY - inspectorDrag.py)
+  inspectorPos.value = {
+    left: Math.max(0, Math.min(left, parent.clientWidth - el.offsetWidth)),
+    top: Math.max(0, Math.min(top, parent.clientHeight - el.offsetHeight)),
+  }
+}
+function onInspectorDragEnd(event: PointerEvent): void {
+  if (inspectorDrag === null) return
+  inspectorDrag = null
+  try { (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId) } catch { /* ignore */ }
+}
 // GT3.12 (owner req. 27+29): while the inspector is open, follow the selection (clicking or
 // dragging a different vertex re-targets it) and keep the fields live during a drag. A single
 // watch source combining both signals keeps a drag's crossover re-index and a plain click in
@@ -1035,6 +1080,9 @@ const inspectorMode = computed<'single' | 'table' | 'none'>(() => {
   if (pointDialogTarget.value !== null) return 'single'
   return 'none'
 })
+// GT3.21: reset the dragged inspector to its default corner whenever it closes, so a stored
+// position can't strand it off-screen after a layout change. (Declared here — after inspectorMode.)
+watch(inspectorMode, (mode) => { if (mode === 'none') inspectorPos.value = null })
 interface MultiFormRow {
   voiceId: number
   pointIndex: number
@@ -2233,6 +2281,14 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 8px;
+}
+
+/* GT3.21 (owner req. 41): the inspector title bar is a drag handle (grows to fill the bar). */
+.tracks-panel__inspector-drag {
+  cursor: move;
+  flex: 1 1 auto;
+  touch-action: none;
+  user-select: none;
 }
 
 /* GT3.15: table mode is wider (needs room for 5 columns) than the single-point form. */
