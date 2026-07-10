@@ -282,6 +282,128 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selection.value = null
   }
 
+  // --- GT3.15 (owner req. 30): Ctrl/Shift-accumulated multi-selection (ephemeral, not persisted).
+  // Keyed "voiceId:pointIndex" so it can span multiple voices/lanes. Scope decision: multi-select
+  // drives the inspector's TABLE mode (view/edit VALUE fields + bulk delete); it does not support
+  // group-dragging (each drag still moves exactly the one vertex under the pointer) and the table
+  // does not edit time (time edits use crossover reindexing, which would desync these keys — the
+  // single-point inspector still edits time for one point at a time).
+  const multiSelection = ref<Set<string>>(new Set())
+  function multiSelectionKey(voiceId: number, pointIndex: number): string {
+    return `${voiceId}:${pointIndex}`
+  }
+  function isMultiSelected(voiceId: number, pointIndex: number): boolean {
+    return multiSelection.value.has(multiSelectionKey(voiceId, pointIndex))
+  }
+  function toggleMultiSelect(voiceId: number, pointIndex: number): void {
+    const key = multiSelectionKey(voiceId, pointIndex)
+    const next = new Set(multiSelection.value)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    multiSelection.value = next
+  }
+  function clearMultiSelection(): void {
+    multiSelection.value = new Set()
+  }
+  /** The multi-selection resolved to live point data (drops entries whose point no longer exists). */
+  const multiSelectionPoints = computed(() => {
+    const out: Array<{ voiceId: number; pointIndex: number; point: GTrackPoint }> = []
+    for (const key of multiSelection.value) {
+      const [voiceIdStr, pointIndexStr] = key.split(':')
+      const voiceId = Number(voiceIdStr)
+      const pointIndex = Number(pointIndexStr)
+      const p = voiceById(voiceId)?.points[pointIndex]
+      if (p !== undefined) out.push({ voiceId, pointIndex, point: p })
+    }
+    return out
+  })
+  /**
+   * GT3.15: set only the VALUE fields of a point (base/beat/volL/volR) — never time — so a table
+   * row edit can never trigger crossover reindexing (which would desync the multi-selection's
+   * "voiceId:pointIndex" keys against the other selected rows).
+   */
+  function setPointValues(
+    ref_: GTrackPointRef,
+    patch: { baseFreq: number; beatFreqHalf: number; volL: number; volR: number },
+  ): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    try {
+      m.edit(() => m.setPointFields(ref_.voiceId, ref_.pointIndex, patch))
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+  /** GT3.15: bulk-delete every point in the multi-selection as ONE undo unit. */
+  function removeMultiSelection(): void {
+    const m = model.value
+    if (m === null || multiSelection.value.size === 0) return
+    const byVoice = new Map<number, number[]>()
+    for (const { voiceId, pointIndex } of multiSelectionPoints.value) {
+      const arr = byVoice.get(voiceId) ?? []
+      arr.push(pointIndex)
+      byVoice.set(voiceId, arr)
+    }
+    m.edit(() => {
+      for (const [voiceId, indices] of byVoice) {
+        if (!m.isVoiceEditable(voiceId)) continue
+        for (const idx of [...indices].sort((a, b) => b - a)) { // highest index first (no reshift)
+          const voice = m.schedule.voices.find((v) => v.id === voiceId)
+          if (voice === undefined || voice.points.length <= 2) break // model's min-2-points floor
+          try { m.removePoint(voiceId, idx) } catch { /* already gone / race — skip */ }
+        }
+      }
+    })
+    clearMultiSelection()
+    syncSchedule()
+    refreshEditState()
+  }
+  /**
+   * GT3.15: keep the multi-selection's "voiceId:pointIndex" keys valid across array-shifting edits
+   * elsewhere in the SAME voice — a single-point remove/insert shifts every later index by one.
+   * (removeMultiSelection's own bulk removals don't need this: they clear the whole set after.)
+   */
+  function reindexMultiSelectionAfterRemoval(voiceId: number, removedIndex: number): void {
+    if (multiSelection.value.size === 0) return
+    const next = new Set<string>()
+    for (const key of multiSelection.value) {
+      const [voiceIdStr, pointIndexStr] = key.split(':')
+      const vId = Number(voiceIdStr)
+      const pIdx = Number(pointIndexStr)
+      if (vId !== voiceId || pIdx < removedIndex) { next.add(key); continue }
+      if (pIdx === removedIndex) continue // that vertex is gone — drop it
+      next.add(multiSelectionKey(vId, pIdx - 1))
+    }
+    multiSelection.value = next
+  }
+  function reindexMultiSelectionAfterInsert(voiceId: number, insertedIndex: number): void {
+    if (multiSelection.value.size === 0) return
+    const next = new Set<string>()
+    for (const key of multiSelection.value) {
+      const [voiceIdStr, pointIndexStr] = key.split(':')
+      const vId = Number(voiceIdStr)
+      const pIdx = Number(pointIndexStr)
+      next.add(vId === voiceId && pIdx >= insertedIndex ? multiSelectionKey(vId, pIdx + 1) : key)
+    }
+    multiSelection.value = next
+  }
+  /**
+   * GT3.15: a crossover re-sort (drag or the single-point dialog's time field) can move an
+   * ARBITRARY range of points in the same voice — the model only reports the one explicitly-moved
+   * point's new index, not how everything else shifted. Rather than risk a table row silently
+   * pointing at the wrong vertex, drop that voice's multi-selection entries defensively.
+   */
+  function dropMultiSelectionForVoice(voiceId: number): void {
+    if (multiSelection.value.size === 0) return
+    const prefix = `${voiceId}:`
+    if (![...multiSelection.value].some((k) => k.startsWith(prefix))) return
+    const next = new Set([...multiSelection.value].filter((k) => !k.startsWith(prefix)))
+    multiSelection.value = next
+  }
+
   // --- GT3.9 (GT-D15): voice-panel operations. The slide-over panel drives voices; these map its
   // per-voice controls onto the lane model (visibility = hidden of all lanes containing the voice;
   // graph type = mode of all lanes containing the voice; no lane -> one is created).
@@ -423,6 +545,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (sel !== null && sel.voiceId === ref_.voiceId && sel.pointIndex === ref_.pointIndex) {
       selection.value = null
     }
+    reindexMultiSelectionAfterRemoval(ref_.voiceId, ref_.pointIndex)
     syncSchedule()
     refreshEditState()
     return true
@@ -445,6 +568,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       if (sel !== null && sel.voiceId === ref_.voiceId) {
         selection.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: newIndex }
       }
+      dropMultiSelectionForVoice(ref_.voiceId) // GT3.15: an arbitrary re-sort can't be reindexed
     } else {
       const clampedTime = clampPointTime(voice.points, ref_.pointIndex, timeSec)
       m.setPointFields(ref_.voiceId, ref_.pointIndex, { timeSec: clampedTime, ...patch })
@@ -494,6 +618,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         if (sel !== null && sel.voiceId === ref_.voiceId) {
           selection.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: ni }
         }
+        dropMultiSelectionForVoice(ref_.voiceId) // GT3.15: crossover re-sort — can't be reindexed
       })
     } catch {
       return false
@@ -510,6 +635,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       let idx = -1
       m.edit(() => { idx = m.insertPoint(voiceId, timeSec) })
       selection.value = { laneId, voiceId, pointIndex: idx }
+      reindexMultiSelectionAfterInsert(voiceId, idx)
     } catch {
       return false // outside segments / preparse-locked / degenerate voice
     }
@@ -527,6 +653,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     } catch {
       return false
     }
+    reindexMultiSelectionAfterRemoval(sel.voiceId, sel.pointIndex)
     selection.value = null
     syncSchedule()
     refreshEditState()
@@ -573,6 +700,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     pointTool,
     setPointTool,
     deletePointAt,
+    multiSelection,
+    isMultiSelected,
+    toggleMultiSelect,
+    clearMultiSelection,
+    multiSelectionPoints,
+    setPointValues,
+    removeMultiSelection,
     getVoice,
     getPoint,
     applyPointEdit,

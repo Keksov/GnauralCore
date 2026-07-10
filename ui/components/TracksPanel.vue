@@ -154,19 +154,21 @@
             :point-mode="gtracks.isLanePointMode(lane.id)"
             :selection="gtracks.selectionForLane(lane.id)"
             :point-tool="gtracks.pointTool.value"
+            :multi-selected="gtracks.multiSelection.value"
             :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
             @seek="handleSeek"
             @open-settings="gtrackSettingsId = lane.id"
             @hide="gtracks.setLaneHidden(lane.id, true)"
             @reorder-grip="onGtrackGripDown(lane.id, $event)"
             @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
-            @select-point="(p: GTrackPointRef | null) => gtracks.selectPoint(lane.id, p)"
+            @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
             @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
             @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
             @drag-end="gtracks.endPointDrag()"
             @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
             @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
             @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
+            @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
           />
           <div
             class="audio-page__spectrogram-bottom-handle"
@@ -528,77 +530,154 @@
 
     <!-- GT3.12 (GT-D18): non-modal live point inspector — NO backdrop (owner req. 26: the tracks
          stay fully interactive so the user can click other vertices to inspect them). Floats as a
-         small panel instead of docking to an edge, so it doesn't block the whole stack. -->
+         small panel instead of docking to an edge, so it doesn't block the whole stack.
+         GT3.15 (owner req. 30): auto-switches to a TABLE when 2+ vertices are multi-selected. -->
     <transition name="gtrack-point-inspector">
       <aside
-        v-if="pointDialogTarget !== null"
+        v-if="inspectorMode !== 'none'"
         class="tracks-panel__point-inspector"
+        :class="{ 'tracks-panel__point-inspector--table': inspectorMode === 'table' }"
         role="dialog"
         aria-modal="false"
         :aria-label="t('audio.gtrackPointDialog')"
       >
         <div class="audio-page__spectrogram-settings-header">
           <div class="audio-page__spectrogram-settings-title">
-            {{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span>
+            <template v-if="inspectorMode === 'table'">
+              {{ t('audio.gtrackMultiSelected', { count: gtracks.multiSelection.value.size }) }}
+            </template>
+            <template v-else>
+              {{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span>
+            </template>
           </div>
-          <q-btn flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')" @click="closePointDialog" />
-        </div>
-        <div class="audio-page__spectrogram-settings-body q-gutter-sm">
-          <q-input
-            v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
-            :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-          />
-          <q-input
-            v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
-            :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-          />
-          <q-input
-            v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
-            :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-          />
-          <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
-               these overlap the beat-frequency field inside a q-gutter parent. -->
-          <div class="tracks-panel__vol-row">
-            <q-input
-              v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
-              :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
-            <q-input
-              v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
-              :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
-          </div>
-          <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
-          <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
-          <q-slider
-            :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense
-            @update:model-value="(v) => setPointFormVolume(v ?? 0)" @change="maybeAutosave"
-          />
-          <template v-if="!pointDialogVoiceMono">
-            <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
-            <q-slider
-              :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
-              @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
-            />
-          </template>
-          <q-checkbox
-            :model-value="gtracks.pointAutosave.value" dense
-            :label="t('audio.gtrackAutosave')"
-            @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
-          />
-        </div>
-        <q-separator />
-        <div class="tracks-panel__point-inspector-actions">
-          <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeletePoint')" @click="deleteCurrentPointFromDialog" />
-          <q-btn dense flat no-caps icon="add" :label="t('audio.gtrackAddPointRight')" :disable="!pointDialogHasNext" @click="addPointToRight" />
-          <q-space />
           <q-btn
-            v-if="!gtracks.pointAutosave.value"
-            dense unelevated no-caps color="primary"
-            :label="t('audio.spectrogramZoomApply')"
-            @click="applyPointDialog"
+            flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')"
+            @click="inspectorMode === 'table' ? gtracks.clearMultiSelection() : closePointDialog()"
           />
         </div>
+
+        <!-- Table mode (owner req. 30): view + edit VALUE fields (not time — see GT-D16 note in
+             the composable) across every multi-selected vertex, plus a bulk-delete action. -->
+        <template v-if="inspectorMode === 'table'">
+          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap">
+            <q-markup-table dense flat dark class="tracks-panel__multi-table">
+              <thead>
+                <tr>
+                  <th>{{ t('audio.gtrackVoicesPanel') }}</th>
+                  <th>{{ t('audio.gtrackPointBase') }}</th>
+                  <th>{{ t('audio.gtrackPointBeat') }}</th>
+                  <th>{{ t('audio.gtrackPointVolL') }}</th>
+                  <th>{{ t('audio.gtrackPointVolR') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in multiForm" :key="`${row.voiceId}:${row.pointIndex}`">
+                  <td>{{ multiRowVoiceName(row.voiceId) }}</td>
+                  <td>
+                    <q-input
+                      v-model.number="row.baseFreq" dense borderless type="number" step="0.1" min="0"
+                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                    />
+                  </td>
+                  <td>
+                    <q-input
+                      v-model.number="row.beatFreq" dense borderless type="number" step="0.1" min="0"
+                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                    />
+                  </td>
+                  <td>
+                    <q-input
+                      v-model.number="row.volL" dense borderless type="number" step="0.01" min="0" max="1"
+                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                    />
+                  </td>
+                  <td>
+                    <q-input
+                      v-model.number="row.volR" dense borderless type="number" step="0.01" min="0" max="1"
+                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+            <q-checkbox
+              :model-value="gtracks.pointAutosave.value" dense
+              :label="t('audio.gtrackAutosave')"
+              @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
+            />
+          </div>
+          <q-separator />
+          <div class="tracks-panel__point-inspector-actions">
+            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeleteSelected')" @click="gtracks.removeMultiSelection()" />
+            <q-space />
+            <q-btn
+              v-if="!gtracks.pointAutosave.value"
+              dense unelevated no-caps color="primary"
+              :label="t('audio.spectrogramZoomApply')"
+              @click="applyAllMultiRows"
+            />
+          </div>
+        </template>
+
+        <!-- Single-point mode (GT3.3/GT3.12): unchanged. -->
+        <template v-else>
+          <div class="audio-page__spectrogram-settings-body q-gutter-sm">
+            <q-input
+              v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
+              :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+            />
+            <q-input
+              v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
+              :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+            />
+            <q-input
+              v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
+              :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+            />
+            <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
+                 these overlap the beat-frequency field inside a q-gutter parent. -->
+            <div class="tracks-panel__vol-row">
+              <q-input
+                v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
+                :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+              />
+              <q-input
+                v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
+                :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+              />
+            </div>
+            <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
+            <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
+            <q-slider
+              :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense
+              @update:model-value="(v) => setPointFormVolume(v ?? 0)" @change="maybeAutosave"
+            />
+            <template v-if="!pointDialogVoiceMono">
+              <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
+              <q-slider
+                :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
+                @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
+              />
+            </template>
+            <q-checkbox
+              :model-value="gtracks.pointAutosave.value" dense
+              :label="t('audio.gtrackAutosave')"
+              @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
+            />
+          </div>
+          <q-separator />
+          <div class="tracks-panel__point-inspector-actions">
+            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeletePoint')" @click="deleteCurrentPointFromDialog" />
+            <q-btn dense flat no-caps icon="add" :label="t('audio.gtrackAddPointRight')" :disable="!pointDialogHasNext" @click="addPointToRight" />
+            <q-space />
+            <q-btn
+              v-if="!gtracks.pointAutosave.value"
+              dense unelevated no-caps color="primary"
+              :label="t('audio.spectrogramZoomApply')"
+              @click="applyPointDialog"
+            />
+          </div>
+        </template>
       </aside>
     </transition>
 
@@ -885,6 +964,62 @@ function addPointToRight(): void {
   if (voice === undefined || cur === undefined || next === undefined) return
   gtracks.insertPointAt(tgt.laneId, tgt.voiceId, (cur.timeSec + next.timeSec) / 2)
 }
+
+// GT3.15 (owner req. 30, GT-D18): the inspector shows the single-point form, or — once 2+ vertices
+// are Ctrl/Shift-selected — a table (view/edit VALUE fields across all of them + bulk delete).
+// Table mode takes priority whenever it applies.
+const inspectorMode = computed<'single' | 'table' | 'none'>(() => {
+  if (gtracks.multiSelection.value.size >= 2) return 'table'
+  if (pointDialogTarget.value !== null) return 'single'
+  return 'none'
+})
+interface MultiFormRow {
+  voiceId: number
+  pointIndex: number
+  baseFreq: number
+  beatFreq: number
+  volL: number
+  volR: number
+}
+const multiForm = ref<MultiFormRow[]>([])
+function syncMultiFormFromModel(): void {
+  multiForm.value = gtracks.multiSelectionPoints.value.map(({ voiceId, pointIndex, point }) => ({
+    voiceId,
+    pointIndex,
+    baseFreq: Number(point.baseFreq.toFixed(3)),
+    beatFreq: Number((point.beatFreqHalf * 2).toFixed(3)),
+    volL: Number(point.volL.toFixed(3)),
+    volR: Number(point.volR.toFixed(3)),
+  }))
+}
+// Keep the table live: re-sync whenever the multi-selection or the underlying model changes
+// (matches the single-mode "follow + live drag values" watch from GT3.12).
+watch(() => [gtracks.multiSelection.value, gtracks.voices.value] as const, () => {
+  syncMultiFormFromModel()
+})
+function multiRowVoiceName(voiceId: number): string {
+  const v = gtracks.getVoice(voiceId)
+  if (v === undefined) return `#${voiceId}`
+  return v.description.trim() !== '' ? v.description : `#${v.id}`
+}
+function applyMultiRow(row: MultiFormRow): void {
+  gtracks.setPointValues(
+    { voiceId: row.voiceId, pointIndex: row.pointIndex },
+    {
+      baseFreq: Math.max(0, Number(row.baseFreq) || 0),
+      beatFreqHalf: Math.max(0, Number(row.beatFreq) || 0) / 2,
+      volL: Math.max(0, Math.min(1, Number(row.volL) || 0)),
+      volR: Math.max(0, Math.min(1, Number(row.volR) || 0)),
+    },
+  )
+}
+function maybeAutosaveMultiRow(row: MultiFormRow): void {
+  if (gtracks.pointAutosave.value) applyMultiRow(row)
+}
+function applyAllMultiRows(): void {
+  for (const row of multiForm.value) applyMultiRow(row)
+}
+
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
 const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
 const VOICE_HEX = /^#[0-9a-fA-F]{6}$/
@@ -1943,5 +2078,29 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 8px;
+}
+
+/* GT3.15: table mode is wider (needs room for 5 columns) than the single-point form. */
+.tracks-panel__point-inspector--table {
+  width: 420px;
+}
+
+.tracks-panel__multi-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.tracks-panel__multi-table :deep(.q-field__control) {
+  height: 32px;
+}
+
+.tracks-panel__multi-table th {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tracks-panel__multi-table td {
+  min-width: 64px;
+  padding: 2px 6px;
 }
 </style>

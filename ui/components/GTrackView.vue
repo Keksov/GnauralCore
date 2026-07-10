@@ -125,6 +125,8 @@ interface Props {
   selection?: GTrackPointRef | null
   /** GT3.14: the active point-mode cursor tool (Select/Add/Delete), shared across all lanes. */
   pointTool?: 'select' | 'add' | 'delete'
+  /** GT3.15: Ctrl/Shift-accumulated multi-selection, keyed "voiceId:pointIndex" (shared, spans lanes). */
+  multiSelected?: ReadonlySet<string> | null
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -134,6 +136,7 @@ const props = withDefaults(defineProps<Props>(), {
   pointMode: false,
   selection: null,
   pointTool: 'select',
+  multiSelected: null,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -151,6 +154,8 @@ const emit = defineEmits<{
   (event: 'delete-point-at', point: GTrackPointRef): void
   /** GT3.6: double-click on a curve — add an interpolated point there. */
   (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
+  /** GT3.15: Ctrl/Shift+click on a vertex — toggle it in the multi-selection. */
+  (event: 'toggle-multi-select', point: GTrackPointRef): void
 }>()
 
 interface SpectrogramSharedState {
@@ -299,11 +304,17 @@ function draw(): void {
       const y = valueToY(pointValue(pts[i]!, props.mode))
       const isHover = props.pointMode && hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
       const isSelected = props.selection?.voiceId === voice.id && props.selection?.pointIndex === i
+      // GT3.15: multi-selected vertices get their own amber ring, distinct from the single/hover ring.
+      const isMulti = props.multiSelected?.has(`${voice.id}:${i}`) ?? false
       ctx.beginPath()
-      ctx.arc(x, y, isSelected ? baseR + 2 : isHover ? baseR + 1.5 : baseR, 0, Math.PI * 2)
+      ctx.arc(x, y, isSelected || isMulti ? baseR + 2 : isHover ? baseR + 1.5 : baseR, 0, Math.PI * 2)
       ctx.fillStyle = color
       ctx.fill()
-      if (isSelected || isHover) {
+      if (isMulti) {
+        ctx.strokeStyle = '#fbbf24'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      } else if (isSelected || isHover) {
         ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.7)'
         ctx.lineWidth = isSelected ? 2 : 1
         ctx.stroke()
@@ -472,6 +483,14 @@ function onPointerDown(aEvent: PointerEvent): void {
   }
 
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+
+  // GT3.15 (owner req. 30): Ctrl/Shift+click on a vertex accumulates the multi-selection instead
+  // of selecting/dragging (a modifier-click on empty space is a no-op — nothing to add).
+  if ((aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) && hit !== null) {
+    emit('toggle-multi-select', hit)
+    return
+  }
+
   emit('select-point', hit) // select the vertex (or deselect on empty space)
   if (hit === null) return
   dragRef = hit
@@ -660,6 +679,7 @@ watch(() => props.pointMode, (on) => {
   if (!on) { hoverPoint.value = null; hoverPos.value = null }
   scheduleDraw()
 })
+watch(() => props.multiSelected, () => scheduleDraw())
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
