@@ -66,13 +66,20 @@
          lane/panel and is never clipped by a lane's overflow:hidden; clamped to the viewport. -->
     <Teleport to="body">
       <div
-        v-if="hoverPoint !== null && hoverPos !== null"
+        v-if="hoverTooltip !== null && hoverPos !== null"
         ref="tooltipEl"
         class="gtrack-view__tooltip"
         :style="tooltipStyle"
         role="status"
       >
-        {{ hoverTooltipText }}
+        <div class="gtrack-view__tooltip-name">{{ hoverTooltip.name }}</div>
+        <!-- GT3.19: two-column grid — parameter names | values, both left-aligned. -->
+        <div class="gtrack-view__tooltip-grid">
+          <template v-for="row in hoverTooltip.rows" :key="row.label">
+            <span class="gtrack-view__tooltip-label">{{ row.label }}</span>
+            <span class="gtrack-view__tooltip-value">{{ row.value }}</span>
+          </template>
+        </div>
       </div>
     </Teleport>
   </div>
@@ -567,28 +574,26 @@ function onPointerLeave(): void {
   hoverPos.value = null
 }
 
-// GT3.13 (owner req. 25): tooltip text for the hovered vertex — voice name, time, base/beat freq,
-// L/R volumes, and derived Volume/Balance (GT-D6).
-const hoverTooltipText = computed(() => {
+// GT3.13 (owner req. 25): tooltip data for the hovered vertex — voice name, time, base/beat freq,
+// L/R volumes, and derived Volume/Balance (GT-D6). GT3.19 (owner req. 39): a name header + rows of
+// {label, value} rendered as a two-column grid (labels | values, both left-aligned).
+interface TooltipRow { readonly label: string; readonly value: string }
+const hoverTooltip = computed<{ name: string; rows: TooltipRow[] } | null>(() => {
   const hp = hoverPoint.value
-  if (hp === null) return ''
+  if (hp === null) return null
   const voice = props.voices.find((v) => v.id === hp.voiceId)
   const p = voice?.points[hp.pointIndex]
-  if (voice === undefined || p === undefined) return ''
+  if (voice === undefined || p === undefined) return null
   const name = voice.description.trim() !== '' ? voice.description : `#${voice.id}`
-  const lines = [
-    name,
-    `${t('audio.gtrackPointTime')}: ${formatTimeSec(p.timeSec)}`,
-    `${t('audio.gtrackPointBase')}: ${p.baseFreq.toFixed(1)} Hz`,
-    `${t('audio.gtrackPointBeat')}: ${pointBeatFreq(p).toFixed(1)} Hz`,
-    `L/R: ${p.volL.toFixed(3)} / ${p.volR.toFixed(3)}`,
+  const rows: TooltipRow[] = [
+    { label: t('audio.gtrackPointTime'), value: formatTimeSec(p.timeSec) },
+    { label: t('audio.gtrackPointBase'), value: `${p.baseFreq.toFixed(1)} Hz` },
+    { label: t('audio.gtrackPointBeat'), value: `${pointBeatFreq(p).toFixed(1)} Hz` },
+    { label: 'L/R', value: `${p.volL.toFixed(3)} / ${p.volR.toFixed(3)}` },
+    { label: t('audio.gtrackMode_volume'), value: pointVolume(p).toFixed(2) },
   ]
-  lines.push(
-    voice.mono
-      ? `${t('audio.gtrackMode_volume')}: ${pointVolume(p).toFixed(2)}`
-      : `${t('audio.gtrackMode_volume')}: ${pointVolume(p).toFixed(2)} · ${t('audio.gtrackMode_balance')}: ${pointBalance(p).toFixed(2)}`,
-  )
-  return lines.join('\n')
+  if (!voice.mono) rows.push({ label: t('audio.gtrackMode_balance'), value: pointBalance(p).toFixed(2) })
+  return { name, rows }
 })
 
 function onClick(aEvent: MouseEvent): void {
@@ -841,7 +846,29 @@ onBeforeUnmount(() => {
   padding: 4px 7px;
   pointer-events: none;
   position: fixed;
-  white-space: pre-line;
   z-index: 7000;
+}
+
+/* GT3.19: two-column tooltip (labels | values, both left-aligned). */
+.gtrack-view__tooltip-name {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.gtrack-view__tooltip-grid {
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  row-gap: 1px;
+}
+
+.gtrack-view__tooltip-label {
+  color: #94a3b8;
+  text-align: left;
+}
+
+.gtrack-view__tooltip-value {
+  text-align: left;
 }
 </style>
