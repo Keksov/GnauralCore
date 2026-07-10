@@ -350,41 +350,6 @@
           </q-card>
         </q-dialog>
 
-        <!-- GT3.3: point parameters dialog (all entry fields + derived Volume/Balance). -->
-        <q-dialog v-model="pointDialogOpen">
-          <q-card class="tracks-panel__point-dialog">
-            <q-card-section class="row items-center q-pb-sm">
-              <div class="text-subtitle1">{{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span></div>
-              <q-space />
-              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
-            </q-card-section>
-            <q-separator />
-            <q-card-section class="q-gutter-sm">
-              <q-input v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0" :label="t('audio.gtrackPointTime')" />
-              <q-input v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBase')" />
-              <q-input v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0" :label="t('audio.gtrackPointBeat')" />
-              <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
-                   these overlap the beat-frequency field inside a q-gutter parent. -->
-              <div class="tracks-panel__vol-row">
-                <q-input v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolL')" />
-                <q-input v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1" :label="t('audio.gtrackPointVolR')" />
-              </div>
-              <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
-              <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
-              <q-slider :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense @update:model-value="(v) => setPointFormVolume(v ?? 0)" />
-              <template v-if="!pointDialogVoiceMono">
-                <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
-                <q-slider :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense @update:model-value="(v) => setPointFormBalance(v ?? 0)" />
-              </template>
-            </q-card-section>
-            <q-separator />
-            <q-card-actions align="right">
-              <q-btn flat no-caps :label="t('audio.spectrogramZoomClose')" v-close-popup />
-              <q-btn unelevated no-caps color="primary" :label="t('audio.spectrogramZoomApply')" @click="applyPointDialog" />
-            </q-card-actions>
-          </q-card>
-        </q-dialog>
-
         <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
         <q-dialog v-model="waveformSettingsOpen">
           <q-card class="audio-page__minimap-dialog">
@@ -523,6 +488,82 @@
               { label: t('audio.gtrackDragMode_clamp'), value: 'clamp' },
             ]"
             @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
+          />
+        </div>
+      </aside>
+    </transition>
+
+    <!-- GT3.12 (GT-D18): non-modal live point inspector — NO backdrop (owner req. 26: the tracks
+         stay fully interactive so the user can click other vertices to inspect them). Floats as a
+         small panel instead of docking to an edge, so it doesn't block the whole stack. -->
+    <transition name="gtrack-point-inspector">
+      <aside
+        v-if="pointDialogTarget !== null"
+        class="tracks-panel__point-inspector"
+        role="dialog"
+        aria-modal="false"
+        :aria-label="t('audio.gtrackPointDialog')"
+      >
+        <div class="audio-page__spectrogram-settings-header">
+          <div class="audio-page__spectrogram-settings-title">
+            {{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span>
+          </div>
+          <q-btn flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')" @click="closePointDialog" />
+        </div>
+        <div class="audio-page__spectrogram-settings-body q-gutter-sm">
+          <q-input
+            v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
+            :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+          />
+          <q-input
+            v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
+            :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+          />
+          <q-input
+            v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
+            :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+          />
+          <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
+               these overlap the beat-frequency field inside a q-gutter parent. -->
+          <div class="tracks-panel__vol-row">
+            <q-input
+              v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
+              :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+            />
+            <q-input
+              v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
+              :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+            />
+          </div>
+          <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
+          <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
+          <q-slider
+            :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense
+            @update:model-value="(v) => setPointFormVolume(v ?? 0)" @change="maybeAutosave"
+          />
+          <template v-if="!pointDialogVoiceMono">
+            <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
+            <q-slider
+              :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
+              @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
+            />
+          </template>
+          <q-checkbox
+            :model-value="gtracks.pointAutosave.value" dense
+            :label="t('audio.gtrackAutosave')"
+            @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
+          />
+        </div>
+        <q-separator />
+        <div class="tracks-panel__point-inspector-actions">
+          <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeletePoint')" @click="deleteCurrentPointFromDialog" />
+          <q-btn dense flat no-caps icon="add" :label="t('audio.gtrackAddPointRight')" :disable="!pointDialogHasNext" @click="addPointToRight" />
+          <q-space />
+          <q-btn
+            v-if="!gtracks.pointAutosave.value"
+            dense unelevated no-caps color="primary"
+            :label="t('audio.spectrogramZoomApply')"
+            @click="applyPointDialog"
           />
         </div>
       </aside>
@@ -676,13 +717,16 @@ const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.vi
 // GT3.9 (GT-D15): the schedule's voice panel (slide-over, left).
 const voicesPanelOpen = ref(false)
 
-// GT3.3: point parameters dialog. Opened by double-clicking a vertex in point mode; edits every
-// entry field in one undo unit (time uses crossover semantics — see applyPointEdit).
+// GT3.3/GT3.12: the point inspector. Opened by double-clicking a vertex in point mode; edits
+// every entry field in one undo unit (time uses crossover semantics — see applyPointEdit).
+// GT3.12 (GT-D18) turns it into a non-modal LIVE inspector (owner reqs 26-29, 31-32):
+//   - seamless (no backdrop; the tracks stay fully interactive) — plain v-if aside, no q-dialog.
+//   - follows the selection: clicking (or dragging) a different vertex re-targets it.
+//   - live values while dragging: re-synced from the model on every model change.
+//   - "Autosave" (persisted): field edits apply immediately (on blur / slider release) instead of
+//     requiring the Apply button.
+//   - Delete-node and Add-node-to-the-right buttons.
 const pointDialogTarget = ref<{ laneId: number; voiceId: number; pointIndex: number } | null>(null)
-const pointDialogOpen = computed<boolean>({
-  get: () => pointDialogTarget.value !== null,
-  set: (v) => { if (!v) pointDialogTarget.value = null },
-})
 const pointForm = reactive({ timeSec: 0, baseFreq: 0, beatFreq: 0, volL: 0, volR: 0 })
 const pointDialogVoiceName = computed(() => {
   const tgt = pointDialogTarget.value
@@ -695,16 +739,49 @@ const pointDialogVoiceMono = computed(() => {
   const tgt = pointDialogTarget.value
   return tgt !== null && (gtracks.getVoice(tgt.voiceId)?.mono ?? false)
 })
-function openPointDialog(laneId: number, p: GTrackPointRef): void {
-  const point = gtracks.getPoint(p)
-  if (point === null) return
+/** Whether the inspected point has a right neighbour (Add-node-right needs one to interpolate into). */
+const pointDialogHasNext = computed(() => {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return false
+  const voice = gtracks.getVoice(tgt.voiceId)
+  return voice !== undefined && tgt.pointIndex < voice.points.length - 1
+})
+function syncPointFormFromModel(): void {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return
+  const point = gtracks.getPoint({ voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
+  if (point === null) {
+    pointDialogTarget.value = null // the point is gone (deleted elsewhere) — nothing to show
+    return
+  }
   pointForm.timeSec = Number(point.timeSec.toFixed(3))
   pointForm.baseFreq = Number(point.baseFreq.toFixed(3))
   pointForm.beatFreq = Number((point.beatFreqHalf * 2).toFixed(3)) // display = full beat (GT-D6)
   pointForm.volL = Number(point.volL.toFixed(3))
   pointForm.volR = Number(point.volR.toFixed(3))
-  pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
 }
+function openPointDialog(laneId: number, p: GTrackPointRef): void {
+  pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
+  syncPointFormFromModel()
+}
+function closePointDialog(): void {
+  pointDialogTarget.value = null
+}
+// GT3.12 (owner req. 27+29): while the inspector is open, follow the selection (clicking or
+// dragging a different vertex re-targets it) and keep the fields live during a drag. A single
+// watch source combining both signals keeps a drag's crossover re-index and a plain click in
+// perfect sync (both can happen in the same reactive flush).
+watch(
+  () => [gtracks.selection.value, gtracks.voices.value] as const,
+  ([sel]) => {
+    const tgt = pointDialogTarget.value
+    if (tgt === null) return
+    if (sel !== null && (sel.voiceId !== tgt.voiceId || sel.pointIndex !== tgt.pointIndex)) {
+      pointDialogTarget.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: sel.pointIndex }
+    }
+    syncPointFormFromModel()
+  },
+)
 // Derived controls (GT-D6): Volume scales L/R preserving balance; Balance re-splits the total.
 const pointFormVolume = computed(() => (pointForm.volL + pointForm.volR) / 2)
 const pointFormBalance = computed(() => {
@@ -736,10 +813,12 @@ function setPointFormBalance(b: number): void {
   pointForm.volL = round3(clamp((s * (1 - bb)) / 2))
   pointForm.volR = round3(clamp((s * (1 + bb)) / 2))
 }
+// GT3.12: Apply commits the form to the model — one undo unit — WITHOUT closing the inspector
+// (req 26: only the user closes it; also required for autosave, which calls this repeatedly).
 function applyPointDialog(): void {
   const tgt = pointDialogTarget.value
   if (tgt === null) return
-  const ok = gtracks.applyPointEdit(
+  gtracks.applyPointEdit(
     { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex },
     {
       timeSec: Math.max(0, Number(pointForm.timeSec) || 0),
@@ -749,7 +828,29 @@ function applyPointDialog(): void {
       volR: Math.max(0, Math.min(1, Number(pointForm.volR) || 0)),
     },
   )
-  if (ok) pointDialogTarget.value = null
+}
+// GT3.12 (owner req. 28): field-level autosave trigger — blur/enter for text inputs, release for
+// sliders (not every keystroke/drag pixel, to avoid one undo entry per character).
+function maybeAutosave(): void {
+  if (gtracks.pointAutosave.value) applyPointDialog()
+}
+// GT3.12 (owner req. 31): delete the inspected point (mirrors the Delete-key path).
+function deleteCurrentPointFromDialog(): void {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return
+  gtracks.selectPoint(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
+  gtracks.removeSelectedPoint()
+}
+// GT3.12 (owner req. 32): insert an interpolated point to the right, at the midpoint of the
+// segment leading to the next point (disabled when this is the voice's last point).
+function addPointToRight(): void {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return
+  const voice = gtracks.getVoice(tgt.voiceId)
+  const cur = voice?.points[tgt.pointIndex]
+  const next = voice?.points[tgt.pointIndex + 1]
+  if (voice === undefined || cur === undefined || next === undefined) return
+  gtracks.insertPointAt(tgt.laneId, tgt.voiceId, (cur.timeSec + next.timeSec) / 2)
 }
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
 const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
@@ -1763,11 +1864,6 @@ onBeforeUnmount(() => {
   min-width: 96px;
 }
 
-/* GT3.3: point parameters dialog. */
-.tracks-panel__point-dialog {
-  min-width: 340px;
-}
-
 /* GT3.11: volume L/R side by side without q-col-gutter's negative margins (req. 22). */
 .tracks-panel__vol-row {
   display: flex;
@@ -1777,5 +1873,42 @@ onBeforeUnmount(() => {
 .tracks-panel__vol-row > * {
   flex: 1 1 0;
   min-width: 0;
+}
+
+/* GT3.12 (GT-D18): non-modal point inspector — a small floating panel (NOT edge-docked, so it
+   doesn't cover the whole stack) with no backdrop element at all, so the tracks underneath stay
+   fully clickable (owner req. 26). */
+.tracks-panel__point-inspector {
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 300px;
+  z-index: 30;
+}
+
+.gtrack-point-inspector-enter-active,
+.gtrack-point-inspector-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.gtrack-point-inspector-enter-from,
+.gtrack-point-inspector-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
+.tracks-panel__point-inspector-actions {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  padding: 8px;
 }
 </style>

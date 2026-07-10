@@ -370,6 +370,18 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     try { localStorage.setItem(STORAGE_DRAG_MODE_KEY, mode) } catch { /* ignore */ }
   }
 
+  // GT3.12 (GT-D18, owner req. 28): "Autosave" — when on, the point inspector applies every field
+  // edit immediately instead of waiting for an explicit Apply. Persisted editor property.
+  const STORAGE_POINT_AUTOSAVE_KEY = 'mindwave-gtrack-point-autosave'
+  function loadPointAutosave(): boolean {
+    try { return localStorage.getItem(STORAGE_POINT_AUTOSAVE_KEY) === '1' } catch { return false }
+  }
+  const pointAutosave = ref<boolean>(loadPointAutosave())
+  function setPointAutosave(v: boolean): void {
+    pointAutosave.value = v
+    try { localStorage.setItem(STORAGE_POINT_AUTOSAVE_KEY, v ? '1' : '0') } catch { /* ignore */ }
+  }
+
   /** Live-move the dragged vertex: time per the drag mode (clamp/crossover), value per the lane mode. */
   function dragPoint(ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
     const m = model.value
@@ -510,6 +522,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     canRedo,
     pointDragMode,
     setPointDragMode,
+    pointAutosave,
+    setPointAutosave,
     getVoice,
     getPoint,
     applyPointEdit,
