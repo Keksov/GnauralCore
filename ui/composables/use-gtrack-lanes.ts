@@ -198,6 +198,19 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes.value = restored !== null ? restored : defaultLanes()
   }
 
+  // Edit state (dirty / undo / redo). Declared BEFORE the immediate schedule watch so that watch can
+  // refresh it when the model is rebuilt (on file switch AND after a Save reload) — otherwise the
+  // flags would keep the previous file's/edit's values.
+  const dirty = ref(false)
+  const canUndo = ref(false)
+  const canRedo = ref(false)
+  function refreshEditState(): void {
+    const m = model.value
+    dirty.value = m?.isDirty ?? false
+    canUndo.value = m?.canUndo ?? false
+    canRedo.value = m?.canRedo ?? false
+  }
+
   // Rebuild the model + lane config whenever the schedule (file) changes.
   watch(
     schedule,
@@ -205,6 +218,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       model.value = data === null ? null : new GTrackModel(data)
       selection.value = null
       syncSchedule()
+      refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
       if (model.value === null) {
         lanes.value = []
         return
@@ -489,15 +503,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const allLanesHidden = computed(() => lanes.value.length > 0 && lanes.value.every((l) => l.hidden))
 
   // --- GT3.2: vertex drag (one undo unit per drag) + undo/redo ---
-  const dirty = ref(false)
-  const canUndo = ref(false)
-  const canRedo = ref(false)
-  function refreshEditState(): void {
-    const m = model.value
-    dirty.value = m?.isDirty ?? false
-    canUndo.value = m?.canUndo ?? false
-    canRedo.value = m?.canRedo ?? false
-  }
+  // (dirty / canUndo / canRedo / refreshEditState are declared above the schedule watch.)
 
   /** Begin a drag transaction for a vertex (no-op if the voice is not editable, e.g. preparse). */
   function beginPointDrag(ref_: GTrackPointRef): boolean {

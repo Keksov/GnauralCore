@@ -91,6 +91,19 @@
           >
             <q-tooltip>{{ t('audio.gtrackAddLane') }}</q-tooltip>
           </q-btn>
+          <!-- GT3.4: save the gtrack edits back to the .gnaural (highlighted while dirty; Ctrl+S too). -->
+          <q-btn
+            v-if="audio.displayMode === 'gnaural'"
+            dense flat round size="sm"
+            icon="save"
+            :color="gtracks.dirty.value ? 'primary' : undefined"
+            :loading="savingEdits"
+            :disable="!gtracks.dirty.value || savingEdits"
+            :aria-label="t('audio.gtrackSave')"
+            @click="saveGtrackEdits"
+          >
+            <q-tooltip>{{ gtracks.dirty.value ? t('audio.gtrackSaveDirty') : t('audio.gtrackSave') }}</q-tooltip>
+          </q-btn>
           <!-- GT3.14: point-mode tool switcher (owner req. 24) — Select (default) / Add / Delete.
                One global tool, applies in every lane currently in point mode. -->
           <template v-if="audio.displayMode === 'gnaural'">
@@ -725,15 +738,17 @@
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
 import { computed, defineAsyncComponent, defineComponent, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
-import { QSpinnerHourglass } from 'quasar'
+import { QSpinnerHourglass, useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
 import type { SpectrogramAnalysisParams } from '@protocol'
 
+import { audioApi } from '../audio-api'
 import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
+import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef } from '../composables/use-gtrack-lanes'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
@@ -817,6 +832,7 @@ function persistSpectrogramTrackHeights(aHeights: readonly number[]): void {
 }
 
 const { t } = useI18n()
+const $q = useQuasar()
 const audio = useAudioStore()
 const spectrogramStore = useSpectrogramStore()
 // GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
@@ -1738,6 +1754,54 @@ function setPrimaryWaveformRef(el: unknown, index: number): void {
 const trackEditorNav = computed(() => spectrogramNavRef.value ?? waveformNavRef.value)
 const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
 
+// GT3.4 (GT-D3/D4/D5): save the in-memory gtrack edits back to the .gnaural file.
+//  1. fetch the CURRENT source XML (fresh mtime for optimistic concurrency + latest bytes),
+//  2. patch only the edited voices' <entries> (GT-D5), preserving generator/preparse voices
+//     detected from the XML — the client model doesn't flag them yet (that wiring is GT3.7), so
+//     without this they'd be irreversibly baked,
+//  3. save through the existing editor store (Gnaural.exe validation + atomic write + history),
+//  4. reload the schedule (rebuilds the model from the freshly-dumped file → clears dirty/undo)
+//     and force a WAV re-render so the waveform + spectrum reflect the saved edits.
+const savingEdits = ref(false)
+
+async function saveGtrackEdits(): Promise<void> {
+  const model = gtracks.model.value
+  const filePath = audio.displayFilePath
+  if (model === null || filePath === null || audio.displayMode !== 'gnaural' || savingEdits.value) return
+  if (!gtracks.dirty.value) {
+    $q.notify({ type: 'info', message: t('audio.editorNoChanges') })
+    return
+  }
+  savingEdits.value = true
+  try {
+    const doc = await audioApi.fetchEditorDocument(filePath)
+    const patched = patchGnauralXml(doc.content, model.schedule, {
+      preserveVoiceIds: findPreparseVoiceIds(doc.content),
+    })
+    const response = await audioApi.saveEditorDocument({
+      path: filePath,
+      content: patched,
+      expectedModifiedAtMs: doc.modifiedAtMs,
+    })
+    // Rebuilds the model from the freshly-dumped file (dirty/undo reset to the saved baseline).
+    await audio.loadGnauralSchedule(filePath, true)
+    if (response.changed) {
+      await audio.ensureGnauralSpectrogram(filePath, true)
+    }
+    $q.notify({
+      type: 'positive',
+      message: response.changed ? t('audio.editorSaved') : t('audio.editorNoChanges'),
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error instanceof Error ? error.message : t('audio.gtrackSaveFailed'),
+    })
+  } finally {
+    savingEdits.value = false
+  }
+}
+
 function handleTracksKeyDown(event: KeyboardEvent): void {
   // GT3.9: Escape closes the voice panel first, then the settings overlay.
   if (event.key === 'Escape' && voicesPanelOpen.value) {
@@ -1758,6 +1822,14 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     closeInspector()
     return
   }
+  // GT3.4: Ctrl/Cmd+S saves the gtrack edits (intercept before the typing guard so it also works
+  // while an inspector field is focused, and to suppress the browser's Save-page dialog).
+  if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
+    event.preventDefault()
+    void saveGtrackEdits()
+    return
+  }
+
   if (shouldIgnoreHotkey(event)) {
     return
   }

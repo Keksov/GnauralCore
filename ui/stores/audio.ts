@@ -634,8 +634,13 @@ export const useAudioStore = defineStore('audio', () => {
   // demand (GET /api/audio/file?format=wav → renderGnauralAudioFile, cached by content hash), so
   // the Треки tab can show the waveform + spectrum automatically instead of asking the user to
   // press play. Reuses the rendered-spectrogram decode + request/abort bookkeeping.
-  async function ensureGnauralSpectrogram(filePath: string): Promise<void> {
-    if (gnauralSpectrogramSourcePath.value === filePath && gnauralSpectrogramBuffer.value !== null) {
+  async function ensureGnauralSpectrogram(filePath: string, force = false): Promise<void> {
+    // GT3.4: after a Save the file changed on disk but the path is unchanged — force clears the
+    // cached render so the waveform + spectrum re-fetch the freshly-rendered WAV.
+    if (force) {
+      clearRenderedSpectrogram()
+    }
+    if (!force && gnauralSpectrogramSourcePath.value === filePath && gnauralSpectrogramBuffer.value !== null) {
       return
     }
     if (gnauralSpectrogramLoading.value) {

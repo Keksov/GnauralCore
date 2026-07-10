@@ -163,6 +163,16 @@ describe('patchGnauralXml (GT1.2)', () => {
     expect(out).not.toContain('basefreq="100"') // not baked
   })
 
+  test('preserveVoiceIds keeps a voice untouched even when edited (GT3.4 generator safety)', () => {
+    const model = new GTrackModel(standardXmlAsDump())
+    model.edit(() => model.setPointField(1, 1, 'baseFreq', 150))
+    // Voice 1 would normally be rewritten (basefreq 150); preserving it keeps the source entries.
+    const out = patchGnauralXml(STANDARD_XML, model.schedule, { preserveVoiceIds: new Set([1]) })
+    expect(out).toContain('basefreq="144"') // voice 1 original entries kept
+    expect(out).not.toContain('basefreq="150"') // the edit was not written back
+    expect(out.match(/<entries>/g)?.length).toBe(2) // voice 2 still patched normally
+  })
+
   test('throws when a scheduled voice is missing from the XML', () => {
     const model = new GTrackModel({
       title: '', author: '', description: '', totalTimeSec: 1, loopCount: 1,

@@ -94,16 +94,32 @@ function detectEntriesTagIndent(voiceBody: string): string {
   return m !== null ? m[1]! : '    '
 }
 
+export interface PatchGnauralXmlOptions {
+  /**
+   * Extra voice ids to leave untouched even if present (and not flagged preparse) in the schedule.
+   * GT3.4: the client model does not yet carry preparse flags (that wiring is GT3.7), so Save passes
+   * `findPreparseVoiceIds(sourceXml)` here — generator voices then keep their source <entries> bytes
+   * instead of being irreversibly baked into concrete points.
+   */
+  readonly preserveVoiceIds?: ReadonlySet<number>
+}
+
 /**
  * Patch `sourceXml` so each voice present in `schedule` has its <entries> block regenerated from
  * the point model. Voices in the XML but not in the schedule are left untouched. Throws if a
  * scheduled voice or its <entries> block cannot be located in the XML.
  */
-export function patchGnauralXml(sourceXml: string, schedule: GTrackSchedule): string {
+export function patchGnauralXml(
+  sourceXml: string,
+  schedule: GTrackSchedule,
+  options: PatchGnauralXmlOptions = {},
+): string {
   // Only non-preparse voices are written back; a still-preparse voice keeps its generator node in
   // the file untouched (GT-D9). Fixing a voice (fixPreparseVoice) clears the flag so it patches.
+  // `preserveVoiceIds` skips additional voices the same way (GT3.4 generator safety).
+  const preserve = options.preserveVoiceIds ?? new Set<number>()
   const voicesById = new Map<number, GTrackVoice>()
-  for (const v of schedule.voices) if (!v.preparse) voicesById.set(v.id, v)
+  for (const v of schedule.voices) if (!v.preparse && !preserve.has(v.id)) voicesById.set(v.id, v)
   const patchedIds = new Set<number>()
 
   const result = sourceXml.replace(VOICE_BLOCK, (block, body: string) => {
@@ -134,7 +150,7 @@ export function patchGnauralXml(sourceXml: string, schedule: GTrackSchedule): st
   })
 
   for (const v of schedule.voices) {
-    if (!v.preparse && !patchedIds.has(v.id)) {
+    if (!v.preparse && !preserve.has(v.id) && !patchedIds.has(v.id)) {
       throw new GTrackXmlError(`voice ${v.id} from the schedule was not found in the source XML`)
     }
   }
