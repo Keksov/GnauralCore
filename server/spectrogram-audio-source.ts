@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import { resolveGnauralExecutablePath } from "./gnaural-path"
+import { muteNonSoloVoices } from "./gnaural-solo-render"
 import type { AudioFileKind } from "./protocol"
 
 /**
@@ -114,15 +115,27 @@ export class SpectrogramAudioSource {
     this.statFile = aOptions.statFile ?? defaultStatFile
   }
 
-  /** Resolve a (validated) source file to a WAV handle the worker can open. */
-  async acquire(aFilePath: string, aFileKind: AudioFileKind): Promise<SpectrogramWavHandle> {
+  /**
+   * Resolve a (validated) source file to a WAV handle the worker can open.
+   *
+   * GT4.3 (GT-D17): `aSoloVoiceIds` (gnaural only) renders a "solo" copy with just those voices
+   * audible (all others muted) so a lane can show the spectrum/waveform of exactly its voice set.
+   * The set is normalized (sorted, deduped) into the cache key, so each distinct solo shares one
+   * render and is refcounted/cleaned up like any other. An empty set = the full mix (unchanged).
+   */
+  async acquire(
+    aFilePath: string,
+    aFileKind: AudioFileKind,
+    aSoloVoiceIds: readonly number[] = [],
+  ): Promise<SpectrogramWavHandle> {
     const resolvedPath = resolve(aFilePath)
     const { mtimeMs } = await this.statFile(resolvedPath)
-    const key = `${aFileKind}:${resolvedPath}:${mtimeMs}`
+    const solo = [...new Set(aSoloVoiceIds)].sort((a, b) => a - b)
+    const key = `${aFileKind}:${resolvedPath}:${mtimeMs}:solo=${solo.join(",")}`
 
     let entry = this.cache.get(key)
     if (entry === undefined) {
-      entry = await this.createEntry(resolvedPath, aFileKind)
+      entry = await this.createEntry(resolvedPath, aFileKind, solo)
       this.cache.set(key, entry)
     }
     entry.refs += 1
@@ -151,7 +164,11 @@ export class SpectrogramAudioSource {
     }
   }
 
-  private async createEntry(aResolvedPath: string, aFileKind: AudioFileKind): Promise<CacheEntry> {
+  private async createEntry(
+    aResolvedPath: string,
+    aFileKind: AudioFileKind,
+    aSoloVoiceIds: readonly number[],
+  ): Promise<CacheEntry> {
     // wav + flac (and any other worker-decodable audio) pass straight to the worker.
     if (aFileKind === "wav" || aFileKind === "flac") {
       return { wavPath: aResolvedPath, tempDir: null, refs: 0 }
@@ -160,7 +177,14 @@ export class SpectrogramAudioSource {
       const tempDir = await mkdtemp(join(this.tempRoot, "mindwave-spectrogram-"))
       const wavPath = join(tempDir, "source.wav")
       try {
-        await this.renderGnaural(aResolvedPath, wavPath)
+        // GT4.3: for a solo render, mute the non-solo voices in a temp copy and render that.
+        let renderInput = aResolvedPath
+        if (aSoloVoiceIds.length > 0) {
+          const sourceXml = await readFile(aResolvedPath, "utf8")
+          renderInput = join(tempDir, "solo.gnaural")
+          await writeFile(renderInput, muteNonSoloVoices(sourceXml, aSoloVoiceIds))
+        }
+        await this.renderGnaural(renderInput, wavPath)
       } catch (error) {
         await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
         throw error

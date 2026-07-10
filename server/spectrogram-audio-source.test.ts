@@ -58,6 +58,25 @@ describe("SpectrogramAudioSource (U1.2)", () => {
     expect(source.cachedCount).toBe(0)
   })
 
+  test.skipIf(!fixtureExists)("GT4.3: distinct solo sets render + cache separately; same set shares one render", async () => {
+    const counter = { count: 0 }
+    const source = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(counter) })
+
+    const a = await source.acquire(FIXTURE_WAV, "gnaural", [1])
+    const b = await source.acquire(FIXTURE_WAV, "gnaural", [2])
+    const a2 = await source.acquire(FIXTURE_WAV, "gnaural", [1])
+
+    expect(counter.count).toBe(2) // [1] and [2] each rendered once; the second [1] is shared
+    expect(a.wavPath).toBe(a2.wavPath)
+    expect(a.wavPath).not.toBe(b.wavPath)
+    expect(source.cachedCount).toBe(2)
+
+    await a.release()
+    await a2.release()
+    await b.release()
+    expect(source.cachedCount).toBe(0)
+  })
+
   test.skipIf(!fixtureExists)("renders once for concurrent holders; deletes on last release", async () => {
     const counter = { count: 0 }
     const source = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(counter) })
