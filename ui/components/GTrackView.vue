@@ -56,6 +56,15 @@
         <q-tooltip>{{ t('audio.gtrackSettings') }}</q-tooltip>
       </q-btn>
     </div>
+    <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging. -->
+    <div
+      v-if="hoverPoint !== null && hoverPos !== null"
+      class="gtrack-view__tooltip"
+      :style="{ left: `${hoverPos.x}px`, top: `${hoverPos.y}px` }"
+      role="status"
+    >
+      {{ hoverTooltipText }}
+    </div>
   </div>
 </template>
 
@@ -63,7 +72,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { GTrackVoice } from '../composables/gtrack-model'
+import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
 import {
   gtrackAxis,
   pointValue,
@@ -145,6 +154,8 @@ const { t } = useI18n()
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 // GT3.1: the vertex under the cursor while in point mode (null = none).
 const hoverPoint = ref<GTrackPointRef | null>(null)
+// GT3.13: cursor pixel position for the hover tooltip (null while not hovering / while dragging).
+const hoverPos = ref<{ x: number; y: number } | null>(null)
 const HIT_RADIUS_PX = 8
 
 const AXIS_MARGIN = { left: 46, right: 8 }
@@ -450,10 +461,12 @@ function onPointerMove(aEvent: PointerEvent): void {
   if (dragRef !== null) {
     const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
     if (tv !== null) emit('drag-move', { point: dragRef, timeSec: tv.timeSec, value: tv.value })
+    hoverPos.value = null // GT3.13: no hover tooltip while actively dragging
     return
   }
   if (!props.pointMode) {
     if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
+    hoverPos.value = null
     return
   }
   const next = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
@@ -462,6 +475,7 @@ function onPointerMove(aEvent: PointerEvent): void {
     hoverPoint.value = next
     scheduleDraw()
   }
+  hoverPos.value = next !== null ? { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 } : null
 }
 
 function onPointerUp(aEvent: PointerEvent): void {
@@ -473,7 +487,32 @@ function onPointerUp(aEvent: PointerEvent): void {
 
 function onPointerLeave(): void {
   if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
+  hoverPos.value = null
 }
+
+// GT3.13 (owner req. 25): tooltip text for the hovered vertex — voice name, time, base/beat freq,
+// L/R volumes, and derived Volume/Balance (GT-D6).
+const hoverTooltipText = computed(() => {
+  const hp = hoverPoint.value
+  if (hp === null) return ''
+  const voice = props.voices.find((v) => v.id === hp.voiceId)
+  const p = voice?.points[hp.pointIndex]
+  if (voice === undefined || p === undefined) return ''
+  const name = voice.description.trim() !== '' ? voice.description : `#${voice.id}`
+  const lines = [
+    name,
+    `${t('audio.gtrackPointTime')}: ${formatTimeSec(p.timeSec)}`,
+    `${t('audio.gtrackPointBase')}: ${p.baseFreq.toFixed(1)} Hz`,
+    `${t('audio.gtrackPointBeat')}: ${pointBeatFreq(p).toFixed(1)} Hz`,
+    `L/R: ${p.volL.toFixed(3)} / ${p.volR.toFixed(3)}`,
+  ]
+  lines.push(
+    voice.mono
+      ? `${t('audio.gtrackMode_volume')}: ${pointVolume(p).toFixed(2)}`
+      : `${t('audio.gtrackMode_volume')}: ${pointVolume(p).toFixed(2)} · ${t('audio.gtrackMode_balance')}: ${pointBalance(p).toFixed(2)}`,
+  )
+  return lines.join('\n')
+})
 
 function onClick(aEvent: MouseEvent): void {
   // GT3.1/3.2: in point mode, selection + drag are handled on pointerdown/up, so clicks are inert.
@@ -593,7 +632,7 @@ watch(() => props.selection, (sel) => {
   scheduleDraw()
 })
 watch(() => props.pointMode, (on) => {
-  if (!on) hoverPoint.value = null
+  if (!on) { hoverPoint.value = null; hoverPos.value = null }
   scheduleDraw()
 })
 
@@ -698,5 +737,18 @@ onBeforeUnmount(() => {
 
 .gtrack-view__grip:active {
   cursor: grabbing;
+}
+
+/* GT3.13: hover-a-vertex tooltip (multi-line — voice, time, frequencies, volumes). */
+.gtrack-view__tooltip {
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 11px;
+  padding: 4px 7px;
+  pointer-events: none;
+  position: absolute;
+  white-space: pre-line;
+  z-index: 6;
 }
 </style>
