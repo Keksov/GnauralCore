@@ -787,11 +787,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* GT3.1 / GT3.20 (owner req. 40): over an editable vertex in select mode, HIDE the OS cursor so it
-   never covers the node — the enlarged, white-ringed hover/selection marker is the pointer itself.
-   Stays hidden through a drag (hoverPoint persists), so the node is fully visible as it moves. */
+/* GT3.1 / GT3.20 (owner req. 40): over an editable vertex in select mode use the pointing-hand
+   cursor — its hotspot is the fingertip (at the node) while the hand body sits down-right, off the
+   node, so the point stays visible while hovering and dragging (unlike grab, whose centered hotspot
+   covered it). */
 .gtrack-view__canvas--point {
-  cursor: none;
+  cursor: pointer;
 }
 
 /* GT3.14: Add/Delete point-mode tools. */
