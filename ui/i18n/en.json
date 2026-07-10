@@ -72,6 +72,7 @@
     "gtrackFixTitle": "Make the generated voice editable?",
     "gtrackFixWarning": "This bakes the generator into concrete points. The generator is lost when you save and cannot be restored. Continue?",
     "gtrackFixed": "Voice is now editable.",
+    "gtrackAllModes": "Show all modes for each voice",
     "gtrackModeLabel": "Display mode",
     "gtrackVoices": "Voices in this lane",
     "gtrackRemoveLane": "Remove lane",

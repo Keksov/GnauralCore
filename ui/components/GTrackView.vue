@@ -19,7 +19,13 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
-    <span v-if="label" class="gtrack-view__label-overlay">{{ label }}</span>
+    <!-- GT3.18 (GT-D20): per-voice accent stripe on the left edge to group a voice's lanes. -->
+    <span v-if="accentColor" class="gtrack-view__accent" :style="{ background: accentColor }" />
+    <span
+      v-if="label"
+      class="gtrack-view__label-overlay"
+      :style="accentColor ? { color: accentColor } : undefined"
+    >{{ label }}</span>
     <!-- GT3.7 (owner req. 10): mark a lane that contains a generated (preparse) voice. -->
     <span v-if="hasPreparse" class="gtrack-view__badge">{{ t('audio.gtrackGenerated') }}</span>
     <!-- SF28.4-style chrome: drag grip + hide stacked on the LEFT. -->
@@ -141,6 +147,9 @@ interface Props {
   pointTool?: 'select' | 'add' | 'delete'
   /** GT3.15: Ctrl/Shift-accumulated multi-selection, keyed "voiceId:pointIndex" (shared, spans lanes). */
   multiSelected?: ReadonlySet<string> | null
+  /** GT3.18 (GT-D20): per-voice accent colour for single-voice lanes — a left stripe + tinted title
+   *  visually group a voice's lanes. null = no accent (multi-voice lane). */
+  accentColor?: string | null
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -151,6 +160,7 @@ const props = withDefaults(defineProps<Props>(), {
   selection: null,
   pointTool: 'select',
   multiSelected: null,
+  accentColor: null,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -803,6 +813,17 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   z-index: 4;
+}
+
+/* GT3.18 (GT-D20): per-voice accent stripe down the left edge (groups a voice's lanes). */
+.gtrack-view__accent {
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 3px;
+  z-index: 6;
 }
 
 /* GT3.7: "generated" badge for a lane containing a preparse (locked) voice. */

@@ -521,6 +521,21 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes.value = defaultLanes()
     persist()
   }
+  /**
+   * GT3.18 (owner req. 38): show EVERY graph type for EVERY voice — one lane per (voice × mode).
+   * Lanes are grouped by voice (all of a voice's modes are contiguous) so the per-voice accent
+   * stripe/title (GT-D20) reads as a block.
+   */
+  function showAllModesPerVoice(): void {
+    const next: GTrackLane[] = []
+    for (const v of voices.value) {
+      for (const mode of GTRACK_MODES) {
+        next.push({ id: nextLaneId++, voiceIds: [v.id], mode, hidden: false })
+      }
+    }
+    lanes.value = next
+    persist()
+  }
   /** Show every voice in the given graph type (applies to all lanes). */
   function setAllLanesMode(mode: GTrackMode): void {
     lanes.value = lanes.value.map((l) => ({ ...l, mode }))
@@ -803,6 +818,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setVoiceMode,
     mergeAllIntoOneLane,
     spreadPerVoiceLanes,
+    showAllModesPerVoice,
     setAllLanesMode,
     setAllLanesHidden,
     allLanesHidden,

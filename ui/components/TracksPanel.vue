@@ -168,6 +168,7 @@
             :selection="gtracks.selectionForLane(lane.id)"
             :point-tool="gtracks.pointTool.value"
             :multi-selected="gtracks.multiSelection.value"
+            :accent-color="laneAccentColor(lane)"
             :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
             @seek="handleSeek"
             @open-settings="gtrackSettingsId = lane.id"
@@ -473,6 +474,10 @@
             </q-btn>
             <q-btn dense flat round size="sm" icon="call_split" :aria-label="t('audio.gtrackSpreadAll')" @click="gtracks.spreadPerVoiceLanes()">
               <q-tooltip>{{ t('audio.gtrackSpreadAll') }}</q-tooltip>
+            </q-btn>
+            <!-- GT3.18 (owner req. 38): one lane per (voice × mode), grouped by voice. -->
+            <q-btn dense flat round size="sm" icon="grid_view" :aria-label="t('audio.gtrackAllModes')" @click="gtracks.showAllModesPerVoice()">
+              <q-tooltip>{{ t('audio.gtrackAllModes') }}</q-tooltip>
             </q-btn>
             <q-btn
               dense flat round size="sm"
@@ -1334,6 +1339,16 @@ function gtrackLaneLabel(lane: { mode: GTrackMode; voices: readonly { id: number
   const names = lane.voices.map((v) => (v.description.trim() !== '' ? v.description : `#${v.id}`))
   const voicePart = names.length === 0 ? t('audio.gtrackNoVoices') : names.join(', ')
   return `${gtrackModeLabel(lane.mode)} · ${voicePart}`
+}
+// GT3.18 (GT-D20): a single-voice lane takes its voice's accent colour (left stripe + tinted title)
+// so all of a voice's lanes read as a group. Multi-voice lanes have no accent (colour is ambiguous).
+// The colour matches the voices-panel dot (voice identity), so grouping is consistent across the UI.
+function laneAccentColor(lane: { voices: readonly { id: number }[] }): string | null {
+  if (lane.voices.length !== 1) return null
+  const id = lane.voices[0]!.id
+  const vi = gtracks.voices.value.findIndex((x) => x.id === id)
+  const v = gtracks.voices.value[vi]
+  return v === undefined ? null : voiceDotColor(v, vi)
 }
 
 const gtrackSettingsId = ref<number | null>(null)
