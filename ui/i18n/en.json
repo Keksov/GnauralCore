@@ -81,6 +81,7 @@
     "gtrackSoloHint": "Waveform/spectrogram of only this lane's voices (rendered muted-others). Also shows the audio of audiofile/noise voices.",
     "gtrackSoloSublane": "Sub-lane",
     "gtrackSoloUnder": "Under curves",
+    "gtrackSpectrumCustom": "Custom spectrum settings for this lane",
     "gtrackProblems": "Schedule problems",
     "gtrackNoProblems": "No problems detected.",
     "gtrackProblemVoiceHidden": "That voice isn't shown in a lane — enable it in the Voices panel.",

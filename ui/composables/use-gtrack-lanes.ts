@@ -12,6 +12,7 @@ import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, typ
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds } from './gtrack-xml'
 import { lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
+import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -80,6 +81,10 @@ interface StoredLane {
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
+// GT8.1 (GT-D19): per-file, per-lane spectrum-settings OVERRIDE. A lane WITHOUT an entry uses the
+// global spectrogram settings (unchanged behaviour); customizing a lane's solo spectrum stores a
+// full independent SpectrogramSettings here (each spectrogram independent, owner req. 36).
+const STORAGE_SPECTRUM_KEY = 'mindwave-gtrack-lane-spectrum'
 const STORAGE_HEIGHT_KEY = 'mindwave-gtrack-lane-height'
 const LANE_HEIGHT_DEFAULT = 120
 const LANE_HEIGHT_MIN = 60
@@ -181,6 +186,62 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
+  // GT8.1 (GT-D19): per-lane spectrum-settings override, persisted per file. Absent -> the lane's
+  // solo spectrum uses the global settings; present -> an independent SpectrogramSettings.
+  const laneSpectrum = ref<Record<number, SpectrogramSettings>>({})
+  function loadAllSpectrum(): Record<string, Record<number, unknown>> {
+    try {
+      const raw = localStorage.getItem(STORAGE_SPECTRUM_KEY)
+      const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
+      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, Record<number, unknown>>) : {}
+    } catch {
+      return {}
+    }
+  }
+  function restoreSpectrum(): void {
+    const key = filePath.value
+    const stored = key === null ? undefined : loadAllSpectrum()[key]
+    const out: Record<number, SpectrogramSettings> = {}
+    if (stored !== undefined && stored !== null && typeof stored === 'object') {
+      for (const [idStr, raw] of Object.entries(stored)) out[Number(idStr)] = mergeStoredSettings(raw)
+    }
+    laneSpectrum.value = out
+  }
+  function persistSpectrum(): void {
+    const key = filePath.value
+    if (key === null) return
+    try {
+      const all = loadAllSpectrum()
+      all[key] = laneSpectrum.value
+      localStorage.setItem(STORAGE_SPECTRUM_KEY, JSON.stringify(all))
+    } catch {
+      // ignore
+    }
+  }
+  function getLaneSpectrum(laneId: number): SpectrogramSettings | null {
+    return laneSpectrum.value[laneId] ?? null
+  }
+  /** Create a lane override (seeded from `seed`, usually the global settings) if absent; return it. */
+  function ensureLaneSpectrum(laneId: number, seed: SpectrogramSettings): SpectrogramSettings {
+    const existing = laneSpectrum.value[laneId]
+    if (existing !== undefined) return existing
+    const created: SpectrogramSettings = { ...seed }
+    laneSpectrum.value = { ...laneSpectrum.value, [laneId]: created }
+    persistSpectrum()
+    return created
+  }
+  function setLaneSpectrum(laneId: number, settings: SpectrogramSettings): void {
+    laneSpectrum.value = { ...laneSpectrum.value, [laneId]: { ...settings } }
+    persistSpectrum()
+  }
+  function clearLaneSpectrum(laneId: number): void {
+    if (laneSpectrum.value[laneId] === undefined) return
+    const next = { ...laneSpectrum.value }
+    delete next[laneId]
+    laneSpectrum.value = next
+    persistSpectrum()
+  }
+
   // GT-D13 (owner 2026-07-09): default = ONE VOICE -> ONE LANE (like the classic schedule editor's
   // per-voice tracks). A tonal voice starts on Base freq; noise/audiofile on Volume (no base
   // frequency, but a meaningful volume envelope). Users can then merge voices into one lane or
@@ -253,6 +314,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selection.value = null
     syncSchedule()
     refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
+    restoreSpectrum() // GT8.1: per-lane spectrum overrides are per file
     if (model.value === null) {
       lanes.value = []
       return
@@ -930,6 +992,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneMode,
     setLaneSolo,
     setLaneSoloInline,
+    laneSpectrum,
+    getLaneSpectrum,
+    ensureLaneSpectrum,
+    setLaneSpectrum,
+    clearLaneSpectrum,
     toggleLaneVoice,
     setLaneHidden,
     swapLanes,

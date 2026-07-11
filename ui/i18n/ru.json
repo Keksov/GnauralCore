@@ -81,6 +81,7 @@
     "gtrackSoloHint": "Волна/спектр только голосов этой дорожки (рендер с замьюченными остальными). Так же показывает звук audiofile/noise-голосов.",
     "gtrackSoloSublane": "Под-дорожка",
     "gtrackSoloUnder": "Под кривыми",
+    "gtrackSpectrumCustom": "Свои настройки спектра для этой дорожки",
     "gtrackProblems": "Проблемы расписания",
     "gtrackNoProblems": "Проблем не обнаружено.",
     "gtrackProblemVoiceHidden": "Этот голос не показан в дорожке — включите его в панели «Голоса».",

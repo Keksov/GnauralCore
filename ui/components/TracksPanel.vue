@@ -173,7 +173,7 @@
                 class="tracks-panel__gtrack-underlay"
                 :file-path="audio.displayFilePath"
                 :solo-voice-ids="lane.voiceIds"
-                :analysis="spectrogramLeftAnalysis"
+                :analysis="laneSpectrogramAnalysis(lane.id)"
                 :seekable="false"
                 :height="gtracks.laneHeight.value"
                 :show-time-axis-top="gIndex === 0"
@@ -184,8 +184,8 @@
                 class="tracks-panel__gtrack-underlay"
                 :file-path="audio.displayFilePath"
                 :solo-voice-ids="lane.voiceIds"
-                :analysis="spectrogramLeftAnalysis"
-                :render="spectrogramStore.renderOptions"
+                :analysis="laneSpectrogramAnalysis(lane.id)"
+                :render="laneSpectrogramRender(lane.id)"
                 :seekable="false"
                 :primary="false"
                 :height="gtracks.laneHeight.value"
@@ -231,7 +231,7 @@
               v-if="laneWaveSublane(lane)"
               :file-path="audio.displayFilePath"
               :solo-voice-ids="lane.voiceIds"
-              :analysis="spectrogramLeftAnalysis"
+              :analysis="laneSpectrogramAnalysis(lane.id)"
               :playhead-sec="displayedPositionSec"
               :seekable="false"
               :label="`◑ ${gtrackLaneLabel(lane)}`"
@@ -243,8 +243,8 @@
               v-if="laneSpectrumSublane(lane)"
               :file-path="audio.displayFilePath"
               :solo-voice-ids="lane.voiceIds"
-              :analysis="spectrogramLeftAnalysis"
-              :render="spectrogramStore.renderOptions"
+              :analysis="laneSpectrogramAnalysis(lane.id)"
+              :render="laneSpectrogramRender(lane.id)"
               :playhead-sec="displayedPositionSec"
               :seekable="false"
               :primary="false"
@@ -469,6 +469,25 @@
                 @update:model-value="(v: boolean) => gtracks.setLaneSoloInline(gtrackSettingsLane!.id, v)"
               />
             </q-card-section>
+            <!-- GT8.1/GT8.2 (owner req. 35-37, GT-D19): per-lane spectrum settings (accordion),
+                 independent of the global panel — shown when this lane displays a solo spectrum. -->
+            <template v-if="gtrackSettingsLane.soloMode === 'spectrum' || gtrackSettingsLane.soloMode === 'both'">
+              <q-separator />
+              <q-card-section>
+                <q-toggle
+                  :model-value="gtracks.getLaneSpectrum(gtrackSettingsLane.id) !== null"
+                  dense
+                  :label="t('audio.gtrackSpectrumCustom')"
+                  @update:model-value="(on: boolean) => toggleLaneSpectrumCustom(gtrackSettingsLane!.id, on)"
+                />
+                <GTrackSpectrumSettings
+                  v-if="gtracks.getLaneSpectrum(gtrackSettingsLane.id) !== null"
+                  class="q-mt-sm"
+                  :model-value="gtracks.getLaneSpectrum(gtrackSettingsLane.id)!"
+                  @update:model-value="(s) => gtracks.setLaneSpectrum(gtrackSettingsLane!.id, s)"
+                />
+              </q-card-section>
+            </template>
             <q-separator />
             <q-card-section>
               <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackVoices') }}</div>
@@ -923,7 +942,9 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
+import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
+import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
@@ -1603,6 +1624,21 @@ function laneWaveSublane(lane: LaneSoloShape): boolean {
 function laneSpectrumSublane(lane: LaneSoloShape): boolean {
   if (!laneSoloActive(lane)) return false
   return (lane.soloMode === 'spectrum' || lane.soloMode === 'both') && !lane.soloInline
+}
+
+// GT8.1 (GT-D19): a lane's solo spectrum/waveform uses its per-lane settings OVERRIDE if present,
+// otherwise the global settings — so each spectrogram can be configured independently.
+function laneSpectrogramAnalysis(laneId: number): SpectrogramAnalysisParams {
+  const o = gtracks.getLaneSpectrum(laneId)
+  return o !== null ? { ...toAnalysisParams(o), channel: 0 } : spectrogramLeftAnalysis.value
+}
+function laneSpectrogramRender(laneId: number): ReturnType<typeof toRenderOptions> {
+  const o = gtracks.getLaneSpectrum(laneId)
+  return o !== null ? toRenderOptions(o) : spectrogramStore.renderOptions
+}
+function toggleLaneSpectrumCustom(laneId: number, on: boolean): void {
+  if (on) gtracks.ensureLaneSpectrum(laneId, { ...spectrogramStore.settings })
+  else gtracks.clearLaneSpectrum(laneId)
 }
 
 const gtrackSettingsId = ref<number | null>(null)
