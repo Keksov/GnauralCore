@@ -1,7 +1,4 @@
-import { defineAsyncComponent } from 'vue'
 import messages from './i18n'
-
-const GnauralSettingsTab = defineAsyncComponent(() => import('./settings/GnauralSettingsTab.vue'))
 
 export const gnauralModule = {
   id: 'gnaural',
@@ -14,12 +11,7 @@ export const gnauralModule = {
       component: () => import('./pages/AudioPage.vue'),
     },
   ],
-  settingsTabs: [
-    {
-      name: 'audio',
-      icon: 'graphic_eq',
-      labelKey: 'settings.audioTab',
-      component: GnauralSettingsTab,
-    },
-  ],
+  // GT10.17 (owner req. 66): the audio settings moved INTO the Audio tab (dialog); the general
+  // Settings page no longer hosts them.
+  settingsTabs: [],
 } as const

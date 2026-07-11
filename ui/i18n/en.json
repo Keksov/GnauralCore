@@ -388,7 +388,10 @@
     "gtrackUndo": "Undo",
     "gtrackRedo": "Redo",
     "gtrackSoloWaveColor": "Wave colour",
-    "gtrackSoloWaveOpacity": "Wave opacity"
+    "gtrackSoloWaveOpacity": "Wave opacity",
+    "stageSchedule": "Reading the schedule (--dump-schedule)",
+    "stageRender": "Rendering WAV on the server",
+    "stageAnalysis": "Opening the spectrum analysis (backend)"
   },
   "settings": {
     "audioTab": "Audio",

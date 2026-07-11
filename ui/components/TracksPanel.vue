@@ -589,11 +589,17 @@
         </q-dialog>
       </div>
     </div>
-    <div
-      v-else-if="!audio.spectrogramLoading && audio.spectrogramError === null"
-      class="audio-page__empty text-grey-7"
-    >
-      {{ noSpectrogramLabel }}
+    <div v-else-if="audio.spectrogramError === null" class="audio-page__empty text-grey-7">
+      <!-- GT10.16 (owner req. 65): staged open progress (thin-client wording) instead of a vague
+           "loading the file" phrase; especially relevant for gnaural (server render is a stage). -->
+      <div v-if="openStages.length > 0" class="tracks-panel__stages">
+        <div v-for="st in openStages" :key="st.key" class="tracks-panel__stage">
+          <q-spinner v-if="st.active" size="14px" class="q-mr-sm" />
+          <q-icon v-else name="check" size="14px" color="positive" class="q-mr-sm" />
+          <span>{{ st.label }}</span>
+        </div>
+      </div>
+      <template v-else>{{ noSpectrogramLabel }}</template>
     </div>
 
     <!-- GT3.9 (GT-D15): the schedule's voice panel slides in OVER the tracks (left side). -->
@@ -1473,6 +1479,20 @@ watch(spectrogramTrackHeights, (value) => {
 // GT2.6: the Треки tab auto-renders a gnaural for its spectrum (no playback), so it never shows
 // the "press play to render" hint — a tracks-neutral message is used for every kind.
 const noSpectrogramLabel = computed(() => t('audio.tracksNoData'))
+
+// GT10.16 (owner req. 65): the stages of opening a file, shown as an event list while any is
+// active. Wording is thin-client-correct: the browser doesn't "download the file" — the server
+// renders/analyzes and the client only fetches views.
+const openStages = computed<{ key: string; label: string; active: boolean }[]>(() => {
+  const stages: { key: string; label: string; active: boolean }[] = []
+  if (audio.displayFilePath === null) return stages
+  if (audio.displayMode === 'gnaural') {
+    stages.push({ key: 'schedule', label: t('audio.stageSchedule'), active: audio.gnauralScheduleLoading })
+    stages.push({ key: 'render', label: t('audio.stageRender'), active: audio.spectrogramLoading })
+  }
+  stages.push({ key: 'analysis', label: t('audio.stageAnalysis'), active: metaSpec.preparing.value || metaSpec.loading.value })
+  return stages.some((st) => st.active) ? stages : []
+})
 
 // GT7.2: prefer the backend analysis' channelCount; fall back to the decoded buffer.
 const isSpectrogramStereo = computed(
@@ -2357,6 +2377,19 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 0 0 auto;
   margin-bottom: 12px;
+}
+
+/* GT10.16: staged open-progress list. */
+.tracks-panel__stages {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tracks-panel__stage {
+  align-items: center;
+  display: flex;
 }
 
 .audio-page__empty {

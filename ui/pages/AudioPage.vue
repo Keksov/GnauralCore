@@ -35,6 +35,13 @@
             <q-btn flat color="primary" icon="settings" :label="t('audio.openSettings')" @click="goToSettings" />
           </q-card-actions>
 
+          <!-- GT10.17 (owner req. 66): audio settings live on the Audio tab now. -->
+          <q-dialog v-model="settingsDialogOpen">
+            <div class="audio-page__settings-dialog">
+              <GnauralSettingsTab />
+            </div>
+          </q-dialog>
+
           <q-separator />
 
           <q-card-section class="audio-page__tree-section">
@@ -653,6 +660,7 @@ import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
+import GnauralSettingsTab from '../settings/GnauralSettingsTab.vue'
 import { useAudioTransport } from '../composables/use-audio-transport'
 import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
@@ -1885,8 +1893,11 @@ function startPlayback() {
   sendAudioMessage({ type: 'audio_start', filePath: audio.selectedPath }, t('audio.wsSendFailed'))
 }
 
+// GT10.17 (owner req. 66): audio settings open right here (a dialog on the Audio tab) instead of
+// navigating to the general Settings page (the audio tab was removed from there).
+const settingsDialogOpen = ref(false)
 function goToSettings() {
-  void router.push('/settings')
+  settingsDialogOpen.value = true
 }
 
 onMounted(async () => {
@@ -1941,6 +1952,14 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 </script>
 
 <style scoped>
+/* GT10.17: the audio-settings dialog wrapper (hosts the settings card). */
+.audio-page__settings-dialog {
+  max-height: 85vh;
+  max-width: 760px;
+  overflow: auto;
+  width: 90vw;
+}
+
 .audio-page {
   min-height: 0;
   overflow: hidden;

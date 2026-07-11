@@ -388,7 +388,10 @@
     "gtrackUndo": "Отменить",
     "gtrackRedo": "Повторить",
     "gtrackSoloWaveColor": "Цвет волны",
-    "gtrackSoloWaveOpacity": "Прозрачность волны"
+    "gtrackSoloWaveOpacity": "Прозрачность волны",
+    "stageSchedule": "Чтение расписания (--dump-schedule)",
+    "stageRender": "Рендер WAV на сервере",
+    "stageAnalysis": "Открытие анализа спектра (бэкенд)"
   },
   "settings": {
     "audioTab": "Аудио",
