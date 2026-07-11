@@ -107,7 +107,7 @@ export interface UseSpectrogram {
   readonly error: Ref<string | null>
   /** SF24.1: backend waveform peaks (min/max/rms) over a time range at `buckets` resolution. */
   getPeaks(aTimeStartSec: number, aTimeEndSec: number, aBuckets: number): Promise<AudioPeak[]>
-  open(aParams: SpectrogramAnalysisParams & { readonly filePath?: string }): Promise<SpectrogramAnalysisInfo>
+  open(aParams: SpectrogramAnalysisParams & { readonly filePath?: string; readonly soloVoiceIds?: readonly number[] }): Promise<SpectrogramAnalysisInfo>
   reconfigure(aParams: SpectrogramAnalysisParams): Promise<SpectrogramAnalysisInfo>
   setView(aView: SpectrogramView): void
   pointQuery(aTimeSec: number, aFrequencyHz: number): Promise<SpectrogramPointResult | null>
@@ -263,7 +263,7 @@ export function useSpectrogram(aOptions: UseSpectrogramOptions = {}): UseSpectro
   }
 
   async function open(
-    aParams: SpectrogramAnalysisParams & { readonly filePath?: string },
+    aParams: SpectrogramAnalysisParams & { readonly filePath?: string; readonly soloVoiceIds?: readonly number[] },
   ): Promise<SpectrogramAnalysisInfo> {
     error.value = null
     opening = true

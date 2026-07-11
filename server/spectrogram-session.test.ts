@@ -198,6 +198,49 @@ describe("SpectrogramSession contract (U1.3)", () => {
     }
   })
 
+  test("GT4.3: soloVoiceIds is passed to acquire and keys distinct warm analyses", async () => {
+    const acquired: Array<readonly number[] | undefined> = []
+    const mockManager = {
+      send: async (aCmd: Record<string, unknown>) => {
+        if (aCmd.cmd === "open-analysis") {
+          return {
+            ok: true, sampleRate: 44100, windowSize: 2048, hopSize: 512, fftLength: 2048,
+            zeroPaddingFactor: 1, binCount: 4, frameCount: 8, durationS: 1,
+            data: "magnitude", fscale: "log", scale: "log", startHz: 0, stopHz: 22050, mode: "combined",
+          }
+        }
+        return { ok: true }
+      },
+      shutdown: async () => undefined,
+    }
+    const mockSource = {
+      acquire: async (_aPath: string, _aKind: string, aSolo?: readonly number[]) => {
+        acquired.push(aSolo)
+        return { wavPath: "/fake.wav", release: async () => undefined }
+      },
+      dispose: async () => undefined,
+    }
+    const session = new SpectrogramSession({
+      resolveSource: async () => ({ filePath: "/x.gnaural", fileKind: "gnaural" as const }),
+      workerManager: mockManager as unknown as SpectrogramWorkerManager,
+      audioSource: mockSource as unknown as SpectrogramAudioSource,
+    })
+    try {
+      const a = await session.handle({ type: "spectrogram:open", requestId: "a", window: 2048, hop: 512, soloVoiceIds: [1] })
+      const b = await session.handle({ type: "spectrogram:open", requestId: "b", window: 2048, hop: 512, soloVoiceIds: [2] })
+      const a2 = await session.handle({ type: "spectrogram:open", requestId: "a2", window: 2048, hop: 512, soloVoiceIds: [1] })
+      expect(a.type).toBe("spectrogram:opened")
+      expect(b.type).toBe("spectrogram:opened")
+      expect(a2.type).toBe("spectrogram:opened")
+      if (a.type !== "spectrogram:opened" || b.type !== "spectrogram:opened" || a2.type !== "spectrogram:opened") return
+      expect(a.analysis.analysisId).not.toBe(b.analysis.analysisId) // distinct solo set -> distinct analysis
+      expect(a2.analysis.analysisId).toBe(a.analysis.analysisId) // same solo set -> warm reuse
+      expect(acquired).toEqual([[1], [2]]) // acquire got each solo set; a2 reused warm (no 3rd acquire)
+    } finally {
+      await session.dispose()
+    }
+  })
+
   test("get-tile before open returns an error message (no worker needed)", async () => {
     const session = new SpectrogramSession({
       resolveSource: async () => {

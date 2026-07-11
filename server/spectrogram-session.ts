@@ -213,6 +213,8 @@ interface CachedAnalysis {
   fileKind: string
   wavHandle: SpectrogramWavHandle
   params: SpectrogramAnalysisParams
+  /** GT4.3: normalized solo voice-id set this analysis was rendered for (part of the cache key). */
+  soloVoiceIds: readonly number[]
   info: SpectrogramAnalysisInfo
   sampleBytes: number
   lastUse: number
@@ -305,8 +307,18 @@ export class SpectrogramSession {
     await existing.wavHandle.release().catch(() => undefined)
   }
 
-  private cacheKey(aFilePath: string, aFileKind: string, aParams: SpectrogramAnalysisParams): string {
-    return `${aFilePath} ${aFileKind} ${JSON.stringify(aParams)}`
+  // GT4.3: a normalized (deduped, sorted) copy so equivalent solo sets share one warm analysis.
+  private normalizeSolo(aValue: readonly number[] | undefined): number[] {
+    return aValue === undefined ? [] : [...new Set(aValue)].sort((a, b) => a - b)
+  }
+
+  private cacheKey(
+    aFilePath: string,
+    aFileKind: string,
+    aParams: SpectrogramAnalysisParams,
+    aSoloVoiceIds: readonly number[],
+  ): string {
+    return `${aFilePath} ${aFileKind} solo=${aSoloVoiceIds.join(",")} ${JSON.stringify(aParams)}`
   }
 
   private findByKey(aKey: string): CachedAnalysis | undefined {
@@ -351,7 +363,10 @@ export class SpectrogramSession {
   private async onOpen(aMessage: SpectrogramOpenRequest): Promise<SpectrogramServerMessage> {
     const source = await this.resolveSource(aMessage)
     const params = pickParams(aMessage)
-    const key = this.cacheKey(source.filePath, source.fileKind, params)
+    // GT4.3: a solo voice set (gnaural only) selects a muted-others render; it's part of the cache
+    // key so a solo analysis is distinct from the full mix and from other solo sets.
+    const solo = this.normalizeSolo(aMessage.soloVoiceIds)
+    const key = this.cacheKey(source.filePath, source.fileKind, params, solo)
 
     // SF7.3: reuse a warm analysis for the same file+params -> skip re-decode/re-open.
     const cached = this.findByKey(key)
@@ -362,7 +377,7 @@ export class SpectrogramSession {
 
     // Concurrent analyses allowed (e.g. stereo L/R). Each open acquires its own
     // source handle so per-analysis close/release is independent.
-    const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind)
+    const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind, solo)
     const analysisId = randomUUID()
     try {
       const response = this.requireOk(
@@ -382,6 +397,7 @@ export class SpectrogramSession {
         fileKind: source.fileKind,
         wavHandle,
         params,
+        soloVoiceIds: solo,
         info,
         sampleBytes: this.estimateSampleBytes(info),
         lastUse: ++this.useSeq,
@@ -421,11 +437,12 @@ export class SpectrogramSession {
       const info = toAnalysisInfo(analysisId, response)
       this.analyses.set(analysisId, {
         analysisId,
-        key: this.cacheKey(existing.filePath, existing.fileKind, params),
+        key: this.cacheKey(existing.filePath, existing.fileKind, params, existing.soloVoiceIds),
         filePath: existing.filePath,
         fileKind: existing.fileKind,
         wavHandle: existing.wavHandle,
         params,
+        soloVoiceIds: existing.soloVoiceIds,
         info,
         sampleBytes: this.estimateSampleBytes(info),
         lastUse: ++this.useSeq,
