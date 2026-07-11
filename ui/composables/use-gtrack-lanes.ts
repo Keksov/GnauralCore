@@ -12,11 +12,16 @@ import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, typ
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds } from './gtrack-xml'
 
+/** GT4.3 (GT-D17): per-lane solo audio underlay of the lane's voice set. 'off' = none. */
+export type GTrackSoloMode = 'off' | 'spectrum'
+
 export interface GTrackLane {
   id: number
   voiceIds: number[]
   mode: GTrackMode
   hidden: boolean
+  /** GT4.3: show the solo spectrum of this lane's voices below the curves ('off' when absent). */
+  soloMode?: GTrackSoloMode
 }
 
 /** GT3.1: a vertex reference within a lane. */
@@ -56,6 +61,7 @@ export interface ResolvedGTrackLane {
   readonly mode: GTrackMode
   readonly voiceIds: readonly number[]
   readonly voices: readonly GTrackVoice[]
+  readonly soloMode: GTrackSoloMode
 }
 
 interface StoredLane {
@@ -63,6 +69,7 @@ interface StoredLane {
   voiceIds: number[]
   mode: string
   hidden: boolean
+  soloMode?: string
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
@@ -145,6 +152,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       mode: lane.mode,
       voiceIds: lane.voiceIds,
       voices: lane.voiceIds.map(voiceById).filter((v): v is GTrackVoice => v !== undefined),
+      soloMode: lane.soloMode ?? 'off',
     }
   }
 
@@ -154,7 +162,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (key === null) return
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden }))
+      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off' }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
@@ -201,6 +209,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           voiceIds: (Array.isArray(s.voiceIds) ? s.voiceIds : []).filter((id) => validIds.has(id)),
           mode: toMode(s.mode),
           hidden: s.hidden === true,
+          soloMode: (s.soloMode === 'spectrum' ? 'spectrum' : 'off') as GTrackSoloMode,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }
@@ -281,6 +290,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
   function setLaneMode(id: number, mode: GTrackMode): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, mode } : l))
+    persist()
+  }
+  // GT4.3 (GT-D17): toggle the lane's solo-audio underlay (off / spectrum of its voice set).
+  function setLaneSolo(id: number, soloMode: GTrackSoloMode): void {
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloMode } : l))
     persist()
   }
   function toggleLaneVoice(id: number, voiceId: number): void {
@@ -841,6 +855,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     addLane,
     removeLane,
     setLaneMode,
+    setLaneSolo,
     toggleLaneVoice,
     setLaneHidden,
     swapLanes,

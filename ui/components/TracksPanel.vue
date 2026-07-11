@@ -151,39 +151,55 @@
              and silently fails against the GTrackView import (kebab of GTrackView is g-track-view)
              — the lanes never rendered because of exactly this. -->
         <div v-if="showGtracks" class="audio-page__gtrack-stack">
-          <GTrackView
-            v-for="(lane, gIndex) in gtracks.visibleLanes.value"
-            :key="lane.id"
-            :data-gtrack-lane="lane.id"
-            :voices="lane.voices"
-            :mode="lane.mode"
-            :duration-sec="gtracks.durationSec.value"
-            :label="gtrackLaneLabel(lane)"
-            :height="gtracks.laneHeight.value"
-            :playhead-sec="displayedPositionSec"
-            :seekable="canSeek"
-            :show-time-axis-top="gIndex === 0"
-            :show-time-axis-bottom="false"
-            :point-mode="gtracks.isLanePointMode(lane.id)"
-            :selection="gtracks.selectionForLane(lane.id)"
-            :point-tool="gtracks.pointTool.value"
-            :multi-selected="gtracks.multiSelection.value"
-            :accent-color="laneAccentColor(lane)"
-            :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
-            @seek="handleSeek"
-            @open-settings="gtrackSettingsId = lane.id"
-            @hide="gtracks.setLaneHidden(lane.id, true)"
-            @reorder-grip="onGtrackGripDown(lane.id, $event)"
-            @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
-            @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
-            @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
-            @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
-            @drag-end="gtracks.endPointDrag()"
-            @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
-            @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
-            @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
-            @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
-          />
+          <template v-for="(lane, gIndex) in gtracks.visibleLanes.value" :key="lane.id">
+            <GTrackView
+              :data-gtrack-lane="lane.id"
+              :voices="lane.voices"
+              :mode="lane.mode"
+              :duration-sec="gtracks.durationSec.value"
+              :label="gtrackLaneLabel(lane)"
+              :height="gtracks.laneHeight.value"
+              :playhead-sec="displayedPositionSec"
+              :seekable="canSeek"
+              :show-time-axis-top="gIndex === 0"
+              :show-time-axis-bottom="false"
+              :point-mode="gtracks.isLanePointMode(lane.id)"
+              :selection="gtracks.selectionForLane(lane.id)"
+              :point-tool="gtracks.pointTool.value"
+              :multi-selected="gtracks.multiSelection.value"
+              :accent-color="laneAccentColor(lane)"
+              :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
+              @seek="handleSeek"
+              @open-settings="gtrackSettingsId = lane.id"
+              @hide="gtracks.setLaneHidden(lane.id, true)"
+              @reorder-grip="onGtrackGripDown(lane.id, $event)"
+              @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
+              @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
+              @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
+              @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
+              @drag-end="gtracks.endPointDrag()"
+              @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
+              @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
+              @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
+              @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
+            />
+            <!-- GT4.3 (owner req. 21, GT-D17): solo spectrum of this lane's voice set, shown as a
+                 sub-lane beneath the curves (server renders the .gnaural with only these voices). -->
+            <spectrogram-view
+              v-if="lane.soloMode === 'spectrum' && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
+              :file-path="audio.displayFilePath"
+              :solo-voice-ids="lane.voiceIds"
+              :analysis="spectrogramLeftAnalysis"
+              :render="spectrogramStore.renderOptions"
+              :playhead-sec="displayedPositionSec"
+              :seekable="false"
+              :primary="false"
+              :label="`◐ ${gtrackLaneLabel(lane)}`"
+              :height="Math.round(gtracks.laneHeight.value * 0.9)"
+              :show-time-axis-top="false"
+              :show-time-axis-bottom="false"
+            />
+          </template>
           <div
             class="audio-page__spectrogram-bottom-handle"
             role="separator"
@@ -367,6 +383,22 @@
                 :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
                 @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
               />
+            </q-card-section>
+            <q-separator />
+            <!-- GT4.3 (owner req. 21, GT-D17): solo spectrum of this lane's voice set, under the curves. -->
+            <q-card-section>
+              <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloAudio') }}</div>
+              <q-btn-toggle
+                :model-value="gtrackSettingsLane.soloMode ?? 'off'"
+                dense unelevated no-caps spread
+                toggle-color="primary"
+                :options="[
+                  { label: t('audio.gtrackSoloOff'), value: 'off' },
+                  { label: t('audio.gtrackSoloSpectrum'), value: 'spectrum' },
+                ]"
+                @update:model-value="(m: GTrackSoloMode) => gtracks.setLaneSolo(gtrackSettingsLane!.id, m)"
+              />
+              <div class="text-caption text-grey q-mt-xs">{{ t('audio.gtrackSoloHint') }}</div>
             </q-card-section>
             <q-separator />
             <q-card-section>
@@ -776,7 +808,7 @@ import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
-import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef } from '../composables/use-gtrack-lanes'
+import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {

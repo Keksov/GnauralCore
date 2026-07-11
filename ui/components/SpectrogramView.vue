@@ -201,6 +201,9 @@ interface Props {
   showTimeAxisTop?: boolean
   /** Draw the horizontal time ruler below the plot (last track of a stack) — SF10.3. */
   showTimeAxisBottom?: boolean
+  /** GT4.3 (GT-D17): for a .gnaural source, analyze a SOLO render of just these voice ids
+      (all others muted). Omitted/empty = the full mix. Changing it re-opens the analysis. */
+  soloVoiceIds?: readonly number[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -868,7 +871,11 @@ async function openForPath(aFilePath: string | null): Promise<void> {
     return
   }
   try {
-    const info = await spec.open({ filePath: aFilePath, ...(props.analysis ?? { window: 2048, hop: 512 }) })
+    const info = await spec.open({
+      filePath: aFilePath,
+      soloVoiceIds: props.soloVoiceIds,
+      ...(props.analysis ?? { window: 2048, hop: 512 }),
+    })
     // Initialize the (possibly shared) time window once per file; a sibling track that
     // already set it wins so stacked tracks stay in sync (SF8.1).
     if (shared === null || shared.view.value === null) {
@@ -896,6 +903,11 @@ async function reconfigureAnalysis(): Promise<void> {
 
 watch(() => props.filePath, (value) => {
   void openForPath(value)
+})
+
+// GT4.3: changing the solo voice set switches the source render -> re-open on the same path.
+watch(() => (props.soloVoiceIds ?? []).join(','), () => {
+  void openForPath(props.filePath)
 })
 
 // view window changed (zoom/pan, possibly from a sibling track) -> refetch tiles for
