@@ -326,6 +326,17 @@
     "audioPresetsRoot": "Presets root folder",
     "audioPresetsRootHint": "Use an absolute server path. The Audio tab will scan this directory recursively.",
     "audioSave": "Save audio settings",
-    "audioRefreshPresets": "Refresh presets"
+    "audioRefreshPresets": "Refresh presets",
+    "cacheTitle": "Audio cache",
+    "cacheSubtitle": "Rendered/converted audio the server caches per source file.",
+    "cacheTotal": "Total size",
+    "cacheRefresh": "Refresh",
+    "cacheEmpty": "The cache is empty.",
+    "cacheOrphans": "Unknown source (older builds)",
+    "cacheClearAll": "Clear all",
+    "cacheDeleteSource": "Delete this source's cache",
+    "cacheDeleteEntry": "Delete this cache file",
+    "cacheConfirmSource": "Delete all cached audio for this source file?",
+    "cacheConfirmAll": "Delete the entire audio cache? Files will be re-rendered on demand."
   }
 }

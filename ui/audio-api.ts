@@ -15,6 +15,27 @@ import type {
   GnauralScheduleData,
 } from '@protocol'
 
+// GT6.2 (GT-D11): mirrors the server's CacheSummary (server/audio-cache-manifest.ts).
+export interface AudioCacheEntry {
+  readonly cacheFile: string
+  readonly kind: string
+  readonly discriminator: string
+  readonly bytes: number
+  readonly createdAt: string | null
+}
+export interface AudioCacheSource {
+  readonly sourcePath: string
+  readonly sourceName: string
+  readonly totalBytes: number
+  readonly entries: AudioCacheEntry[]
+}
+export interface AudioCacheSummary {
+  readonly totalBytes: number
+  readonly sources: AudioCacheSource[]
+  readonly orphanBytes: number
+  readonly orphans: AudioCacheEntry[]
+}
+
 interface AudioScheduleVoiceBatchPatch {
   readonly voiceId: number
   readonly hidden?: boolean
@@ -116,6 +137,18 @@ export const audioApi = {
       cache: 'no-store',
       signal,
     })
+  },
+
+  // GT6.2 (owner req. 13, GT-D11): audio output cache management.
+  fetchAudioCacheSummary(signal?: AbortSignal): Promise<AudioCacheSummary> {
+    return requestJson<AudioCacheSummary>('/api/audio/cache', { method: 'GET', cache: 'no-store', signal })
+  },
+  deleteAudioCache(query: { all?: boolean; source?: string; cacheFile?: string }, signal?: AbortSignal): Promise<{ deleted: number }> {
+    const params = new URLSearchParams()
+    if (query.all === true) params.set('all', '1')
+    if (query.source !== undefined) params.set('source', query.source)
+    if (query.cacheFile !== undefined) params.set('cacheFile', query.cacheFile)
+    return requestJson<{ deleted: number }>(`/api/audio/cache?${params.toString()}`, { method: 'DELETE', signal })
   },
 
   fetchEditorDocument(filePath: string, signal?: AbortSignal): Promise<AudioEditorDocumentResponse> {
