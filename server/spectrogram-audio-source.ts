@@ -64,7 +64,9 @@ const defaultRenderGnaural =
     let renderInputPath = aInputPath
     let tempInputPath: string | null = null
     if (singleLoop !== original) {
-      tempInputPath = join(dirname(aOutputWavPath), `.sl-${process.pid}-${randomUUID()}.gnaural`)
+      // GT10.11 (owner req. 59): the temp copy MUST live next to the source — Gnaural resolves
+      // preparse generators AND pcm audio files relative to the schedule's own directory.
+      tempInputPath = join(dirname(aInputPath), `.sl-${process.pid}-${randomUUID()}.gnaural`)
       await writeFile(tempInputPath, singleLoop)
       renderInputPath = tempInputPath
     }
@@ -176,18 +178,26 @@ export class SpectrogramAudioSource {
     if (aFileKind === "gnaural") {
       const tempDir = await mkdtemp(join(this.tempRoot, "mindwave-spectrogram-"))
       const wavPath = join(tempDir, "source.wav")
+      // GT4.3: for a solo render, mute the non-solo voices in a temp copy and render that.
+      // GT10.11 (owner req. 59): that copy MUST live next to the source (not in tempDir) —
+      // Gnaural resolves preparse generators + pcm audio files relative to the schedule's dir.
+      let soloInput: string | null = null
       try {
-        // GT4.3: for a solo render, mute the non-solo voices in a temp copy and render that.
         let renderInput = aResolvedPath
         if (aSoloVoiceIds.length > 0) {
           const sourceXml = await readFile(aResolvedPath, "utf8")
-          renderInput = join(tempDir, "solo.gnaural")
-          await writeFile(renderInput, muteNonSoloVoices(sourceXml, aSoloVoiceIds))
+          soloInput = join(dirname(aResolvedPath), `.solo-${process.pid}-${randomUUID()}.gnaural`)
+          await writeFile(soloInput, muteNonSoloVoices(sourceXml, aSoloVoiceIds))
+          renderInput = soloInput
         }
         await this.renderGnaural(renderInput, wavPath)
       } catch (error) {
         await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
         throw error
+      } finally {
+        if (soloInput !== null) {
+          await unlink(soloInput).catch(() => undefined)
+        }
       }
       return { wavPath, tempDir, refs: 0 }
     }
