@@ -152,42 +152,69 @@
              — the lanes never rendered because of exactly this. -->
         <div v-if="showGtracks" class="audio-page__gtrack-stack">
           <template v-for="(lane, gIndex) in gtracks.visibleLanes.value" :key="lane.id">
-            <GTrackView
-              :data-gtrack-lane="lane.id"
-              :voices="lane.voices"
-              :mode="lane.mode"
-              :duration-sec="gtracks.durationSec.value"
-              :label="gtrackLaneLabel(lane)"
-              :height="gtracks.laneHeight.value"
-              :playhead-sec="displayedPositionSec"
-              :seekable="canSeek"
-              :show-time-axis-top="gIndex === 0"
-              :show-time-axis-bottom="false"
-              :point-mode="gtracks.isLanePointMode(lane.id)"
-              :selection="gtracks.selectionForLane(lane.id)"
-              :point-tool="gtracks.pointTool.value"
-              :multi-selected="gtracks.multiSelection.value"
-              :accent-color="laneAccentColor(lane)"
-              :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
-              @seek="handleSeek"
-              @open-settings="gtrackSettingsId = lane.id"
-              @hide="gtracks.setLaneHidden(lane.id, true)"
-              @reorder-grip="onGtrackGripDown(lane.id, $event)"
-              @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
-              @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
-              @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
-              @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
-              @drag-end="gtracks.endPointDrag()"
-              @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
-              @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
-              @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
-              @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
-            />
-            <!-- GT4.3/GT4.1 (owner req. 21, GT-D17): solo audio (wave/spectrum/both) of this lane's
-                 voice set, as sub-lane(s) beneath the curves (server renders the .gnaural with only
-                 these voices audible — this is also how audiofile/noise voices show their audio). -->
+            <!-- GT4.2 (GT-D17): a curve lane sits over an optional inline solo-audio underlay -->
+            <div class="tracks-panel__gtrack-inline" :style="{ height: `${gtracks.laneHeight.value}px` }">
+              <waveform-view
+                v-if="laneInlineKind(lane) === 'wave'"
+                class="tracks-panel__gtrack-underlay"
+                :file-path="audio.displayFilePath"
+                :solo-voice-ids="lane.voiceIds"
+                :analysis="spectrogramLeftAnalysis"
+                :seekable="false"
+                :height="gtracks.laneHeight.value"
+                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-bottom="false"
+              />
+              <spectrogram-view
+                v-else-if="laneInlineKind(lane) === 'spectrum'"
+                class="tracks-panel__gtrack-underlay"
+                :file-path="audio.displayFilePath"
+                :solo-voice-ids="lane.voiceIds"
+                :analysis="spectrogramLeftAnalysis"
+                :render="spectrogramStore.renderOptions"
+                :seekable="false"
+                :primary="false"
+                :height="gtracks.laneHeight.value"
+                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-bottom="false"
+              />
+              <GTrackView
+                class="tracks-panel__gtrack-over"
+                :inline-underlay="laneInlineKind(lane) !== null"
+                :data-gtrack-lane="lane.id"
+                :voices="lane.voices"
+                :mode="lane.mode"
+                :duration-sec="gtracks.durationSec.value"
+                :label="gtrackLaneLabel(lane)"
+                :height="gtracks.laneHeight.value"
+                :playhead-sec="displayedPositionSec"
+                :seekable="canSeek"
+                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-bottom="false"
+                :point-mode="gtracks.isLanePointMode(lane.id)"
+                :selection="gtracks.selectionForLane(lane.id)"
+                :point-tool="gtracks.pointTool.value"
+                :multi-selected="gtracks.multiSelection.value"
+                :accent-color="laneAccentColor(lane)"
+                :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
+                @seek="handleSeek"
+                @open-settings="gtrackSettingsId = lane.id"
+                @hide="gtracks.setLaneHidden(lane.id, true)"
+                @reorder-grip="onGtrackGripDown(lane.id, $event)"
+                @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
+                @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
+                @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
+                @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
+                @drag-end="gtracks.endPointDrag()"
+                @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
+                @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
+                @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
+                @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
+              />
+            </div>
+            <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
             <waveform-view
-              v-if="(lane.soloMode === 'wave' || lane.soloMode === 'both') && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
+              v-if="laneWaveSublane(lane)"
               :file-path="audio.displayFilePath"
               :solo-voice-ids="lane.voiceIds"
               :analysis="spectrogramLeftAnalysis"
@@ -199,7 +226,7 @@
               :show-time-axis-bottom="false"
             />
             <spectrogram-view
-              v-if="(lane.soloMode === 'spectrum' || lane.soloMode === 'both') && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
+              v-if="laneSpectrumSublane(lane)"
               :file-path="audio.displayFilePath"
               :solo-voice-ids="lane.voiceIds"
               :analysis="spectrogramLeftAnalysis"
@@ -414,6 +441,19 @@
                 @update:model-value="(m: GTrackSoloMode) => gtracks.setLaneSolo(gtrackSettingsLane!.id, m)"
               />
               <div class="text-caption text-grey q-mt-xs">{{ t('audio.gtrackSoloHint') }}</div>
+              <!-- GT4.2 (GT-D17): placement — under the curves (inline) or a sub-lane below. -->
+              <q-btn-toggle
+                v-if="(gtrackSettingsLane.soloMode ?? 'off') !== 'off'"
+                class="q-mt-sm"
+                :model-value="gtrackSettingsLane.soloInline ?? false"
+                dense unelevated no-caps spread
+                toggle-color="primary"
+                :options="[
+                  { label: t('audio.gtrackSoloSublane'), value: false },
+                  { label: t('audio.gtrackSoloUnder'), value: true },
+                ]"
+                @update:model-value="(v: boolean) => gtracks.setLaneSoloInline(gtrackSettingsLane!.id, v)"
+              />
             </q-card-section>
             <q-separator />
             <q-card-section>
@@ -1446,6 +1486,27 @@ function laneAccentColor(lane: { voices: readonly { id: number }[] }): string | 
   return v === undefined ? null : voiceDotColor(v, vi)
 }
 
+// GT4.2 (GT-D17): solo-audio placement per lane. soloMode = what (wave/spectrum/both); soloInline =
+// where (under the curves vs a sub-lane below). Inline shows ONE underlay (spectrum wins for 'both');
+// for 'both' inline, the wave still appears as a sub-lane so nothing is lost.
+interface LaneSoloShape { soloMode: GTrackSoloMode; soloInline: boolean; voiceIds: readonly number[] }
+function laneSoloActive(lane: LaneSoloShape): boolean {
+  return lane.soloMode !== 'off' && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0
+}
+function laneInlineKind(lane: LaneSoloShape): 'wave' | 'spectrum' | null {
+  if (!laneSoloActive(lane) || !lane.soloInline) return null
+  return lane.soloMode === 'spectrum' || lane.soloMode === 'both' ? 'spectrum' : 'wave'
+}
+function laneWaveSublane(lane: LaneSoloShape): boolean {
+  if (!laneSoloActive(lane)) return false
+  if (lane.soloMode === 'both') return true // spectrum takes the inline/own slot; wave is always a sub-lane
+  return lane.soloMode === 'wave' && !lane.soloInline
+}
+function laneSpectrumSublane(lane: LaneSoloShape): boolean {
+  if (!laneSoloActive(lane)) return false
+  return (lane.soloMode === 'spectrum' || lane.soloMode === 'both') && !lane.soloInline
+}
+
 const gtrackSettingsId = ref<number | null>(null)
 const gtrackSettingsOpen = computed<boolean>({
   get: () => gtrackSettingsId.value !== null,
@@ -2111,6 +2172,24 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1px;
   margin-bottom: 2px;
+}
+
+/* GT4.2 (GT-D17): inline solo underlay — the solo wave/spectrum sits BEHIND the curve lane, which
+   punches a transparent hole in its plot so the underlay shows through under the curves. */
+.tracks-panel__gtrack-inline {
+  position: relative;
+  width: 100%;
+}
+
+.tracks-panel__gtrack-underlay {
+  inset: 0;
+  position: absolute;
+  z-index: 0;
+}
+
+.tracks-panel__gtrack-over {
+  position: relative;
+  z-index: 1;
 }
 
 .audio-page__gtrack-dialog {

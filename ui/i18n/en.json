@@ -79,6 +79,8 @@
     "gtrackSoloSpectrum": "Spectrum",
     "gtrackSoloBoth": "Both",
     "gtrackSoloHint": "Waveform/spectrogram of only this lane's voices (rendered muted-others). Also shows the audio of audiofile/noise voices.",
+    "gtrackSoloSublane": "Sub-lane",
+    "gtrackSoloUnder": "Under curves",
     "gtrackModeLabel": "Display mode",
     "gtrackVoices": "Voices in this lane",
     "gtrackRemoveLane": "Remove lane",

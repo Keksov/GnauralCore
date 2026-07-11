@@ -79,6 +79,8 @@
     "gtrackSoloSpectrum": "Спектр",
     "gtrackSoloBoth": "Оба",
     "gtrackSoloHint": "Волна/спектр только голосов этой дорожки (рендер с замьюченными остальными). Так же показывает звук audiofile/noise-голосов.",
+    "gtrackSoloSublane": "Под-дорожка",
+    "gtrackSoloUnder": "Под кривыми",
     "gtrackModeLabel": "Режим отображения",
     "gtrackVoices": "Голоса на этой дорожке",
     "gtrackRemoveLane": "Удалить дорожку",

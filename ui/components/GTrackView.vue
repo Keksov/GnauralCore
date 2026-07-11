@@ -1,5 +1,5 @@
 <template>
-  <div class="gtrack-view" :style="rootStyle">
+  <div class="gtrack-view" :class="{ 'gtrack-view--underlay': inlineUnderlay }" :style="rootStyle">
     <canvas
       ref="canvasEl"
       class="gtrack-view__canvas"
@@ -150,6 +150,9 @@ interface Props {
   /** GT3.18 (GT-D20): per-voice accent colour for single-voice lanes — a left stripe + tinted title
    *  visually group a voice's lanes. null = no accent (multi-voice lane). */
   accentColor?: string | null
+  /** GT4.2 (GT-D17): punch a transparent hole in the plot area so a solo audio layer behind this
+   *  lane shows through under the curves; also makes the lane root background transparent. */
+  inlineUnderlay?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -161,6 +164,7 @@ const props = withDefaults(defineProps<Props>(), {
   pointTool: 'select',
   multiSelected: null,
   accentColor: null,
+  inlineUnderlay: false,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -284,6 +288,14 @@ function draw(): void {
   const plotY = marginTop()
   const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
   const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+
+  // GT4.2 (GT-D17): inline underlay — punch a transparent hole in the plot area so a solo
+  // waveform/spectrogram layer positioned BEHIND this lane shows through under the curves. The
+  // axis gutters stay opaque (the bg fill above), hiding the underlay's own axis labels. The lane
+  // root's CSS background is made transparent in this mode so the hole reveals the layer behind.
+  if (props.inlineUnderlay) {
+    ctx.clearRect(plotX, plotY, plotW, plotH)
+  }
 
   if (!hasData.value) {
     drawAxes(ctx, plotX, plotY, plotW, plotH)
@@ -747,6 +759,7 @@ watch(() => props.pointMode, () => {
   scheduleDraw()
 })
 watch(() => props.multiSelected, () => scheduleDraw())
+watch(() => props.inlineUnderlay, () => scheduleDraw())
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
@@ -774,6 +787,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: relative;
   width: 100%;
+}
+
+/* GT4.2: with an inline underlay behind, the lane root is transparent so the plot-area hole
+   (punched in the canvas) reveals the solo audio layer; the canvas keeps the axis gutters opaque. */
+.gtrack-view--underlay {
+  background: transparent;
 }
 
 .gtrack-view__canvas {
