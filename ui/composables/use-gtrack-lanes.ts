@@ -12,8 +12,10 @@ import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, typ
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds } from './gtrack-xml'
 
-/** GT4.3 (GT-D17): per-lane solo audio underlay of the lane's voice set. 'off' = none. */
-export type GTrackSoloMode = 'off' | 'spectrum'
+/** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
+ *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
+export type GTrackSoloMode = 'off' | 'wave' | 'spectrum' | 'both'
+const SOLO_MODES: readonly GTrackSoloMode[] = ['off', 'wave', 'spectrum', 'both']
 
 export interface GTrackLane {
   id: number
@@ -209,7 +211,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           voiceIds: (Array.isArray(s.voiceIds) ? s.voiceIds : []).filter((id) => validIds.has(id)),
           mode: toMode(s.mode),
           hidden: s.hidden === true,
-          soloMode: (s.soloMode === 'spectrum' ? 'spectrum' : 'off') as GTrackSoloMode,
+          soloMode: (SOLO_MODES.includes(s.soloMode as GTrackSoloMode) ? s.soloMode : 'off') as GTrackSoloMode,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }

@@ -100,6 +100,9 @@ interface Props {
   seekable?: boolean
   showTimeAxisTop?: boolean
   showTimeAxisBottom?: boolean
+  /** GT4.1/GT4.3 (GT-D17): for a .gnaural source, analyze a SOLO render of just these voice ids
+      (all others muted). Omitted/empty = the full mix. Changing it re-opens the analysis. */
+  soloVoiceIds?: readonly number[]
 }
 const props = withDefaults(defineProps<Props>(), {
   channel: 0,
@@ -474,7 +477,7 @@ async function openForFile(aFilePath: string | null): Promise<void> {
   try {
     // Reuse the spectrogram track's analysis (same params -> same cache key -> shared).
     const params = props.analysis ?? { window: 2048, hop: 512, data: 'magnitude' as const, channel: props.channel }
-    await spec.open({ filePath: aFilePath, ...params })
+    await spec.open({ filePath: aFilePath, soloVoiceIds: props.soloVoiceIds, ...params })
   } catch {
     // ignore — draw shows the empty frame
   }
@@ -496,6 +499,8 @@ watch(() => props.color, () => scheduleDraw())
 watch(() => props.channel, () => { void openForFile(props.filePath) })
 watch(() => props.playheadSec, () => scheduleDraw())
 watch(() => props.filePath, (v) => { void openForFile(v) })
+// GT4.1/GT4.3: changing the solo voice set switches the source render -> re-open on the same path.
+watch(() => (props.soloVoiceIds ?? []).join(','), () => { void openForFile(props.filePath) })
 // SF24.1 fix: track the spectrogram track's params so we keep reusing its (reconfigured) analysis.
 watch(() => props.analysis, () => { void openForFile(props.filePath) }, { deep: true })
 

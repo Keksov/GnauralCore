@@ -183,10 +183,23 @@
               @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
               @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
             />
-            <!-- GT4.3 (owner req. 21, GT-D17): solo spectrum of this lane's voice set, shown as a
-                 sub-lane beneath the curves (server renders the .gnaural with only these voices). -->
+            <!-- GT4.3/GT4.1 (owner req. 21, GT-D17): solo audio (wave/spectrum/both) of this lane's
+                 voice set, as sub-lane(s) beneath the curves (server renders the .gnaural with only
+                 these voices audible — this is also how audiofile/noise voices show their audio). -->
+            <waveform-view
+              v-if="(lane.soloMode === 'wave' || lane.soloMode === 'both') && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
+              :file-path="audio.displayFilePath"
+              :solo-voice-ids="lane.voiceIds"
+              :analysis="spectrogramLeftAnalysis"
+              :playhead-sec="displayedPositionSec"
+              :seekable="false"
+              :label="`◑ ${gtrackLaneLabel(lane)}`"
+              :height="Math.round(gtracks.laneHeight.value * 0.7)"
+              :show-time-axis-top="false"
+              :show-time-axis-bottom="false"
+            />
             <spectrogram-view
-              v-if="lane.soloMode === 'spectrum' && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
+              v-if="(lane.soloMode === 'spectrum' || lane.soloMode === 'both') && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0"
               :file-path="audio.displayFilePath"
               :solo-voice-ids="lane.voiceIds"
               :analysis="spectrogramLeftAnalysis"
@@ -394,7 +407,9 @@
                 toggle-color="primary"
                 :options="[
                   { label: t('audio.gtrackSoloOff'), value: 'off' },
+                  { label: t('audio.gtrackSoloWave'), value: 'wave' },
                   { label: t('audio.gtrackSoloSpectrum'), value: 'spectrum' },
+                  { label: t('audio.gtrackSoloBoth'), value: 'both' },
                 ]"
                 @update:model-value="(m: GTrackSoloMode) => gtracks.setLaneSolo(gtrackSettingsLane!.id, m)"
               />
