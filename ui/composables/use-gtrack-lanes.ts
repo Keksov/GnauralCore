@@ -172,13 +172,21 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return { voiceIds: all.map((v) => v.id), mode: 'volume' }
   }
 
+  function laneForVoice(v: GTrackVoice): GTrackLane {
+    return { id: nextLaneId++, voiceIds: [v.id], mode: (isTonal(v) ? 'base' : 'volume') as GTrackMode, hidden: false }
+  }
+
+  // GT-D13 refined (2026-07-11): the DEFAULT layout gives each TONAL voice its own Base-freq lane.
+  // Audiofile/noise voices are NOT auto-laned — their only curve is a volume envelope, and a real
+  // preset (ForestMeditation: 30 nature clips + 1 binaural) would otherwise open as a 31-lane wall.
+  // Those voices stay one toggle away in the voices panel, and Phase 4 gives them real audio
+  // (wave/spectrum) lanes. A schedule with NO tonal voices (e.g. an all-noise file) falls back to a
+  // single Volume lane with every voice so the stack isn't empty.
   function defaultLanes(): GTrackLane[] {
-    return voices.value.map((v) => ({
-      id: nextLaneId++,
-      voiceIds: [v.id],
-      mode: (isTonal(v) ? 'base' : 'volume') as GTrackMode,
-      hidden: false,
-    }))
+    const tonal = voices.value.filter(isTonal)
+    if (tonal.length > 0) return tonal.map(laneForVoice)
+    const cfg = defaultLaneConfig()
+    return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false }]
   }
 
   function restoreOrDefault(): void {
@@ -516,9 +524,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes.value = [{ id: nextLaneId++, voiceIds: voices.value.map((v) => v.id), mode, hidden: false }]
     persist()
   }
-  /** One lane per voice (this IS the default layout, so it doubles as "reset"). */
+  /** One lane per voice — EVERY voice (the explicit "spread everything", incl. audiofile/noise). */
   function spreadPerVoiceLanes(): void {
-    lanes.value = defaultLanes()
+    lanes.value = voices.value.map(laneForVoice)
     persist()
   }
   /**
