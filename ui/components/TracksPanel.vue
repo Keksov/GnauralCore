@@ -80,6 +80,20 @@
           >
             <q-tooltip>{{ t('audio.gtrackVoicesPanel') }}</q-tooltip>
           </q-btn>
+          <!-- GT9.2 (owner req. 42): schedule problems (lint) badge — count + severity colour. -->
+          <q-btn
+            v-if="audio.displayMode === 'gnaural' && gtracks.diagnostics.value.length > 0"
+            dense flat round size="sm"
+            icon="report_problem"
+            :color="diagnosticsSeverity === 'error' ? 'negative' : 'warning'"
+            :aria-label="t('audio.gtrackProblems')"
+            @click="diagnosticsOpen = !diagnosticsOpen"
+          >
+            <q-badge floating rounded :color="diagnosticsSeverity === 'error' ? 'negative' : 'warning'" text-color="dark">
+              {{ gtracks.diagnostics.value.length }}
+            </q-badge>
+            <q-tooltip>{{ t('audio.gtrackProblems') }}</q-tooltip>
+          </q-btn>
           <!-- GT2.2: add a gtrack editor lane (only for a gnaural file). -->
           <q-btn
             v-if="audio.displayMode === 'gnaural'"
@@ -646,6 +660,49 @@
       </aside>
     </transition>
 
+    <!-- GT9.2 (owner req. 42, GT-D21): schedule problems (lint) — slide-over list; click navigates. -->
+    <transition name="spectrogram-settings-backdrop">
+      <div v-if="diagnosticsOpen" class="audio-page__spectrogram-settings-backdrop" aria-hidden="true" @click="diagnosticsOpen = false" />
+    </transition>
+    <transition name="gtrack-voices-panel">
+      <aside
+        v-if="diagnosticsOpen"
+        class="tracks-panel__voices-panel"
+        role="dialog"
+        aria-modal="false"
+        :aria-label="t('audio.gtrackProblems')"
+      >
+        <div class="audio-page__spectrogram-settings-header">
+          <div class="audio-page__spectrogram-settings-title">{{ t('audio.gtrackProblems') }} ({{ gtracks.diagnostics.value.length }})</div>
+          <q-btn flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')" @click="diagnosticsOpen = false" />
+        </div>
+        <div class="audio-page__spectrogram-settings-body">
+          <div v-if="gtracks.diagnostics.value.length === 0" class="text-caption text-grey q-pa-sm">
+            {{ t('audio.gtrackNoProblems') }}
+          </div>
+          <q-list v-else dense separator>
+            <q-item
+              v-for="(d, i) in gtracks.diagnostics.value"
+              :key="i"
+              clickable
+              @click="navigateToDiagnostic(d)"
+            >
+              <q-item-section avatar style="min-width: 28px">
+                <q-icon
+                  :name="d.severity === 'error' ? 'error' : 'warning'"
+                  :color="d.severity === 'error' ? 'negative' : 'warning'"
+                  size="20px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption class="tracks-panel__diag-msg">{{ d.message }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
+      </aside>
+    </transition>
+
     <!-- GT3.12 (GT-D18): non-modal live point inspector — NO backdrop (owner req. 26: the tracks
          stay fully interactive so the user can click other vertices to inspect them). Floats as a
          small panel instead of docking to an edge, so it doesn't block the whole stack.
@@ -864,6 +921,7 @@ import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
+import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import {
@@ -958,6 +1016,29 @@ const gtracks = useGtrackLanes(
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
 // GT3.9 (GT-D15): the schedule's voice panel (slide-over, left).
 const voicesPanelOpen = ref(false)
+
+// GT9.2 (owner req. 42, GT-D21): schedule-problems (lint) panel. Diagnostics are live from the
+// composable (re-linted on every edit). Clicking one navigates to the offending point.
+const diagnosticsOpen = ref(false)
+const diagnosticsSeverity = computed<'error' | 'warning' | null>(() => {
+  const ds = gtracks.diagnostics.value
+  if (ds.some((d) => d.severity === 'error')) return 'error'
+  return ds.length > 0 ? 'warning' : null
+})
+function navigateToDiagnostic(d: GTrackDiagnostic): void {
+  const lane = gtracks.visibleLanes.value.find((l) => l.voiceIds.includes(d.voiceId))
+  if (lane === undefined) {
+    // The voice has no visible lane (e.g. an audiofile/noise voice not shown) — point the user there.
+    $q.notify({ type: 'info', message: t('audio.gtrackProblemVoiceHidden') })
+    return
+  }
+  if (!gtracks.isLanePointMode(lane.id)) gtracks.toggleLanePointMode(lane.id)
+  if (d.pointIndex !== null) {
+    gtracks.selectPoint(lane.id, { voiceId: d.voiceId, pointIndex: d.pointIndex })
+    gtracks.clearMultiSelection()
+  }
+  diagnosticsOpen.value = false
+}
 
 // GT3.3/GT3.12: the point inspector. Opened by double-clicking a vertex in point mode; edits
 // every entry field in one undo unit (time uses crossover semantics — see applyPointEdit).
@@ -2014,6 +2095,12 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     voicesPanelOpen.value = false
     return
   }
+  // GT9.2: Escape closes the schedule-problems panel too.
+  if (event.key === 'Escape' && diagnosticsOpen.value) {
+    event.preventDefault()
+    diagnosticsOpen.value = false
+    return
+  }
   // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
   if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
     event.preventDefault()
@@ -2190,6 +2277,11 @@ onBeforeUnmount(() => {
 .tracks-panel__gtrack-over {
   position: relative;
   z-index: 1;
+}
+
+/* GT9.2: lint diagnostic messages wrap instead of truncating. */
+.tracks-panel__diag-msg {
+  white-space: normal;
 }
 
 .audio-page__gtrack-dialog {

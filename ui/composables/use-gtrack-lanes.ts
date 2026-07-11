@@ -11,6 +11,7 @@ import { audioApi } from '../audio-api'
 import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds } from './gtrack-xml'
+import { lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -134,6 +135,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
   const voices = computed<readonly GTrackVoice[]>(() => scheduleRef.value?.voices ?? [])
   const durationSec = computed(() => schedule.value?.totalTimeSec ?? 0)
+  // GT9.1/GT9.2 (owner req. 42): live schedule lint — re-runs on every edit (scheduleRef changes).
+  const diagnostics = computed<GTrackDiagnostic[]>(() =>
+    scheduleRef.value === null ? [] : lintSchedule(scheduleRef.value),
+  )
 
   // GT3.1/3.2: point-edit mode + selection (ephemeral). Declared before the immediate schedule
   // watch (which clears the selection) to avoid a temporal-dead-zone reference.
@@ -861,6 +866,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes,
     voices,
     durationSec,
+    diagnostics,
     laneHeight,
     setLaneHeight,
     visibleLanes,
