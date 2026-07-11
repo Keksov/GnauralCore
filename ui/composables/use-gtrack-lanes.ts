@@ -796,6 +796,58 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return true
   }
 
+  // --- GT9.3 (owner req. 42, GT-D21): confirmed auto-fixes for lint diagnostics (undoable) ---
+  const END_FADE_SEC = 0.1
+  /**
+   * Fix an 'end-click': append a short fade to zero at the very end. Insert a point 0.1s before the
+   * end (interpolated ~= the end level) then drive the final point to silence — one undo unit,
+   * total duration preserved. Returns false when the last segment is too short for a clean fade.
+   */
+  function fixEndClick(voiceId: number): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(voiceId)) return false
+    const voice = voiceById(voiceId)
+    if (voice === undefined || voice.points.length < 2) return false
+    const pts = voice.points
+    const lastIdx = pts.length - 1
+    const endTime = pts[lastIdx]!.timeSec
+    const lastSegDur = endTime - pts[lastIdx - 1]!.timeSec
+    if (!(lastSegDur > END_FADE_SEC + 0.01)) return false // degenerate/short tail — manual fix
+    try {
+      m.edit(() => {
+        m.insertPoint(voiceId, endTime - END_FADE_SEC)
+        const v = m.schedule.voices.find((x) => x.id === voiceId)
+        if (v === undefined) throw new Error('gtrack: voice vanished during fix')
+        m.setPointFields(voiceId, v.points.length - 1, { volL: 0, volR: 0 })
+      })
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+  /**
+   * Fix a 'loop-click': set the last point's volume to the first point's, so the loop seam
+   * (end -> start) has no volume discontinuity. One undo unit.
+   */
+  function fixLoopClick(voiceId: number): boolean {
+    const m = model.value
+    if (m === null || !m.isVoiceEditable(voiceId)) return false
+    const voice = voiceById(voiceId)
+    if (voice === undefined || voice.points.length < 2) return false
+    const first = voice.points[0]!
+    const lastIdx = voice.points.length - 1
+    try {
+      m.edit(() => m.setPointFields(voiceId, lastIdx, { volL: first.volL, volR: first.volR }))
+    } catch {
+      return false
+    }
+    syncSchedule()
+    refreshEditState()
+    return true
+  }
+
   function undoEdit(): void {
     const m = model.value
     if (m === null || m.inTransaction) return // never undo mid-drag (the model would throw)
@@ -849,6 +901,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     preparseVoiceIds,
     isVoicePreparse,
     fixPreparseVoice,
+    fixEndClick,
+    fixLoopClick,
     applyPointEdit,
     insertPointAt,
     removeSelectedPoint,

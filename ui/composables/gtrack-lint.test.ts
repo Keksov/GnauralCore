@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { GTrackPoint, GTrackSchedule, GTrackVoice } from './gtrack-model'
+import type { GnauralScheduleData } from '@protocol'
+
+import { GTrackModel, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { lintSchedule, type GTrackLintRule } from './gtrack-lint'
 
 function pt(timeSec: number, volL: number, volR: number, baseFreq = 200, beatFreqHalf = 5): GTrackPoint {
@@ -90,5 +92,45 @@ describe('lintSchedule (GT9.1 / GT-D21)', () => {
     const s = sched([voice(0, [pt(0, 0.5, 0.5), pt(10, Number.POSITIVE_INFINITY, 0.9)])]) // error + end-click warning
     const diags = lintSchedule(s)
     expect(diags[0]!.severity).toBe('error')
+  })
+})
+
+// One loud tonal voice (ends at 0.7), as a dump the model can load.
+function loudDump(loopCount = 1): GnauralScheduleData {
+  return {
+    title: '', author: '', description: '', totalTimeSec: 10, loopCount,
+    overallVolL: 1, overallVolR: 1, stereoSwap: false, voiceCount: 1,
+    voices: [{
+      id: 0, type: 'binaural', typeIndex: 0, description: 'v', hidden: false, muted: false,
+      mono: false, color: null, audioFilePath: '', totalDurationSec: 10, entryCount: 1,
+      entries: [{ startSec: 0, endSec: 10, durationSec: 10, baseFreqStart: 200, baseFreqEnd: 200,
+        beatFreqHalfStart: 5, beatFreqHalfEnd: 5, volLStart: 0.2, volLEnd: 0.7, volRStart: 0.2, volREnd: 0.7 }],
+    }],
+  }
+}
+
+describe('GT9.3 auto-fix operations clear the diagnostic (model + lint)', () => {
+  test('end-fade: insert a point 0.1s before the end + drive the last point to zero', () => {
+    const model = new GTrackModel(loudDump())
+    expect(lintSchedule(model.schedule).some((d) => d.rule === 'end-click')).toBe(true)
+    model.edit(() => {
+      const pts = model.schedule.voices[0]!.points
+      const endTime = pts[pts.length - 1]!.timeSec
+      model.insertPoint(0, endTime - 0.1)
+      const v = model.schedule.voices.find((x) => x.id === 0)!
+      model.setPointFields(0, v.points.length - 1, { volL: 0, volR: 0 })
+    })
+    expect(lintSchedule(model.schedule).some((d) => d.rule === 'end-click')).toBe(false)
+  })
+
+  test('loop-align: matching the last point volume to the first clears the loop-click', () => {
+    const model = new GTrackModel(loudDump(5)) // loops -> seam click (start 0.2 != end 0.7)
+    expect(lintSchedule(model.schedule).some((d) => d.rule === 'loop-click')).toBe(true)
+    model.edit(() => {
+      const pts = model.schedule.voices[0]!.points
+      const first = pts[0]!
+      model.setPointFields(0, pts.length - 1, { volL: first.volL, volR: first.volR })
+    })
+    expect(lintSchedule(model.schedule).some((d) => d.rule === 'loop-click')).toBe(false)
   })
 })

@@ -697,6 +697,10 @@
               <q-item-section>
                 <q-item-label caption class="tracks-panel__diag-msg">{{ d.message }}</q-item-label>
               </q-item-section>
+              <!-- GT9.3: one-click auto-fix for the fixable rules (undoable; Ctrl+S to persist). -->
+              <q-item-section side v-if="isDiagFixable(d)">
+                <q-btn dense flat no-caps size="sm" color="primary" :label="t('audio.gtrackDiagFix')" @click.stop="fixDiagnostic(d)" />
+              </q-item-section>
             </q-item>
           </q-list>
         </div>
@@ -1038,6 +1042,19 @@ function navigateToDiagnostic(d: GTrackDiagnostic): void {
     gtracks.clearMultiSelection()
   }
   diagnosticsOpen.value = false
+}
+// GT9.3 (owner req. 42, GT-D21): confirmed one-click fixes for the fixable diagnostics. The explicit
+// button + full undo + the separate Ctrl+S Save are the safeguards (nothing persists until Save).
+function isDiagFixable(d: GTrackDiagnostic): boolean {
+  return d.rule === 'end-click' || d.rule === 'loop-click'
+}
+function fixDiagnostic(d: GTrackDiagnostic): void {
+  const ok = d.rule === 'end-click' ? gtracks.fixEndClick(d.voiceId)
+    : d.rule === 'loop-click' ? gtracks.fixLoopClick(d.voiceId)
+    : false
+  $q.notify(ok
+    ? { type: 'positive', message: t('audio.gtrackDiagFixed') }
+    : { type: 'negative', message: t('audio.gtrackDiagFixFailed') })
 }
 
 // GT3.3/GT3.12: the point inspector. Opened by double-clicking a vertex in point mode; edits
