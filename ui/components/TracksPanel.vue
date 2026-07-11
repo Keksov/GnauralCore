@@ -18,7 +18,7 @@
     >
       {{ audio.gnauralScheduleError }}
     </q-banner>
-    <div v-if="showGtracks || hasBuffer" class="row no-wrap items-start" style="gap: 16px;">
+    <div v-if="showGtracks || hasSpectrogramData" class="row no-wrap items-start" style="gap: 16px;">
       <div class="col column" style="min-width: 0;">
         <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
         <div class="audio-page__spectrogram-header">
@@ -267,7 +267,7 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <div v-if="showWaveform && hasBuffer" class="audio-page__waveform-stack">
+        <div v-if="showWaveform && hasSpectrogramData" class="audio-page__waveform-stack">
           <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
             <waveform-view
               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
@@ -313,7 +313,7 @@
             @pointercancel="onWaveformBottomPointerUp"
           />
         </div>
-        <div v-if="showSpectrogram && hasBuffer" class="audio-page__spectrogram-stack">
+        <div v-if="showSpectrogram && hasSpectrogramData" class="audio-page__spectrogram-stack">
         <template v-for="(track, index) in spectrogramTracks" :key="track.key">
           <spectrogram-view
             :ref="(el) => setPrimarySpectrogramRef(el, index)"
@@ -369,7 +369,7 @@
         </div>
         <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
              B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
-        <div v-if="showSpectrogram && hasBuffer" class="audio-page__minimap-wrap">
+        <div v-if="showSpectrogram && hasSpectrogramData" class="audio-page__minimap-wrap">
           <spectrogram-minimap
             :duration-sec="spectrogramDuration"
             :file-path="audio.displayFilePath"
@@ -945,6 +945,7 @@ import GTrackView from './GTrackView.vue'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
+import { useSpectrogram } from '../composables/use-spectrogram'
 import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
@@ -1360,6 +1361,24 @@ function voiceDotColor(v: GTrackVoice, index: number): string {
 // spectrogram buffer is missing (e.g. AndromedaHell renders a 868 MB WAV from 4900 loops that the
 // browser can't decode). The waveform/spectrum lanes stay gated on the decoded buffer.
 const hasBuffer = computed(() => audio.spectrogramBuffer !== null)
+
+// GT7.2 (GT-D12, thin client): source spectrogram metadata (channel count, duration, ready gate)
+// from the BACKEND analysis instead of the decoded client WAV buffer. A lightweight analysis opened
+// for the display file yields channelCount + durationSec (GT7.1). The client buffer is kept only as
+// a fallback (and, until GT7.3, for the waveform overlay), so this change is non-regressive.
+const metaSpec = useSpectrogram({ refetchDebounceMs: 400 })
+const backendAnalysis = computed(() => metaSpec.analysis.value)
+async function openMetaAnalysis(path: string | null): Promise<void> {
+  await metaSpec.close()
+  if (path === null || path === '') return
+  try {
+    await metaSpec.open({ filePath: path, ...spectrogramStore.analysisParams, channel: 0 })
+  } catch {
+    // WS/analysis error -> fall back to the client buffer metadata
+  }
+}
+// Backend analysis is available -> we can render the stack even without a decoded client buffer.
+const hasSpectrogramData = computed(() => hasBuffer.value || backendAnalysis.value !== null)
 // SF9.2: independent per-track heights; length is kept in sync with the track count
 // (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
 const spectrogramTrackHeights = ref<number[]>(loadStoredSpectrogramTrackHeights())
@@ -1383,7 +1402,10 @@ watch(spectrogramTrackHeights, (value) => {
 // the "press play to render" hint — a tracks-neutral message is used for every kind.
 const noSpectrogramLabel = computed(() => t('audio.tracksNoData'))
 
-const isSpectrogramStereo = computed(() => (audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2)
+// GT7.2: prefer the backend analysis' channelCount; fall back to the decoded buffer.
+const isSpectrogramStereo = computed(
+  () => (backendAnalysis.value?.channelCount ?? audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2,
+)
 
 // SF22 + SF23: audio view prefs — Audacity-style view mode + waveform scale/colour/opacity.
 type AudioViewMode = 'waveform' | 'spectrogram' | 'both' | 'overlay'
@@ -1857,7 +1879,10 @@ watch(() => audio.displayFilePath, () => {
 // for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
 // Effective time span for the header zoom/fit math: the decoded WAV duration, or (when there is no
 // WAV yet, e.g. gtracks-only) the schedule's single-loop duration so the shared view still works.
-const spectrogramDuration = computed(() => audio.spectrogramBuffer?.duration || gtracks.durationSec.value)
+// GT7.2: duration from the backend analysis, then the buffer, then the gnaural schedule length.
+const spectrogramDuration = computed(
+  () => backendAnalysis.value?.durationSec || audio.spectrogramBuffer?.duration || gtracks.durationSec.value,
+)
 
 // SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
 // re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data
@@ -2222,12 +2247,18 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
   }
 }
 
+// GT7.2: keep the backend metadata analysis open for the current display file. channelCount +
+// durationSec don't depend on the FFT params, so it's opened once per file (no reconfigure needed).
+watch(() => audio.displayFilePath, (path) => { void openMetaAnalysis(path) })
+
 onMounted(() => {
   window.addEventListener('keydown', handleTracksKeyDown)
+  void openMetaAnalysis(audio.displayFilePath)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleTracksKeyDown)
+  metaSpec.dispose()
 })
 </script>
 
