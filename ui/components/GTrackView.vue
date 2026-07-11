@@ -184,6 +184,8 @@ const emit = defineEmits<{
   (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
   /** GT3.15: Ctrl/Shift+click on a vertex — toggle it in the multi-selection. */
   (event: 'toggle-multi-select', point: GTrackPointRef): void
+  /** GT10.10: a press-release with no movement — the drag transaction should be cancelled. */
+  (event: 'drag-cancel'): void
 }>()
 
 interface SpectrogramSharedState {
@@ -545,9 +547,37 @@ function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number;
 
 // GT3.2: drag state. A drag runs from pointerdown-on-a-vertex to pointerup as one undo unit.
 let dragRef: GTrackPointRef | null = null
+// GT10.10 (owner req. 55): distinguish a CLICK (no movement -> open the dialog) from a DRAG.
+let dragStart: { x: number; y: number } | null = null
+let dragMoved = false
+const DRAG_THRESHOLD_PX = 3
+
+function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
+  emit('select-point', hit)
+  dragRef = hit
+  dragStart = { x: aEvent.offsetX, y: aEvent.offsetY }
+  dragMoved = false
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+  emit('drag-start', hit)
+}
 
 function onPointerDown(aEvent: PointerEvent): void {
-  if (!props.pointMode || !hasData.value || aEvent.button !== 0) return
+  if (!hasData.value || aEvent.button !== 0) return
+  // GT10.10 (owner reqs 57-58): NORMAL mode + Ctrl — click a vertex to drag it, click a curve to
+  // add a node (one-off edits without entering point mode).
+  if (!props.pointMode) {
+    if (aEvent.ctrlKey || aEvent.metaKey) {
+      const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+      if (hit !== null) {
+        beginVertexDrag(aEvent, hit)
+        return
+      }
+      const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
+      if (curve !== null) emit('add-point', curve)
+    }
+    return
+  }
 
   // GT3.14 (owner req. 24): the Add/Delete tools act on a single click and skip select+drag.
   if (props.pointTool === 'add') {
@@ -570,16 +600,20 @@ function onPointerDown(aEvent: PointerEvent): void {
     return
   }
 
-  emit('select-point', hit) // select the vertex (or deselect on empty space)
-  if (hit === null) return
-  dragRef = hit
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
-  emit('drag-start', hit)
+  if (hit === null) {
+    emit('select-point', null) // deselect on empty space
+    return
+  }
+  beginVertexDrag(aEvent, hit)
 }
 
 function onPointerMove(aEvent: PointerEvent): void {
   if (dragRef !== null) {
+    // GT10.10: ignore sub-threshold jitter so a plain click stays a click (opens the dialog).
+    if (!dragMoved && dragStart !== null) {
+      if (Math.hypot(aEvent.offsetX - dragStart.x, aEvent.offsetY - dragStart.y) < DRAG_THRESHOLD_PX) return
+      dragMoved = true
+    }
     const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
     if (tv !== null) emit('drag-move', { point: dragRef, timeSec: tv.timeSec, value: tv.value })
     hoverPos.value = null // GT3.13: no hover tooltip while actively dragging
@@ -603,8 +637,18 @@ function onPointerMove(aEvent: PointerEvent): void {
 
 function onPointerUp(aEvent: PointerEvent): void {
   if (dragRef === null) return
+  const ref_ = dragRef
+  const clicked = !dragMoved
   dragRef = null
+  dragStart = null
   try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+  if (clicked) {
+    // GT10.10 (owner req. 55): a press-release without movement is a CLICK — cancel the (empty)
+    // drag transaction and open the point dialog.
+    emit('drag-cancel')
+    emit('edit-point', ref_)
+    return
+  }
   emit('drag-end')
 }
 
@@ -638,6 +682,8 @@ const hoverTooltip = computed<{ name: string; rows: TooltipRow[] } | null>(() =>
 function onClick(aEvent: MouseEvent): void {
   // GT3.1/3.2: in point mode, selection + drag are handled on pointerdown/up, so clicks are inert.
   if (props.pointMode) return
+  // GT10.10: Ctrl-clicks are edit gestures (drag vertex / add node), never a seek.
+  if (aEvent.ctrlKey || aEvent.metaKey) return
   if (props.seekable !== true || !hasData.value) return
   const f = xFraction(aEvent)
   if (f === null) return
@@ -683,15 +729,18 @@ function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number;
 }
 
 function onDblClick(aEvent: MouseEvent): void {
+  if (!hasData.value) return
   // GT3.14: while the Add/Delete tool is active, onPointerDown already handled both clicks of the
   // double-click (each is one add/delete) — skip this handler to avoid a redundant third action.
-  if (!props.pointMode || !hasData.value || props.pointTool !== 'select') return
-  // On a vertex -> edit its parameters; on a curve -> add an interpolated point there.
+  if (props.pointMode && props.pointTool !== 'select') return
+  // On a vertex -> edit its parameters (GT10.10 req 56: works in NORMAL mode too);
+  // on a curve (point mode only) -> add an interpolated point there.
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
   if (hit !== null) {
     emit('edit-point', hit)
     return
   }
+  if (!props.pointMode) return
   const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
   if (curve !== null) emit('add-point', curve)
 }

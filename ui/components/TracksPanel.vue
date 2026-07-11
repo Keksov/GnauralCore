@@ -171,9 +171,11 @@
               <waveform-view
                 v-if="laneInlineKind(lane) === 'wave'"
                 class="tracks-panel__gtrack-underlay"
+                :style="{ opacity: lane.soloWaveOpacity }"
                 :file-path="audio.displayFilePath"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
+                :color="lane.soloWaveColor"
                 :seekable="false"
                 :height="gtracks.laneHeight.value"
                 :show-time-axis-top="gIndex === 0"
@@ -220,6 +222,7 @@
                 @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
                 @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
                 @drag-end="gtracks.endPointDrag()"
+                @drag-cancel="gtracks.cancelPointDrag()"
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
                 @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
                 @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
@@ -227,32 +230,38 @@
               />
             </div>
             <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
-            <waveform-view
-              v-if="laneWaveSublane(lane)"
-              :file-path="audio.displayFilePath"
-              :solo-voice-ids="lane.voiceIds"
-              :analysis="laneSpectrogramAnalysis(lane.id)"
-              :playhead-sec="displayedPositionSec"
-              :seekable="false"
-              :label="`◑ ${gtrackLaneLabel(lane)}`"
-              :height="Math.round(gtracks.laneHeight.value * 0.7)"
-              :show-time-axis-top="false"
-              :show-time-axis-bottom="false"
-            />
-            <spectrogram-view
-              v-if="laneSpectrumSublane(lane)"
-              :file-path="audio.displayFilePath"
-              :solo-voice-ids="lane.voiceIds"
-              :analysis="laneSpectrogramAnalysis(lane.id)"
-              :render="laneSpectrogramRender(lane.id)"
-              :playhead-sec="displayedPositionSec"
-              :seekable="false"
-              :primary="false"
-              :label="`◐ ${gtrackLaneLabel(lane)}`"
-              :height="Math.round(gtracks.laneHeight.value * 0.9)"
-              :show-time-axis-top="false"
-              :show-time-axis-bottom="false"
-            />
+            <div v-if="laneWaveSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+              <waveform-view
+                :file-path="audio.displayFilePath"
+                :solo-voice-ids="lane.voiceIds"
+                :analysis="laneSpectrogramAnalysis(lane.id)"
+                :color="lane.soloWaveColor"
+                :playhead-sec="displayedPositionSec"
+                :seekable="false"
+                :label="`◑ ${gtrackLaneLabel(lane)}`"
+                :height="Math.round(gtracks.laneHeight.value * 0.7)"
+                :show-time-axis-top="false"
+                :show-time-axis-bottom="false"
+                @open-settings="gtrackSettingsId = lane.id"
+              />
+            </div>
+            <div v-if="laneSpectrumSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+              <spectrogram-view
+                :file-path="audio.displayFilePath"
+                :solo-voice-ids="lane.voiceIds"
+                :analysis="laneSpectrogramAnalysis(lane.id)"
+                :render="laneSpectrogramRender(lane.id)"
+                :playhead-sec="displayedPositionSec"
+                :seekable="false"
+                :primary="false"
+                :show-settings-gear="true"
+                :label="`◐ ${gtrackLaneLabel(lane)}`"
+                :height="Math.round(gtracks.laneHeight.value * 0.9)"
+                :show-time-axis-top="false"
+                :show-time-axis-bottom="false"
+                @open-settings="gtrackSettingsId = lane.id"
+              />
+            </div>
           </template>
           <div
             class="audio-page__spectrogram-bottom-handle"
@@ -468,6 +477,33 @@
                 ]"
                 @update:model-value="(v: boolean) => gtracks.setLaneSoloInline(gtrackSettingsLane!.id, v)"
               />
+              <!-- GT10.4 (owner req. 48): solo-wave colour + opacity. -->
+              <template v-if="gtrackSettingsLane.soloMode === 'wave' || gtrackSettingsLane.soloMode === 'both'">
+                <div class="row items-center q-col-gutter-sm q-mt-sm">
+                  <div class="col-5">
+                    <q-input
+                      dense outlined
+                      :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
+                      :label="t('audio.gtrackSoloWaveColor')"
+                      @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
+                    >
+                      <template #append>
+                        <q-badge rounded :style="{ background: gtrackSettingsLane.soloWaveColor ?? '#f59e0b' }" />
+                      </template>
+                    </q-input>
+                  </div>
+                  <div class="col-7">
+                    <div class="text-caption text-grey">
+                      {{ t('audio.gtrackSoloWaveOpacity') }}: {{ (gtrackSettingsLane.soloWaveOpacity ?? 0.6).toFixed(2) }}
+                    </div>
+                    <q-slider
+                      dense :min="0.1" :max="1" :step="0.05"
+                      :model-value="gtrackSettingsLane.soloWaveOpacity ?? 0.6"
+                      @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, gtrackSettingsLane!.soloWaveColor ?? '#f59e0b', v ?? 0.6)"
+                    />
+                  </div>
+                </div>
+              </template>
             </q-card-section>
             <!-- GT8.1/GT8.2 (owner req. 35-37, GT-D19): per-lane spectrum settings (accordion),
                  independent of the global panel — shown when this lane displays a solo spectrum. -->
@@ -714,7 +750,7 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption class="tracks-panel__diag-msg">{{ d.message }}</q-item-label>
+                <q-item-label caption class="tracks-panel__diag-msg">{{ t(d.messageKey, d.messageParams) }}</q-item-label>
               </q-item-section>
               <!-- GT9.3: one-click auto-fix for the fixable rules (undoable; Ctrl+S to persist). -->
               <q-item-section side v-if="isDiagFixable(d)">
@@ -757,6 +793,21 @@
               {{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span>
             </template>
           </div>
+          <!-- GT10.8 (owner req. 52): undo/redo right in the inspector (model history has all steps). -->
+          <q-btn
+            flat round dense icon="undo" :disable="!gtracks.canUndo.value"
+            :aria-label="t('audio.gtrackUndo')"
+            @click="gtracks.undoEdit()"
+          >
+            <q-tooltip>{{ t('audio.gtrackUndo') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat round dense icon="redo" :disable="!gtracks.canRedo.value"
+            :aria-label="t('audio.gtrackRedo')"
+            @click="gtracks.redoEdit()"
+          >
+            <q-tooltip>{{ t('audio.gtrackRedo') }}</q-tooltip>
+          </q-btn>
           <q-btn
             flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')"
             @click="closeInspector"
@@ -770,6 +821,7 @@
             <q-markup-table dense flat dark class="tracks-panel__multi-table">
               <thead>
                 <tr>
+                  <th></th>
                   <th>{{ t('audio.gtrackVoicesPanel') }}</th>
                   <th>{{ t('audio.gtrackPointBase') }}</th>
                   <th>{{ t('audio.gtrackPointBeat') }}</th>
@@ -779,28 +831,29 @@
               </thead>
               <tbody>
                 <tr v-for="row in multiForm" :key="`${row.voiceId}:${row.pointIndex}`">
+                  <td><q-checkbox v-model="row.checked" dense /></td>
                   <td>{{ multiRowVoiceName(row.voiceId) }}</td>
                   <td>
                     <q-input
-                      v-model.number="row.baseFreq" dense borderless type="number" step="0.1" min="0"
+                      v-model.number="row.baseFreq" dense borderless type="number" @keydown="ctrlStep($event, row, 'baseFreq')" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.beatFreq" dense borderless type="number" step="0.1" min="0"
+                      v-model.number="row.beatFreq" dense borderless type="number" @keydown="ctrlStep($event, row, 'beatFreq')" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.volL" dense borderless type="number" step="0.01" min="0" max="1"
+                      v-model.number="row.volL" dense borderless type="number" @keydown="ctrlStep($event, row, 'volL')" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.volR" dense borderless type="number" step="0.01" min="0" max="1"
+                      v-model.number="row.volR" dense borderless type="number" @keydown="ctrlStep($event, row, 'volR')" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
@@ -815,7 +868,7 @@
           </div>
           <q-separator />
           <div class="tracks-panel__point-inspector-actions">
-            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeleteSelected')" @click="gtracks.removeMultiSelection()" />
+            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeleteSelected')" :disable="!multiForm.some((r) => r.checked)" @click="removeCheckedRows" />
             <q-space />
             <q-btn
               v-if="!gtracks.pointAutosave.value"
@@ -830,26 +883,26 @@
         <template v-else>
           <div class="audio-page__spectrogram-settings-body q-gutter-sm">
             <q-input
-              v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
+              v-model.number="pointForm.timeSec" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'timeSec')" step="0.01" min="0"
               :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <q-input
-              v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
+              v-model.number="pointForm.baseFreq" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'baseFreq')" step="0.1" min="0"
               :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <q-input
-              v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
+              v-model.number="pointForm.beatFreq" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'beatFreq')" step="0.1" min="0"
               :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
                  these overlap the beat-frequency field inside a q-gutter parent. -->
             <div class="tracks-panel__vol-row">
               <q-input
-                v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
+                v-model.number="pointForm.volL" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'volL')" step="0.01" min="0" max="1"
                 :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
               <q-input
-                v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
+                v-model.number="pointForm.volR" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'volR')" step="0.01" min="0" max="1"
                 :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
             </div>
@@ -1139,7 +1192,7 @@ function promptFixPreparse(voiceId: number): void {
     title: t('audio.gtrackFixTitle'),
     message: t('audio.gtrackFixWarning'),
     ok: { label: t('audio.gtrackFix'), color: 'primary' },
-    cancel: true,
+    cancel: { label: t('audio.cancel'), flat: true }, // GT10.1 (owner req. 60): localized Cancel
     persistent: true,
   }).onOk(() => {
     if (gtracks.fixPreparseVoice(voiceId)) {
@@ -1297,6 +1350,8 @@ interface MultiFormRow {
   beatFreq: number
   volL: number
   volR: number
+  /** GT10.9 (owner req. 54): row selection for 'delete selected' (all checked by default). */
+  checked: boolean
 }
 const multiForm = ref<MultiFormRow[]>([])
 function modelRow(voiceId: number, pointIndex: number, point: { baseFreq: number; beatFreqHalf: number; volL: number; volR: number }): MultiFormRow {
@@ -1307,6 +1362,7 @@ function modelRow(voiceId: number, pointIndex: number, point: { baseFreq: number
     beatFreq: Number((point.beatFreqHalf * 2).toFixed(3)),
     volL: Number(point.volL.toFixed(3)),
     volR: Number(point.volR.toFixed(3)),
+    checked: true, // GT10.9 (owner req. 54): rows are selected by default
   }
 }
 // GT3.16 (review #5): RECONCILE rather than rebuild — a row whose "voiceId:pointIndex" key is
@@ -1342,6 +1398,22 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
     gtracks.setPointValues({ voiceId: row.voiceId, pointIndex: row.pointIndex }, rowPatch(row))
   }
 }
+// GT10.6 (owner req. 50, owner's chosen variant): Ctrl+Arrow steps a numeric field by 1.0
+// (plain arrows keep the input's own fine step).
+function ctrlStep(e: KeyboardEvent, obj: Record<string, unknown>, key: string): void {
+  if (!e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+  e.preventDefault()
+  const cur = Number(obj[key])
+  obj[key] = (Number.isFinite(cur) ? cur : 0) + (e.key === 'ArrowUp' ? 1 : -1)
+}
+
+// GT10.9 (owner req. 54): delete only the CHECKED table rows (one undo unit).
+function removeCheckedRows(): void {
+  gtracks.removePointsBulk(
+    multiForm.value.filter((r) => r.checked).map((r) => ({ voiceId: r.voiceId, pointIndex: r.pointIndex })),
+  )
+}
+
 // GT3.16 (review #1): "Apply all" is ONE undo unit — was one per row, so undoing needed N presses.
 function applyAllMultiRows(): void {
   gtracks.setMultiplePointValues(
@@ -1625,6 +1697,12 @@ function laneAccentColor(lane: { voices: readonly { id: number }[] }): string | 
   const vi = gtracks.voices.value.findIndex((x) => x.id === id)
   const v = gtracks.voices.value[vi]
   return v === undefined ? null : voiceDotColor(v, vi)
+}
+
+// GT10.2 (owner req. 44): the solo sub-lanes carry the lane's voice accent stripe too.
+function sublaneAccentStyle(lane: { voices: readonly { id: number }[] }): Record<string, string> {
+  const c = laneAccentColor(lane)
+  return c === null ? {} : { borderLeft: `3px solid ${c}` }
 }
 
 // GT4.2 (GT-D17): solo-audio placement per lane. soloMode = what (wave/spectrum/both); soloInline =
@@ -2363,6 +2441,22 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 
+/* GT10.2 (owner req. 44): solo sub-lanes carry the lane's accent stripe. */
+.tracks-panel__sublane {
+  position: relative;
+  width: 100%;
+}
+
+/* GT10.13 (owner req. 62): the header sticks while the lane stack scrolls under it. */
+.audio-page__output-section--spectrogram .audio-page__spectrogram-header {
+  background: #0f172a;
+  padding-bottom: 4px;
+  padding-top: 4px;
+  position: sticky;
+  top: -16px; /* compensates the section's 16px top padding */
+  z-index: 40;
+}
+
 /* GT9.2: lint diagnostic messages wrap instead of truncating. */
 .tracks-panel__diag-msg {
   white-space: normal;
@@ -2595,7 +2689,10 @@ onBeforeUnmount(() => {
 
 /* GT3.15: table mode is wider (needs room for 5 columns) than the single-point form. */
 .tracks-panel__point-inspector--table {
-  width: 420px;
+  /* GT10.9 (owner req. 53): grow to fit the table — no horizontal scrollbar. */
+  max-width: calc(100vw - 48px);
+  min-width: 420px;
+  width: max-content;
 }
 
 .tracks-panel__multi-table-wrap {

@@ -32,7 +32,11 @@ export interface GTrackDiagnostic {
   readonly pointIndex: number | null
   /** The time of that point (seconds), or null. */
   readonly timeSec: number | null
+  /** English fallback/debug text (tests, logs). The UI renders messageKey via i18n instead. */
   readonly message: string
+  /** GT10.1 (owner req. 43): i18n key (audio.lint_<rule>) + params for a localized message. */
+  readonly messageKey: string
+  readonly messageParams: Record<string, string | number>
 }
 
 export interface GTrackLintOptions {
@@ -70,7 +74,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
   // missing-audiofile: a pcm voice with no source path.
   if (voice.typeIndex === PCM_TYPE_INDEX && voice.audioFilePath.trim() === '') {
     out.push({ rule: 'missing-audiofile', severity: 'warning', voiceId: voice.id, pointIndex: null, timeSec: null,
-      message: `Voice "${name}" is an audiofile but has no source file.` })
+      message: `Voice "${name}" is an audiofile but has no source file.`,
+      messageKey: 'audio.lint_missing_audiofile', messageParams: { name } })
   }
 
   if (pts.length === 0) return
@@ -91,7 +96,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
       const hasNonFinite = bad.some((b) => b.includes('Infinity') || b.includes('NaN'))
       out.push({ rule: 'extreme-value', severity: hasNonFinite ? 'error' : 'warning', voiceId: voice.id,
         pointIndex: i, timeSec: Number.isFinite(p.timeSec) ? p.timeSec : null,
-        message: `Voice "${name}" point ${i}: ${bad.join(', ')}.` })
+        message: `Voice "${name}" point ${i}: ${bad.join(', ')}.`,
+        messageKey: 'audio.lint_extreme_value', messageParams: { name, index: i, details: bad.join(', ') } })
     }
   }
 
@@ -100,7 +106,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
   const endVol = Math.max(endP.volL, endP.volR)
   if (endVol > opts.endVolumeThreshold) {
     out.push({ rule: 'end-click', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
-      message: `Voice "${name}" ends at volume ${fmt(endVol)} (no fade to zero) — likely a click at the end.` })
+      message: `Voice "${name}" ends at volume ${fmt(endVol)} (no fade to zero) — likely a click at the end.`,
+      messageKey: 'audio.lint_end_click', messageParams: { name, vol: fmt(endVol) } })
   }
 
   // loop-click: on a loop seam the playback jumps end -> start; a volume mismatch clicks each seam.
@@ -110,7 +117,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
     const dr = Math.abs(startP.volR - endP.volR)
     if (Math.max(dl, dr) > opts.loopVolumeEpsilon) {
       out.push({ rule: 'loop-click', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
-        message: `Voice "${name}" loops ${schedule.loopCount}x but end volume (${fmt(endP.volL)}/${fmt(endP.volR)}) != start (${fmt(startP.volL)}/${fmt(startP.volR)}) — click at each loop seam.` })
+        message: `Voice "${name}" loops ${schedule.loopCount}x but end volume (${fmt(endP.volL)}/${fmt(endP.volR)}) != start (${fmt(startP.volL)}/${fmt(startP.volR)}) — click at each loop seam.`,
+        messageKey: 'audio.lint_loop_click', messageParams: { name, loops: schedule.loopCount, endVol: `${fmt(endP.volL)}/${fmt(endP.volR)}`, startVol: `${fmt(startP.volL)}/${fmt(startP.volR)}` } })
     }
   }
 
@@ -119,7 +127,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
     const tailDur = endP.timeSec - pts[last - 1]!.timeSec
     if (tailDur < opts.zeroDurationEpsilon) {
       out.push({ rule: 'degenerate-tail', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
-        message: `Voice "${name}" ends with a ~zero-duration segment (${fmt(tailDur)}s) — the flat tail never plays.` })
+        message: `Voice "${name}" ends with a ~zero-duration segment (${fmt(tailDur)}s) — the flat tail never plays.`,
+        messageKey: 'audio.lint_degenerate_tail', messageParams: { name, dur: fmt(tailDur) } })
     }
   }
 
@@ -133,7 +142,8 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
       if (runEnd - runStart >= 2) {
         out.push({ rule: 'zero-run', severity: 'warning', voiceId: voice.id, pointIndex: runStart,
           timeSec: pts[runStart]!.timeSec,
-          message: `Voice "${name}" has ${runEnd - runStart} consecutive zero-duration segments near point ${runStart}.` })
+          message: `Voice "${name}" has ${runEnd - runStart} consecutive zero-duration segments near point ${runStart}.`,
+          messageKey: 'audio.lint_zero_run', messageParams: { name, count: runEnd - runStart, index: runStart } })
       }
       runStart = -1
     }

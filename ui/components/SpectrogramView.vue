@@ -82,8 +82,9 @@
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
     </div>
-    <!-- SF27: waveform-overlay colour/scale gear, top-right (only when overlaid). -->
-    <div v-if="waveformOverlay" class="spectrogram-view__actions">
+    <!-- SF27: waveform-overlay colour/scale gear, top-right (only when overlaid).
+         GT10.3 (owner req. 46): showSettingsGear forces the gear (gtrack solo sub-lanes). -->
+    <div v-if="waveformOverlay || showSettingsGear" class="spectrogram-view__actions">
       <q-btn
         dense flat round size="xs"
         icon="settings"
@@ -204,6 +205,8 @@ interface Props {
   /** GT4.3 (GT-D17): for a .gnaural source, analyze a SOLO render of just these voice ids
       (all others muted). Omitted/empty = the full mix. Changing it re-opens the analysis. */
   soloVoiceIds?: readonly number[]
+  /** GT10.3 (owner req. 46): always show the settings gear (used by gtrack solo sub-lanes). */
+  showSettingsGear?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {

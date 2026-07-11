@@ -121,14 +121,14 @@ async function deleteEntry(cacheFile: string): Promise<void> {
   await loadCache()
 }
 function deleteSource(sourcePath: string): void {
-  $q.dialog({ title: t('settings.cacheDeleteSource'), message: t('settings.cacheConfirmSource'), cancel: true, persistent: true })
+  $q.dialog({ title: t('settings.cacheDeleteSource'), message: t('settings.cacheConfirmSource'), cancel: { label: t('audio.cancel'), flat: true }, persistent: true })
     .onOk(async () => {
       await audioApi.deleteAudioCache({ source: sourcePath }).catch(() => undefined)
       await loadCache()
     })
 }
 function clearAllCache(): void {
-  $q.dialog({ title: t('settings.cacheClearAll'), message: t('settings.cacheConfirmAll'), cancel: true, persistent: true })
+  $q.dialog({ title: t('settings.cacheClearAll'), message: t('settings.cacheConfirmAll'), cancel: { label: t('audio.cancel'), flat: true }, persistent: true })
     .onOk(async () => {
       await audioApi.deleteAudioCache({ all: true }).catch(() => undefined)
       await loadCache()

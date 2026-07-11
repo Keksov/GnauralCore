@@ -28,6 +28,9 @@ export interface GTrackLane {
   soloMode?: GTrackSoloMode
   /** GT4.2 (GT-D17): true = solo audio UNDER the curves (inline underlay); false = below as a sub-lane. */
   soloInline?: boolean
+  /** GT10.4 (owner req. 48): solo-wave colour + opacity so the wave stays distinguishable. */
+  soloWaveColor?: string
+  soloWaveOpacity?: number
 }
 
 /** GT3.1: a vertex reference within a lane. */
@@ -69,6 +72,8 @@ export interface ResolvedGTrackLane {
   readonly voices: readonly GTrackVoice[]
   readonly soloMode: GTrackSoloMode
   readonly soloInline: boolean
+  readonly soloWaveColor: string
+  readonly soloWaveOpacity: number
 }
 
 interface StoredLane {
@@ -78,6 +83,8 @@ interface StoredLane {
   hidden: boolean
   soloMode?: string
   soloInline?: boolean
+  soloWaveColor?: string
+  soloWaveOpacity?: number
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
@@ -170,6 +177,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       voices: lane.voiceIds.map(voiceById).filter((v): v is GTrackVoice => v !== undefined),
       soloMode: lane.soloMode ?? 'off',
       soloInline: lane.soloInline ?? false,
+      // amber default — distinct from the voice-curve palette so the wave stays visible (req 48)
+      soloWaveColor: lane.soloWaveColor ?? '#f59e0b',
+      soloWaveOpacity: lane.soloWaveOpacity ?? 0.6,
     }
   }
 
@@ -179,7 +189,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (key === null) return
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false }))
+      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
@@ -284,6 +294,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           hidden: s.hidden === true,
           soloMode: (SOLO_MODES.includes(s.soloMode as GTrackSoloMode) ? s.soloMode : 'off') as GTrackSoloMode,
           soloInline: s.soloInline === true,
+          soloWaveColor: typeof s.soloWaveColor === 'string' ? s.soloWaveColor : undefined,
+          soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }
@@ -352,10 +364,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
   // --- operations ---
   function addLane(): void {
-    const cfg = defaultLaneConfig()
+    // GT10.14 (owner req. 63): "+ lane" adds an EMPTY lane; voices are added via its gear.
     lanes.value = [
       ...lanes.value,
-      { id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false },
+      { id: nextLaneId++, voiceIds: [], mode: defaultLaneConfig().mode, hidden: false },
     ]
     persist()
   }
@@ -375,6 +387,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // GT4.2 (GT-D17): where the solo audio shows — inline under the curves vs a sub-lane below.
   function setLaneSoloInline(id: number, soloInline: boolean): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloInline } : l))
+    persist()
+  }
+  // GT10.4 (owner req. 48): solo-wave colour + opacity.
+  function setLaneSoloWaveStyle(id: number, color: string, opacity: number): void {
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloWaveColor: color, soloWaveOpacity: opacity } : l))
     persist()
   }
   function toggleLaneVoice(id: number, voiceId: number): void {
@@ -403,18 +420,20 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
 
   // --- GT3.1: point-edit mode + vertex selection (ephemeral; not persisted) ---
+  // GT10.5 (owner req. 49): point mode is GLOBAL — the toggle enables it on EVERY lane at once
+  // (pointModeLanes now holds a single sentinel; the per-lane API shape is kept for the callers).
   function isLanePointMode(id: number): boolean {
-    return pointModeLanes.value.has(id)
+    void id
+    return pointModeLanes.value.size > 0
   }
   function toggleLanePointMode(id: number): void {
-    const s = new Set(pointModeLanes.value)
-    if (s.has(id)) {
-      s.delete(id)
-      if (selection.value?.laneId === id) selection.value = null // drop the selection when leaving
+    void id
+    if (pointModeLanes.value.size > 0) {
+      pointModeLanes.value = new Set()
+      selection.value = null // drop the selection when leaving point mode
     } else {
-      s.add(id)
+      pointModeLanes.value = new Set([-1])
     }
-    pointModeLanes.value = s
   }
   /** The selected vertex within a given lane, or null (for passing to that lane's GTrackView). */
   function selectionForLane(id: number): GTrackPointRef | null {
@@ -507,6 +526,31 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     refreshEditState()
     return true
   }
+  /** GT10.9 (owner req. 54): bulk-delete the GIVEN refs as ONE undo unit (table checkboxes). */
+  function removePointsBulk(refs: readonly GTrackPointRef[]): void {
+    const m = model.value
+    if (m === null || refs.length === 0) return
+    const byVoice = new Map<number, number[]>()
+    for (const r of refs) {
+      const arr = byVoice.get(r.voiceId) ?? []
+      arr.push(r.pointIndex)
+      byVoice.set(r.voiceId, arr)
+    }
+    m.edit(() => {
+      for (const [voiceId, indices] of byVoice) {
+        if (!m.isVoiceEditable(voiceId)) continue
+        for (const idx of [...indices].sort((a, b) => b - a)) {
+          const voice = m.schedule.voices.find((v) => v.id === voiceId)
+          if (voice === undefined || voice.points.length <= 2) break
+          try { m.removePoint(voiceId, idx) } catch { /* gone - skip */ }
+        }
+      }
+    })
+    clearMultiSelection()
+    syncSchedule()
+    refreshEditState()
+  }
+
   /** GT3.15: bulk-delete every point in the multi-selection as ONE undo unit. */
   function removeMultiSelection(): void {
     const m = model.value
@@ -680,7 +724,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // edit immediately instead of waiting for an explicit Apply. Persisted editor property.
   const STORAGE_POINT_AUTOSAVE_KEY = 'mindwave-gtrack-point-autosave'
   function loadPointAutosave(): boolean {
-    try { return localStorage.getItem(STORAGE_POINT_AUTOSAVE_KEY) === '1' } catch { return false }
+    // GT10.7 (owner req. 51): autosave is ON by default; only an explicit '0' turns it off.
+    try { return localStorage.getItem(STORAGE_POINT_AUTOSAVE_KEY) !== '0' } catch { return true }
   }
   const pointAutosave = ref<boolean>(loadPointAutosave())
   function setPointAutosave(v: boolean): void {
@@ -958,6 +1003,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setPointValues,
     setMultiplePointValues,
     removeMultiSelection,
+    removePointsBulk,
     getVoice,
     getPoint,
     preparseVoiceIds,
@@ -992,6 +1038,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneMode,
     setLaneSolo,
     setLaneSoloInline,
+    setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,
     ensureLaneSpectrum,

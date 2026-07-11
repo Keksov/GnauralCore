@@ -82,6 +82,13 @@
     "gtrackSoloSublane": "Sub-lane",
     "gtrackSoloUnder": "Under curves",
     "gtrackSpectrumCustom": "Custom spectrum settings for this lane",
+    "cancel": "Cancel",
+    "lint_end_click": "Voice \"{name}\" ends at volume {vol} (no fade to zero) — likely a click at the end.",
+    "lint_loop_click": "Voice \"{name}\" loops {loops}x but the end volume ({endVol}) differs from the start ({startVol}) — a click at each loop seam.",
+    "lint_degenerate_tail": "Voice \"{name}\" ends with a ~zero-duration segment ({dur}s) — the flat tail never plays.",
+    "lint_zero_run": "Voice \"{name}\" has {count} consecutive zero-duration segments near point {index}.",
+    "lint_extreme_value": "Voice \"{name}\", point {index}: {details}.",
+    "lint_missing_audiofile": "Voice \"{name}\" is an audio file but has no source file.",
     "gtrackProblems": "Schedule problems",
     "gtrackNoProblems": "No problems detected.",
     "gtrackProblemVoiceHidden": "That voice isn't shown in a lane — enable it in the Voices panel.",
@@ -232,21 +239,81 @@
     "spectrogramGroupSharpness": "Sharpness",
     "spectrogramImageScaling": "Image scaling",
     "spectrogramImageScalingHelp": "How the image is scaled when zoomed in past the analysis resolution. Smooth = bilinear (soft); Sharp = nearest-neighbour (crisp pixels, blocky).",
-    "spectrogramImageScalingOpt": { "smooth": "Smooth", "sharp": "Sharp" },
+    "spectrogramImageScalingOpt": {
+      "smooth": "Smooth",
+      "sharp": "Sharp"
+    },
     "spectrogramHighZoomMode": "High-zoom detail",
     "spectrogramHighZoomModeHelp": "Above the zoom threshold, re-analyse for sharper time detail. Smaller window = better time resolution (worse frequency resolution); Reassignment = sharpened ridges. Triggers a re-analysis when the threshold is crossed.",
-    "spectrogramHighZoomModeOpt": { "off": "Off", "smallWindow": "Smaller window", "reassign": "Reassignment" },
+    "spectrogramHighZoomModeOpt": {
+      "off": "Off",
+      "smallWindow": "Smaller window",
+      "reassign": "Reassignment"
+    },
     "spectrogramHighZoomThreshold": "Zoom threshold (×)",
     "spectrogramHighZoomThresholdHelp": "Zoom factor at which the high-zoom detail profile activates (×1 = whole clip).",
     "spectrogramHighZoomWindow": "High-zoom window",
     "spectrogramHighZoomWindowHelp": "FFT window size used by the 'Smaller window' mode above the threshold. Smaller = sharper in time, coarser in frequency.",
     "spectrogramHelpFor": "Help for {field}",
-    "spectrogramFscaleOpt": { "lin": "Linear", "log": "Logarithmic", "mel": "Mel", "bark": "Bark", "erb": "ERB", "period": "Period" },
-    "spectrogramScaleOpt": { "lin": "Linear", "sqrt": "Square root", "cbrt": "Cube root", "log": "Logarithmic", "4thrt": "4th root", "5thrt": "5th root" },
-    "spectrogramDataOpt": { "magnitude": "Frequencies", "phase": "Phase", "uphase": "Unwrapped phase", "reassign": "Reassignment", "pitch": "Pitch (EAC)" },
-    "spectrogramModeOpt": { "combined": "Combined", "separate": "Separate" },
-    "spectrogramPaletteOpt": { "roseus": "Color (pink)", "classic": "Color (classic)", "grayscale": "Grayscale", "invgrayscale": "Inverse grayscale" },
-    "spectrogramWinFuncOpt": { "hann": "Hann", "hamming": "Hamming", "blackman": "Blackman", "rect": "Rectangular", "bartlett": "Bartlett", "welch": "Welch", "flattop": "Flat top", "bharris": "Blackman-Harris", "bnuttall": "Blackman-Nuttall", "bhann": "Blackman-Hann", "sine": "Sine", "nuttall": "Nuttall", "lanczos": "Lanczos", "gauss": "Gauss", "tukey": "Tukey", "dolph": "Dolph-Chebyshev", "cauchy": "Cauchy", "parzen": "Parzen", "poisson": "Poisson", "bohman": "Bohman", "kaiser": "Kaiser", "gauss25": "Gauss 2.5", "gauss35": "Gauss 3.5", "gauss45": "Gauss 4.5" },
+    "spectrogramFscaleOpt": {
+      "lin": "Linear",
+      "log": "Logarithmic",
+      "mel": "Mel",
+      "bark": "Bark",
+      "erb": "ERB",
+      "period": "Period"
+    },
+    "spectrogramScaleOpt": {
+      "lin": "Linear",
+      "sqrt": "Square root",
+      "cbrt": "Cube root",
+      "log": "Logarithmic",
+      "4thrt": "4th root",
+      "5thrt": "5th root"
+    },
+    "spectrogramDataOpt": {
+      "magnitude": "Frequencies",
+      "phase": "Phase",
+      "uphase": "Unwrapped phase",
+      "reassign": "Reassignment",
+      "pitch": "Pitch (EAC)"
+    },
+    "spectrogramModeOpt": {
+      "combined": "Combined",
+      "separate": "Separate"
+    },
+    "spectrogramPaletteOpt": {
+      "roseus": "Color (pink)",
+      "classic": "Color (classic)",
+      "grayscale": "Grayscale",
+      "invgrayscale": "Inverse grayscale"
+    },
+    "spectrogramWinFuncOpt": {
+      "hann": "Hann",
+      "hamming": "Hamming",
+      "blackman": "Blackman",
+      "rect": "Rectangular",
+      "bartlett": "Bartlett",
+      "welch": "Welch",
+      "flattop": "Flat top",
+      "bharris": "Blackman-Harris",
+      "bnuttall": "Blackman-Nuttall",
+      "bhann": "Blackman-Hann",
+      "sine": "Sine",
+      "nuttall": "Nuttall",
+      "lanczos": "Lanczos",
+      "gauss": "Gauss",
+      "tukey": "Tukey",
+      "dolph": "Dolph-Chebyshev",
+      "cauchy": "Cauchy",
+      "parzen": "Parzen",
+      "poisson": "Poisson",
+      "bohman": "Bohman",
+      "kaiser": "Kaiser",
+      "gauss25": "Gauss 2.5",
+      "gauss35": "Gauss 3.5",
+      "gauss45": "Gauss 4.5"
+    },
     "spectrogramFreqScaleHelp": "How the frequency (vertical) axis is spaced. Logarithmic matches human pitch perception; Linear spaces Hz evenly. Mel/Bark/ERB are perceptual scales.",
     "spectrogramStartHzHelp": "Lowest frequency shown on the vertical axis.",
     "spectrogramStopHzHelp": "Highest frequency shown. 0 = Nyquist (half the sample rate).",
@@ -317,7 +384,11 @@
       "playing": "Playing",
       "paused": "Paused",
       "stopping": "Stopping"
-    }
+    },
+    "gtrackUndo": "Undo",
+    "gtrackRedo": "Redo",
+    "gtrackSoloWaveColor": "Wave colour",
+    "gtrackSoloWaveOpacity": "Wave opacity"
   },
   "settings": {
     "audioTab": "Audio",
