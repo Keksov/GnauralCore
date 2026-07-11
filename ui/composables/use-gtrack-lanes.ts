@@ -906,26 +906,41 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // --- GT9.3 (owner req. 42, GT-D21): confirmed auto-fixes for lint diagnostics (undoable) ---
   const END_FADE_SEC = 0.1
   /**
-   * Fix an 'end-click': append a short fade to zero at the very end. Insert a point 0.1s before the
-   * end (interpolated ~= the end level) then drive the final point to silence — one undo unit,
-   * total duration preserved. Returns false when the last segment is too short for a clean fade.
+   * Fix an 'end-click': fade the voice to silence at the very end, one undo unit, total duration
+   * preserved. GT10.26 (owner req. 75) — handles ALL real tail shapes (was rejecting tails <=0.11s,
+   * e.g. subterranean's Nizy Face with a 0.1s tail):
+   *  - long tail  (> fade+0.01): insert a fade-start point 0.1s before the end, zero the last point;
+   *  - short tail (>= 0.02):     zero the last point — the fade IS the tail (20..110ms declicks fine);
+   *  - degenerate tail (< 0.02, incl. runs of ~zero segments): walk back to the last REAL segment,
+   *    borrow the fade from it (insert a fade-start point inside it when it's long enough) and zero
+   *    every point after — the same borrow the bulk click-fix script proved on the preset library.
    */
+  const MIN_TAIL_SEC = 0.02
   function fixEndClick(voiceId: number): boolean {
     const m = model.value
     if (m === null || !m.isVoiceEditable(voiceId)) return false
     const voice = voiceById(voiceId)
     if (voice === undefined || voice.points.length < 2) return false
     const pts = voice.points
-    const lastIdx = pts.length - 1
-    const endTime = pts[lastIdx]!.timeSec
-    const lastSegDur = endTime - pts[lastIdx - 1]!.timeSec
-    if (!(lastSegDur > END_FADE_SEC + 0.01)) return false // degenerate/short tail — manual fix
+    // Walk back past degenerate (~zero-duration) segments to the last REAL segment (r-1 -> r).
+    let r = pts.length - 1
+    while (r >= 1 && pts[r]!.timeSec - pts[r - 1]!.timeSec < MIN_TAIL_SEC) r -= 1
+    if (r === 0) return false // the whole voice is degenerate — nothing to fade over
+    const segEnd = pts[r]!.timeSec
+    const segDur = segEnd - pts[r - 1]!.timeSec
     try {
       m.edit(() => {
-        m.insertPoint(voiceId, endTime - END_FADE_SEC)
+        let zeroFrom = r
+        if (segDur > END_FADE_SEC + 0.01) {
+          // Room for a clean 0.1s fade: insert its start inside the real segment.
+          zeroFrom = m.insertPoint(voiceId, segEnd - END_FADE_SEC) + 1
+        }
+        // Silence every point from the fade target onward (covers degenerate clusters too).
         const v = m.schedule.voices.find((x) => x.id === voiceId)
         if (v === undefined) throw new Error('gtrack: voice vanished during fix')
-        m.setPointFields(voiceId, v.points.length - 1, { volL: 0, volR: 0 })
+        for (let i = zeroFrom; i < v.points.length; i += 1) {
+          m.setPointFields(voiceId, i, { volL: 0, volR: 0 })
+        }
       })
     } catch {
       return false
