@@ -203,8 +203,8 @@
                 :duration-sec="gtracks.durationSec.value"
                 :label="gtrackLaneLabel(lane)"
                 :height="gtracks.laneHeight.value"
-                :playhead-sec="displayedPositionSec"
-                :seekable="canSeek"
+                :playhead-sec="gtrackPlayheadSec"
+                :seekable="true"
                 :show-time-axis-top="gIndex === 0"
                 :show-time-axis-bottom="false"
                 :point-mode="gtracks.isLanePointMode(lane.id)"
@@ -236,7 +236,7 @@
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
-                :playhead-sec="displayedPositionSec"
+                :playhead-sec="gtrackPlayheadSec"
                 :seekable="false"
                 :label="`◑ ${gtrackLaneLabel(lane)}`"
                 :height="Math.round(gtracks.laneHeight.value * 0.7)"
@@ -251,7 +251,7 @@
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :render="laneSpectrogramRender(lane.id)"
-                :playhead-sec="displayedPositionSec"
+                :playhead-sec="gtrackPlayheadSec"
                 :seekable="false"
                 :primary="false"
                 :show-settings-gear="true"
@@ -286,7 +286,7 @@
               :label="wtrack.label"
               :scale="wfScale(wtrack.channel)"
               :color="wfColor(wtrack.channel)"
-              :playhead-sec="displayedPositionSec"
+              :playhead-sec="gtrackPlayheadSec"
               :seekable="canSeek"
               :show-time-axis-top="wIndex === 0"
               :show-time-axis-bottom="wIndex === waveformTracks.length - 1 && !showSpectrogram"
@@ -336,7 +336,7 @@
             :waveform-color="wfColor(track.channel)"
             :waveform-opacity="wfOpacity(track.channel)"
             :waveform-channel="track.channel"
-            :playhead-sec="displayedPositionSec"
+            :playhead-sec="gtrackPlayheadSec"
             :seekable="canSeek"
             :label="track.label"
             :primary="track.primary"
@@ -1039,7 +1039,19 @@ const emit = defineEmits<{
 // Aliases keep the moved template byte-identical to the frozen original.
 const displayedPositionSec = computed(() => props.positionSec)
 const canSeek = computed(() => props.canSeek)
+// GT10.32 (owner 2026-07-12): the Tracks editor keeps a PERSISTENT local playhead so clicking a
+// curve (or arrow-key seek) places a visible position cursor even when the transport is STOPPED —
+// the shared optimistic seek reverts to 0 once the transport is idle, which made the cursor snap
+// back to 0. While actually playing we follow the real position; the local cursor is dropped when
+// playback starts or the file changes.
+const localPlayheadSec = ref<number | null>(null)
+const gtrackPlayheadSec = computed(() =>
+  audio.transportState === 'playing' ? displayedPositionSec.value : (localPlayheadSec.value ?? displayedPositionSec.value),
+)
+watch(() => audio.transportState, (st) => { if (st === 'playing') localPlayheadSec.value = null })
+watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 function handleSeek(aSec: number): void {
+  localPlayheadSec.value = aSec // persistent local cursor (survives an idle transport)
   emit('seek', aSec)
 }
 
