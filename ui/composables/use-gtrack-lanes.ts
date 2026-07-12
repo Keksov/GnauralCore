@@ -464,6 +464,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function toggleMultiSelect(voiceId: number, pointIndex: number): void {
     const key = multiSelectionKey(voiceId, pointIndex)
     const next = new Set(multiSelection.value)
+    // GT10.42 (owner 2026-07-12): seed the current single selection so the FIRST Ctrl/Shift-click
+    // already makes two selected points (opening the table), instead of needing a third click.
+    const sel = selection.value
+    if (next.size === 0 && sel !== null) {
+      const selKey = multiSelectionKey(sel.voiceId, sel.pointIndex)
+      if (selKey !== key) next.add(selKey)
+    }
     if (next.has(key)) next.delete(key)
     else next.add(key)
     multiSelection.value = next

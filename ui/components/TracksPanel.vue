@@ -829,43 +829,55 @@
             <q-markup-table dense flat dark class="tracks-panel__multi-table">
               <thead>
                 <tr>
-                  <th></th>
-                  <th>{{ t('audio.gtrackVoicesPanel') }}</th>
-                  <th>{{ t('audio.gtrackPointBase') }}</th>
-                  <th>{{ t('audio.gtrackPointBeat') }}</th>
-                  <th>{{ t('audio.gtrackPointVolL') }}</th>
-                  <th>{{ t('audio.gtrackPointVolR') }}</th>
+                  <th class="tracks-panel__col-chk"></th>
+                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointTime') }}</th>
+                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBase') }}</th>
+                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBeat') }}</th>
+                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointVolL') }}</th>
+                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointVolR') }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in multiForm" :key="`${row.voiceId}:${row.pointIndex}`">
-                  <td><q-checkbox v-model="row.checked" dense /></td>
-                  <td>{{ multiRowVoiceName(row.voiceId) }}</td>
-                  <td data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                    <q-input
-                      v-model.number="row.baseFreq" dense borderless type="number" :step="fieldStep('0.1')" min="0"
-                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                    />
-                  </td>
-                  <td data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                    <q-input
-                      v-model.number="row.beatFreq" dense borderless type="number" :step="fieldStep('0.1')" min="0"
-                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                    />
-                  </td>
-                  <td data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                    <q-input
-                      v-model.number="row.volL" dense borderless type="number" :step="fieldStep('0.01')" min="0" max="1"
-                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                    />
-                  </td>
-                  <td data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                    <q-input
-                      v-model.number="row.volR" dense borderless type="number" :step="fieldStep('0.01')" min="0" max="1"
-                      @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                    />
-                  </td>
-                </tr>
+                <!-- GT10.41 (owner req.): points grouped by voice under a collapsible header. -->
+                <template v-for="group in groupedMultiForm" :key="group.voiceId">
+                  <tr class="tracks-panel__group-row" @click="toggleGroup(group.voiceId)">
+                    <td colspan="6">
+                      <q-icon :name="collapsedGroups.has(group.voiceId) ? 'chevron_right' : 'expand_more'" size="18px" />
+                      {{ group.name }} <span class="text-grey">({{ group.rows.length }})</span>
+                    </td>
+                  </tr>
+                  <template v-if="!collapsedGroups.has(group.voiceId)">
+                    <tr v-for="row in group.rows" :key="`${row.voiceId}:${row.pointIndex}`">
+                      <td class="tracks-panel__col-chk"><q-checkbox v-model="row.checked" dense /></td>
+                      <!-- GT10.40: time is read-only in the table (crossover reindexing would desync keys). -->
+                      <td class="tracks-panel__col-num">{{ row.timeSec }}</td>
+                      <td class="tracks-panel__col-num" data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
+                        <q-input
+                          v-model.number="row.baseFreq" dense borderless type="number" input-class="text-right" :step="fieldStep('0.1')" min="0"
+                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                        />
+                      </td>
+                      <td class="tracks-panel__col-num" data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
+                        <q-input
+                          v-model.number="row.beatFreq" dense borderless type="number" input-class="text-right" :step="fieldStep('0.1')" min="0"
+                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                        />
+                      </td>
+                      <td class="tracks-panel__col-num" data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
+                        <q-input
+                          v-model.number="row.volL" dense borderless type="number" input-class="text-right" :step="fieldStep('0.01')" min="0" max="1"
+                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                        />
+                      </td>
+                      <td class="tracks-panel__col-num" data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
+                        <q-input
+                          v-model.number="row.volR" dense borderless type="number" input-class="text-right" :step="fieldStep('0.01')" min="0" max="1"
+                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
+                        />
+                      </td>
+                    </tr>
+                  </template>
+                </template>
               </tbody>
             </q-markup-table>
             <q-checkbox
@@ -1459,6 +1471,9 @@ watch(inspectorMode, (mode) => { if (mode === 'none') inspectorPos.value = null 
 interface MultiFormRow {
   voiceId: number
   pointIndex: number
+  /** GT10.40 (owner 2026-07-12): the point time, shown read-only (editing time needs crossover
+   *  reindexing, which would desync the multi-selection keys — use the single-point dialog for that). */
+  timeSec: number
   baseFreq: number
   beatFreq: number
   volL: number
@@ -1467,10 +1482,11 @@ interface MultiFormRow {
   checked: boolean
 }
 const multiForm = ref<MultiFormRow[]>([])
-function modelRow(voiceId: number, pointIndex: number, point: { baseFreq: number; beatFreqHalf: number; volL: number; volR: number }): MultiFormRow {
+function modelRow(voiceId: number, pointIndex: number, point: { timeSec: number; baseFreq: number; beatFreqHalf: number; volL: number; volR: number }): MultiFormRow {
   return {
     voiceId,
     pointIndex,
+    timeSec: Number(point.timeSec.toFixed(3)),
     baseFreq: Number(point.baseFreq.toFixed(3)),
     beatFreq: Number((point.beatFreqHalf * 2).toFixed(3)),
     volL: Number(point.volL.toFixed(3)),
@@ -1478,6 +1494,28 @@ function modelRow(voiceId: number, pointIndex: number, point: { baseFreq: number
     checked: true, // GT10.9 (owner req. 54): rows are selected by default
   }
 }
+// GT10.41 (owner 2026-07-12): the table groups its rows by voice under a collapsible header (the
+// separate voice-name column is gone). Group order follows first appearance in the selection.
+interface MultiFormGroup { voiceId: number; name: string; rows: MultiFormRow[] }
+const collapsedGroups = ref<Set<number>>(new Set())
+function toggleGroup(voiceId: number): void {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(voiceId)) next.delete(voiceId)
+  else next.add(voiceId)
+  collapsedGroups.value = next
+}
+const groupedMultiForm = computed<MultiFormGroup[]>(() => {
+  const groups = new Map<number, MultiFormGroup>()
+  for (const row of multiForm.value) {
+    let g = groups.get(row.voiceId)
+    if (g === undefined) {
+      g = { voiceId: row.voiceId, name: multiRowVoiceName(row.voiceId), rows: [] }
+      groups.set(row.voiceId, g)
+    }
+    g.rows.push(row)
+  }
+  return [...groups.values()]
+})
 // GT3.16 (review #5): RECONCILE rather than rebuild — a row whose "voiceId:pointIndex" key is
 // still selected KEEPS its current (possibly mid-edit) values, so accumulating another point
 // (or an external model change) no longer discards uncommitted typing. Newly-selected keys are
@@ -2949,5 +2987,32 @@ onBeforeUnmount(() => {
 .tracks-panel__multi-table td {
   min-width: 64px;
   padding: 2px 6px;
+}
+
+/* GT10.23 (owner req. 72): numeric headers + values are both right-aligned so the columns line up
+   with their headers. The checkbox column is narrow. */
+.tracks-panel__multi-table th.tracks-panel__col-num,
+.tracks-panel__multi-table td.tracks-panel__col-num {
+  text-align: right;
+}
+.tracks-panel__multi-table th.tracks-panel__col-chk,
+.tracks-panel__multi-table td.tracks-panel__col-chk {
+  min-width: 0;
+  width: 28px;
+  text-align: center;
+}
+
+/* GT10.41 (owner req.): collapsible per-voice group header row. */
+.tracks-panel__group-row {
+  cursor: pointer;
+  user-select: none;
+}
+.tracks-panel__group-row td {
+  background: rgba(148, 163, 184, 0.12);
+  font-weight: 600;
+  padding: 4px 6px;
+}
+.tracks-panel__group-row:hover td {
+  background: rgba(148, 163, 184, 0.2);
 }
 </style>
