@@ -417,6 +417,8 @@
   },
   "fsBrowser": {
     "title": "Open file",
+    "dockMenu": "Window position",
+    "sectionFiles": "File list",
     "dockFloat": "Floating window",
     "dockLeft": "Dock left",
     "dockRight": "Dock right",

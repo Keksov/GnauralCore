@@ -19,24 +19,25 @@
         <span class="file-open-dialog__title">{{ t('fsBrowser.title') }}</span>
       </div>
 
-      <div class="file-open-dialog__dock-buttons row items-center no-wrap">
-        <q-btn flat dense round size="sm" icon="picture_in_picture_alt" :color="isFloating ? 'primary' : undefined" @click="store.setWindowMode('floating')">
-          <q-tooltip>{{ t('fsBrowser.dockFloat') }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="border_left" :color="store.windowMode === 'left' ? 'primary' : undefined" @click="store.setWindowMode('left')">
-          <q-tooltip>{{ t('fsBrowser.dockLeft') }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="border_right" :color="store.windowMode === 'right' ? 'primary' : undefined" @click="store.setWindowMode('right')">
-          <q-tooltip>{{ t('fsBrowser.dockRight') }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="border_top" :color="store.windowMode === 'top' ? 'primary' : undefined" @click="store.setWindowMode('top')">
-          <q-tooltip>{{ t('fsBrowser.dockTop') }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="border_bottom" :color="store.windowMode === 'bottom' ? 'primary' : undefined" @click="store.setWindowMode('bottom')">
-          <q-tooltip>{{ t('fsBrowser.dockBottom') }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="close" :aria-label="t('fsBrowser.cancel')" @click="close" />
-      </div>
+      <!-- FB4.3-refine 1: all dock modes collapsed under one icon + menu to cut visual noise. -->
+      <q-btn flat dense round size="sm" :icon="modeIcon" class="file-open-dialog__dock-menu-btn">
+        <q-tooltip>{{ t('fsBrowser.dockMenu') }}</q-tooltip>
+        <q-menu auto-close>
+          <q-list dense style="min-width: 160px">
+            <q-item
+              v-for="opt in dockOptions"
+              :key="opt.mode"
+              clickable
+              :active="store.windowMode === opt.mode"
+              @click="store.setWindowMode(opt.mode)"
+            >
+              <q-item-section avatar><q-icon :name="opt.icon" /></q-item-section>
+              <q-item-section>{{ t(opt.label) }}</q-item-section>
+            </q-item>
+          </q-list>
+        </q-menu>
+      </q-btn>
+      <q-btn flat dense round size="sm" icon="close" :aria-label="t('fsBrowser.cancel')" @click="close" />
     </div>
 
     <q-separator />
@@ -126,21 +127,80 @@
 
       <q-separator />
 
-      <div class="file-open-dialog__body row no-wrap">
-        <!-- Sidebar: roots + favorites (FB-D3 / FB-D10). -->
+      <!-- FB4.3-refine 2: left/right dock -> single-column accordion (File list / Locations /
+           Favorites); every other mode keeps the two-pane sidebar + list. -->
+      <div v-if="isColumn" class="file-open-dialog__body file-open-dialog__body--column">
+        <q-expansion-item
+          default-opened
+          dense
+          :label="t('fsBrowser.sectionFiles')"
+          class="file-open-dialog__acc file-open-dialog__acc--grow"
+        >
+          <FsEntryList
+            :entries="store.visibleEntries"
+            :loading="store.loading"
+            :error="store.error"
+            :view-mode="store.viewMode"
+            :icon-size="store.iconSize"
+            :sort-key="store.sortKey"
+            :sort-dir="store.sortDir"
+            :selected-path="selectedPath"
+            @select="select"
+            @activate="activate"
+            @sort="store.setSort"
+            @nav-up="store.goUp"
+          />
+        </q-expansion-item>
+
+        <q-expansion-item dense :label="t('fsBrowser.roots')" class="file-open-dialog__acc">
+          <div class="file-open-dialog__acc-body">
+            <q-list dense>
+              <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="store.openDir(root.path)">
+                <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
+                <q-item-section>{{ root.label }}</q-item-section>
+              </q-item>
+            </q-list>
+          </div>
+        </q-expansion-item>
+
+        <q-expansion-item dense class="file-open-dialog__acc">
+          <template #header>
+            <q-item-section>{{ t('fsBrowser.favorites') }}</q-item-section>
+            <q-item-section side>
+              <q-btn flat dense round size="sm" icon="star" :aria-label="t('fsBrowser.addFavorite')" @click.stop="addCurrentToFavorites">
+                <q-tooltip>{{ t('fsBrowser.addFavorite') }}</q-tooltip>
+              </q-btn>
+            </q-item-section>
+          </template>
+          <div class="file-open-dialog__acc-body">
+            <q-list dense>
+              <q-item v-if="store.favorites.length === 0" dense>
+                <q-item-section class="text-grey-6 text-caption">{{ t('fsBrowser.noFavorites') }}</q-item-section>
+              </q-item>
+              <q-item
+                v-for="fav in store.favorites"
+                :key="fav.providerId + '::' + fav.path"
+                clickable
+                dense
+                @click="activateFavorite(fav)"
+              >
+                <q-item-section avatar><q-icon :name="fav.kind === 'dir' ? 'folder' : 'insert_drive_file'" size="18px" /></q-item-section>
+                <q-item-section class="file-open-dialog__fav-label">{{ fav.label }}</q-item-section>
+                <q-item-section side>
+                  <q-btn flat dense round size="sm" icon="close" :aria-label="t('fsBrowser.removeFavorite')" @click.stop="store.removeFavorite(fav.path, fav.providerId)" />
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </div>
+        </q-expansion-item>
+      </div>
+
+      <div v-else class="file-open-dialog__body row no-wrap">
         <div class="file-open-dialog__sidebar">
           <q-list dense>
             <q-item-label header class="file-open-dialog__sidebar-header">{{ t('fsBrowser.roots') }}</q-item-label>
-            <q-item
-              v-for="root in store.roots"
-              :key="root.id"
-              clickable
-              dense
-              @click="store.openDir(root.path)"
-            >
-              <q-item-section avatar>
-                <q-icon :name="rootIcon(root.kind)" size="20px" />
-              </q-item-section>
+            <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="store.openDir(root.path)">
+              <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
               <q-item-section>{{ root.label }}</q-item-section>
             </q-item>
 
@@ -162,9 +222,7 @@
               dense
               @click="activateFavorite(fav)"
             >
-              <q-item-section avatar>
-                <q-icon :name="fav.kind === 'dir' ? 'folder' : 'insert_drive_file'" size="18px" />
-              </q-item-section>
+              <q-item-section avatar><q-icon :name="fav.kind === 'dir' ? 'folder' : 'insert_drive_file'" size="18px" /></q-item-section>
               <q-item-section class="file-open-dialog__fav-label">{{ fav.label }}</q-item-section>
               <q-item-section side>
                 <q-btn flat dense round size="sm" icon="close" :aria-label="t('fsBrowser.removeFavorite')" @click.stop="store.removeFavorite(fav.path, fav.providerId)" />
@@ -175,90 +233,20 @@
 
         <q-separator vertical />
 
-        <!-- Main listing. -->
-        <div class="file-open-dialog__main col" tabindex="0" @keydown="onListKeydown">
-          <div v-if="store.loading" class="file-open-dialog__center">
-            <q-spinner-hourglass color="primary" size="32px" />
-          </div>
-          <div v-else-if="store.error" class="file-open-dialog__center text-negative">{{ store.error }}</div>
-          <div v-else-if="store.visibleEntries.length === 0" class="file-open-dialog__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
-
-          <!-- Table view (Total Commander style), FB-D4. -->
-          <template v-else-if="store.viewMode === 'table'">
-            <div class="file-open-dialog__thead row no-wrap">
-              <div class="file-open-dialog__th file-open-dialog__col-name" @click="store.setSort('name')">
-                {{ t('fsBrowser.colName') }}<q-icon v-if="store.sortKey === 'name'" :name="sortIcon" size="16px" />
-              </div>
-              <div class="file-open-dialog__th file-open-dialog__col-ext" @click="store.setSort('ext')">
-                {{ t('fsBrowser.colExt') }}<q-icon v-if="store.sortKey === 'ext'" :name="sortIcon" size="16px" />
-              </div>
-              <div class="file-open-dialog__th file-open-dialog__col-size" @click="store.setSort('size')">
-                {{ t('fsBrowser.colSize') }}<q-icon v-if="store.sortKey === 'size'" :name="sortIcon" size="16px" />
-              </div>
-              <div class="file-open-dialog__th file-open-dialog__col-date" @click="store.setSort('mtime')">
-                {{ t('fsBrowser.colDate') }}<q-icon v-if="store.sortKey === 'mtime'" :name="sortIcon" size="16px" />
-              </div>
-            </div>
-            <q-virtual-scroll
-              ref="tableScroll"
-              :items="store.visibleEntries"
-              class="file-open-dialog__scroll"
-              v-slot="{ item }"
-            >
-              <div
-                :key="item.path"
-                class="file-open-dialog__row row no-wrap items-center"
-                :class="{ 'file-open-dialog__row--active': item.path === selectedPath, 'file-open-dialog__row--muted': !item.isDir && !isSupported(item) }"
-                @click="select(item)"
-                @dblclick="activate(item)"
-              >
-                <div class="file-open-dialog__col-name row items-center no-wrap">
-                  <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="file-open-dialog__row-icon" />
-                  <span class="file-open-dialog__row-name">{{ item.name }}</span>
-                </div>
-                <div class="file-open-dialog__col-ext">{{ item.isDir ? '' : item.ext }}</div>
-                <div class="file-open-dialog__col-size">{{ item.isDir ? '' : formatSize(item.size) }}</div>
-                <div class="file-open-dialog__col-date">{{ formatDate(item.mtimeMs) }}</div>
-              </div>
-            </q-virtual-scroll>
-          </template>
-
-          <!-- List view (names only), FB-D4. -->
-          <template v-else-if="store.viewMode === 'list'">
-            <q-virtual-scroll
-              ref="listScroll"
-              :items="store.visibleEntries"
-              class="file-open-dialog__scroll"
-              v-slot="{ item }"
-            >
-              <div
-                :key="item.path"
-                class="file-open-dialog__row file-open-dialog__row--list row no-wrap items-center"
-                :class="{ 'file-open-dialog__row--active': item.path === selectedPath, 'file-open-dialog__row--muted': !item.isDir && !isSupported(item) }"
-                @click="select(item)"
-                @dblclick="activate(item)"
-              >
-                <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="file-open-dialog__row-icon" />
-                <span class="file-open-dialog__row-name">{{ item.name }}</span>
-              </div>
-            </q-virtual-scroll>
-          </template>
-
-          <!-- Icon view (sizes sm/md/lg), FB-D4. Grid is not virtualized. -->
-          <div v-else class="file-open-dialog__scroll file-open-dialog__icons" :class="`file-open-dialog__icons--${store.iconSize}`">
-            <div
-              v-for="item in store.visibleEntries"
-              :key="item.path"
-              class="file-open-dialog__tile column items-center"
-              :class="{ 'file-open-dialog__tile--active': item.path === selectedPath, 'file-open-dialog__row--muted': !item.isDir && !isSupported(item) }"
-              @click="select(item)"
-              @dblclick="activate(item)"
-            >
-              <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" :size="iconTileSize" />
-              <div class="file-open-dialog__tile-label">{{ item.name }}</div>
-            </div>
-          </div>
-        </div>
+        <FsEntryList
+          :entries="store.visibleEntries"
+          :loading="store.loading"
+          :error="store.error"
+          :view-mode="store.viewMode"
+          :icon-size="store.iconSize"
+          :sort-key="store.sortKey"
+          :sort-dir="store.sortDir"
+          :selected-path="selectedPath"
+          @select="select"
+          @activate="activate"
+          @sort="store.setSort"
+          @nav-up="store.goUp"
+        />
       </div>
 
       <q-separator />
@@ -284,9 +272,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { QInput, QVirtualScroll } from 'quasar'
+import type { QInput } from 'quasar'
 import type { AudioFileKind, FsEntry, FsRootKind } from '@protocol'
-import { audioFileKindForExt, useFsBrowserStore, type FsFavorite, type FsIconSize, type FsViewMode } from '../stores/fs-browser'
+import { audioFileKindForExt, useFsBrowserStore, type FsFavorite, type FsIconSize, type FsViewMode, type FsWindowMode } from '../stores/fs-browser'
+import FsEntryList from './FsEntryList.vue'
 
 const props = defineProps<{
   readonly modelValue: boolean
@@ -303,10 +292,9 @@ const store = useFsBrowserStore()
 
 const selectedPath = ref<string | null>(null)
 const filterInput = ref<QInput | null>(null)
-const tableScroll = ref<QVirtualScroll | null>(null)
-const listScroll = ref<QVirtualScroll | null>(null)
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')
+const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
 const modeClass = computed<string>(() =>
   isFloating.value ? 'file-open-dialog--floating' : `file-open-dialog--dock-${store.windowMode}`,
 )
@@ -321,6 +309,20 @@ const rootStyle = computed<CSSProperties>(() => {
   return { height: `${store.dockSize}px` }
 })
 
+interface DockOption {
+  readonly mode: FsWindowMode
+  readonly icon: string
+  readonly label: string
+}
+const dockOptions: readonly DockOption[] = [
+  { mode: 'floating', icon: 'picture_in_picture_alt', label: 'fsBrowser.dockFloat' },
+  { mode: 'left', icon: 'border_left', label: 'fsBrowser.dockLeft' },
+  { mode: 'right', icon: 'border_right', label: 'fsBrowser.dockRight' },
+  { mode: 'top', icon: 'border_top', label: 'fsBrowser.dockTop' },
+  { mode: 'bottom', icon: 'border_bottom', label: 'fsBrowser.dockBottom' },
+]
+const modeIcon = computed<string>(() => dockOptions.find((o) => o.mode === store.windowMode)?.icon ?? 'picture_in_picture_alt')
+
 const viewOptions = computed(() => [
   { value: 'table', icon: 'table_chart' },
   { value: 'list', icon: 'view_list' },
@@ -332,9 +334,6 @@ const iconSizeOptions = [
   { value: 'lg', label: 'L' },
 ]
 
-const sortIcon = computed(() => (store.sortDir === 'asc' ? 'arrow_drop_up' : 'arrow_drop_down'))
-const iconTileSize = computed(() => (store.iconSize === 'sm' ? '32px' : store.iconSize === 'lg' ? '72px' : '48px'))
-
 const selectedEntry = computed<FsEntry | null>(() => {
   return store.visibleEntries.find((e) => e.path === selectedPath.value) ?? null
 })
@@ -344,8 +343,6 @@ const canOpen = computed<boolean>(() => {
   return entry !== null && !entry.isDir && audioFileKindForExt(entry.ext) !== null
 })
 
-const isSupported = (entry: FsEntry): boolean => audioFileKindForExt(entry.ext) !== null
-
 const rootIcon = (kind: FsRootKind): string => {
   switch (kind) {
     case 'drive': return 'storage'
@@ -354,43 +351,6 @@ const rootIcon = (kind: FsRootKind): string => {
     case 'volume': return 'usb'
     case 'root': return 'dns'
   }
-}
-
-// FB4.4 (FB-D14): a distinct icon + colour per file kind, applied across all three views.
-interface EntryVisual {
-  readonly icon: string
-  readonly color: string
-}
-const entryVisual = (entry: FsEntry): EntryVisual => {
-  if (entry.isDir) {
-    return { icon: 'folder', color: 'amber-8' }
-  }
-  switch (audioFileKindForExt(entry.ext)) {
-    case 'gnaural':
-      return { icon: 'graphic_eq', color: 'purple-5' }
-    case 'wav':
-      return { icon: 'audiotrack', color: 'light-blue-6' }
-    case 'flac':
-      return { icon: 'music_note', color: 'teal-5' }
-    default:
-      return { icon: 'insert_drive_file', color: 'blue-grey-5' }
-  }
-}
-
-const formatSize = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unitIndex]}`
-}
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' })
-const formatDate = (mtimeMs: number): string => {
-  return mtimeMs > 0 ? dateFormat.format(new Date(mtimeMs)) : ''
 }
 
 const select = (entry: FsEntry): void => {
@@ -469,45 +429,9 @@ const onKeydown = (event: KeyboardEvent): void => {
   }
 }
 
-// Keyboard navigation over the visible list (FB2.6).
-const onListKeydown = (event: KeyboardEvent): void => {
-  const items = store.visibleEntries
-  if (items.length === 0) {
-    return
-  }
-  const currentIndex = items.findIndex((e) => e.path === selectedPath.value)
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    selectAtIndex(currentIndex < items.length - 1 ? currentIndex + 1 : 0)
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    selectAtIndex(currentIndex > 0 ? currentIndex - 1 : items.length - 1)
-  } else if (event.key === 'Enter') {
-    event.preventDefault()
-    const entry = currentIndex >= 0 ? items[currentIndex] : null
-    if (entry !== undefined && entry !== null) {
-      activate(entry)
-    }
-  } else if (event.key === 'Backspace') {
-    event.preventDefault()
-    void store.goUp()
-  }
-}
-
-const selectAtIndex = (index: number): void => {
-  const entry = store.visibleEntries[index]
-  if (entry === undefined) {
-    return
-  }
-  selectedPath.value = entry.path
-  tableScroll.value?.scrollTo(index)
-  listScroll.value?.scrollTo(index)
-}
-
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max))
 
-// Generic pointer-drag: wire window listeners until pointerup. onMove gets the live event.
+// Generic pointer-drag: wire window listeners until pointerup.
 const beginDrag = (onMove: (event: PointerEvent) => void): void => {
   const move = (event: PointerEvent): void => onMove(event)
   const up = (): void => {
@@ -577,7 +501,6 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
   background: var(--q-dark-page, #fff);
   box-sizing: border-box;
 
-  // Floating: a shadowed, rounded window; geometry comes from rootStyle.
   &--floating {
     border: 1px solid rgba(128, 128, 128, 0.35);
     border-radius: 6px;
@@ -585,7 +508,6 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
     overflow: hidden;
   }
 
-  // Docked: fills the dock slot; a divider on the inner-facing edge.
   &--dock-left,
   &--dock-right,
   &--dock-top,
@@ -643,6 +565,32 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
     min-height: 0;
   }
 
+  // Single-column accordion for the left/right dock (FB4.3-refine 2).
+  &__body--column {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  &__acc {
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+
+    &--grow {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+
+      :deep(.q-expansion-item__container) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+      :deep(.q-expansion-item__content) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    }
+  }
+
+  &__acc-body {
+    max-height: 30vh;
+    overflow-y: auto;
+  }
+
   &__sidebar {
     width: 200px;
     flex: 0 0 auto;
@@ -657,99 +605,12 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
     white-space: nowrap;
   }
 
-  &__main {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  &__center {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  &__scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  &__thead {
-    flex: 0 0 auto;
-    font-weight: 600;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-  }
-
-  &__th {
-    padding: 4px 8px;
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-  }
-
-  &__col-name { flex: 1 1 auto; min-width: 0; }
-  &__col-ext { flex: 0 0 56px; }
-  &__col-size { flex: 0 0 88px; text-align: right; }
-  &__col-date { flex: 0 0 132px; }
-
-  &__row {
-    padding: 2px 8px;
-    cursor: pointer;
-
-    &:hover { background: rgba(128, 128, 128, 0.12); }
-    &--active { background: rgba(25, 118, 210, 0.25); }
-    &--muted { opacity: 0.5; }
-  }
-
-  &__row-icon { margin-right: 6px; }
-
-  &__row-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__icons {
-    display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 8px;
-    padding: 8px;
-
-    &--sm .file-open-dialog__tile { width: 72px; }
-    &--md .file-open-dialog__tile { width: 104px; }
-    &--lg .file-open-dialog__tile { width: 140px; }
-  }
-
-  &__tile {
-    padding: 8px 4px;
-    cursor: pointer;
-    border-radius: 4px;
-    text-align: center;
-
-    &:hover { background: rgba(128, 128, 128, 0.12); }
-    &--active { background: rgba(25, 118, 210, 0.25); }
-  }
-
-  &__tile-label {
-    margin-top: 4px;
-    font-size: 12px;
-    width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   &__selected {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  // Resizers.
   &__float-resizer {
     position: absolute;
     right: 0;
