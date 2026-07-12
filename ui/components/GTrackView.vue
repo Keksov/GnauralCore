@@ -847,13 +847,14 @@ onBeforeUnmount(() => {
 
 .gtrack-view__canvas {
   display: block;
-  /* GT10.34 (owner 2026-07-12): fill the lane via absolute inset (the root is position:relative)
-     instead of flex. A flexed canvas could be laid out at its intrinsic (attribute) height and
-     overflow the lane, so clientHeight — which drives the draw height cssH — didn't match the
-     canvas's displayed height and the reserved bottom margin was cut off (min/max-value vertices
-     showed only half). Absolute inset:0 makes clientHeight == the lane height exactly. */
-  position: absolute;
-  inset: 0;
+  /* GT10.34 (owner 2026-07-12): flex-basis 0 (not auto) so the canvas fills the lane by GROWTH and
+     ignores its own intrinsic (attribute) height. With flex-basis:auto the canvas was laid out at
+     its bitmap height and overflowed the lane; overflow:hidden then clipped the bottom margin, so
+     value=min vertices (curve along the lane's bottom edge) showed only half. Stays in flow, so
+     width:100% + the curve render are unaffected. */
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
 }
 
 .gtrack-view__canvas--seekable {
