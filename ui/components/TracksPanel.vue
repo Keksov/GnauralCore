@@ -823,9 +823,9 @@
         <!-- Table mode (owner req. 30): view + edit VALUE fields (not time — see GT-D16 note in
              the composable) across every multi-selected vertex, plus a bulk-delete action. -->
         <template v-if="inspectorMode === 'table'">
-          <!-- GT10.22 (owner req. 71): Ctrl+Arrow big-step via a native capture-phase listener (see
-               onTableStepKey); data-step-field + data-step-row identify the cell to step. -->
-          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap" @keydown.capture="onTableStepKey">
+          <!-- GT10.22 (owner req. 71): Ctrl/Alt+Arrow big-step is handled in the window keydown
+               (handleTracksKeyDown); data-step-field + data-step-row on each <td> identify the cell. -->
+          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap">
             <q-markup-table dense flat dark class="tracks-panel__multi-table">
               <thead>
                 <tr>
@@ -889,10 +889,10 @@
 
         <!-- Single-point mode (GT3.3/GT3.12): unchanged. -->
         <template v-else>
-          <!-- GT10.22 (owner req. 71): Ctrl+Arrow big-step is handled by a NATIVE capture-phase
-               listener on this wrapper (the QInput @keydown didn't reliably see Ctrl / ran after the
-               native step). Each field is tagged data-step-field so the handler knows which to step. -->
-          <div class="audio-page__spectrogram-settings-body q-gutter-sm" @keydown.capture="onFormStepKey">
+          <!-- GT10.22 (owner req. 71): Ctrl/Alt+Arrow big-step is handled in the window keydown
+               (handleTracksKeyDown). Each field is tagged data-step-field (on a native display:contents
+               span) so the handler can find the focused field. -->
+          <div class="audio-page__spectrogram-settings-body q-gutter-sm">
             <!-- data-step-field lives on a native display:contents span (layout unchanged) so
                  closest() reliably finds it from the input regardless of QInput attr handling. -->
             <span data-step-field="timeSec" style="display: contents">
@@ -1511,41 +1511,26 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
     gtracks.setPointValues({ voiceId: row.voiceId, pointIndex: row.pointIndex }, rowPatch(row))
   }
 }
-// GT10.6/GT10.22 (owner req. 50/71): Ctrl+Arrow steps a numeric field by 1.0 (plain arrows keep the
-// input's own fine step). Handled by a NATIVE capture-phase listener on the form/table wrapper — the
-// QInput's own @keydown didn't reliably carry Ctrl / ran after the native step, so the big step was
-// lost. The wrapper sees the native event (ctrlKey intact) and preventDefaults BEFORE the native
-// number-input applies its own `step`. data-step-field (and data-step-row for the table) identify
-// the target field; the value is clamped per field via ctrlStepValue.
-function stepFromEvent(e: KeyboardEvent): { field: string; dir: 1 | -1; el: HTMLElement } | null {
-  // GT10.22: Ctrl OR Alt is the "big step" modifier — some environments swallow Ctrl+Arrow before
-  // it reaches the page, so Alt+Arrow is an equivalent trigger.
-  if (!(e.ctrlKey || e.altKey) || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return null
-  const el = (e.target as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
-  const field = el?.getAttribute('data-step-field') ?? null
-  if (el === null || field === null) return null
-  return { field, dir: e.key === 'ArrowUp' ? 1 : -1, el }
-}
-function onFormStepKey(e: KeyboardEvent): void {
-  const s = stepFromEvent(e)
-  if (s === null) return
-  e.preventDefault()
-  e.stopPropagation()
+// GT10.6/GT10.22 (owner req. 50/71): Ctrl OR Alt + Arrow steps a numeric field by 1.0 (plain arrows
+// keep the input's own fine step). Handled in the WINDOW keydown (handleTracksKeyDown) — that is the
+// only listener proven to reliably carry the modifier while an inspector field is focused (same path
+// as Ctrl+S / Ctrl+Z). The field is located from the focused element's data-step-field ancestor
+// (data-step-row for the table row); the value is clamped per field via ctrlStepValue.
+function applyFieldBigStep(el: HTMLElement, dir: 1 | -1): void {
+  const field = el.getAttribute('data-step-field')
+  if (field === null) return
+  const rowKey = el.getAttribute('data-step-row')
+  if (rowKey !== null) {
+    const row = multiForm.value.find((r) => `${r.voiceId}:${r.pointIndex}` === rowKey)
+    if (row === undefined) return
+    const r = row as unknown as Record<string, number>
+    r[field] = ctrlStepValue(Number(r[field]), field, dir)
+    maybeAutosaveMultiRow(row)
+    return
+  }
   const form = pointForm as unknown as Record<string, number>
-  form[s.field] = ctrlStepValue(Number(form[s.field]), s.field, s.dir)
+  form[field] = ctrlStepValue(Number(form[field]), field, dir)
   maybeAutosave()
-}
-function onTableStepKey(e: KeyboardEvent): void {
-  const s = stepFromEvent(e)
-  if (s === null) return
-  const rowKey = s.el.getAttribute('data-step-row')
-  const row = multiForm.value.find((r) => `${r.voiceId}:${r.pointIndex}` === rowKey)
-  if (row === undefined) return
-  e.preventDefault()
-  e.stopPropagation()
-  const r = row as unknown as Record<string, number>
-  r[s.field] = ctrlStepValue(Number(r[s.field]), s.field, s.dir)
-  maybeAutosaveMultiRow(row)
 }
 
 // GT10.9 (owner req. 54): delete only the CHECKED table rows (one undo unit).
@@ -2446,6 +2431,17 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     event.preventDefault()
     redoWithFocus()
     return
+  }
+  // GT10.22 (owner req. 71): Ctrl/Alt+Arrow = big step (±1) on a focused numeric field. BEFORE the
+  // typing guard (focus is inside the input) — the window keydown reliably carries the modifier,
+  // unlike the QInput @keydown / a wrapper capture listener, which didn't fire the step.
+  if ((event.ctrlKey || event.altKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    const fieldEl = (document.activeElement as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
+    if (fieldEl !== null) {
+      event.preventDefault()
+      applyFieldBigStep(fieldEl, event.key === 'ArrowUp' ? 1 : -1)
+      return
+    }
   }
 
   if (shouldIgnoreHotkey(event)) {
