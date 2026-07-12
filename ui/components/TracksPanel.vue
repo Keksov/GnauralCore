@@ -1042,14 +1042,8 @@ const canSeek = computed(() => props.canSeek)
 // GT10.32 (owner 2026-07-12): the Tracks editor keeps a PERSISTENT local playhead so clicking a
 // curve (or arrow-key seek) places a visible position cursor even when the transport is STOPPED —
 // the shared optimistic seek reverts to 0 once the transport is idle, which made the cursor snap
-// back to 0. While actually playing we follow the real position; the local cursor is dropped when
-// playback starts or the file changes.
+// back to 0. (gtrackPlayheadSec + the reactivity live after the audio store is created below.)
 const localPlayheadSec = ref<number | null>(null)
-const gtrackPlayheadSec = computed(() =>
-  audio.transportState === 'playing' ? displayedPositionSec.value : (localPlayheadSec.value ?? displayedPositionSec.value),
-)
-watch(() => audio.transportState, (st) => { if (st === 'playing') localPlayheadSec.value = null })
-watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 function handleSeek(aSec: number): void {
   localPlayheadSec.value = aSec // persistent local cursor (survives an idle transport)
   emit('seek', aSec)
@@ -1108,6 +1102,14 @@ function persistSpectrogramTrackHeights(aHeights: readonly number[]): void {
 const { t } = useI18n()
 const $q = useQuasar()
 const audio = useAudioStore()
+// GT10.32 (owner 2026-07-12): the Tracks playhead shows the real position while playing, else the
+// persistent local cursor (handleSeek above). Declared here — the immediate watch getters need the
+// audio store, so this must come AFTER `audio` is created (else a TDZ ReferenceError at setup).
+const gtrackPlayheadSec = computed(() =>
+  audio.transportState === 'playing' ? displayedPositionSec.value : (localPlayheadSec.value ?? displayedPositionSec.value),
+)
+watch(() => audio.transportState, (st) => { if (st === 'playing') localPlayheadSec.value = null })
+watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 const spectrogramStore = useSpectrogramStore()
 // GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
 // waveform + spectrum (GT-D2). Lanes appear only for a gnaural file with a loaded schedule.
