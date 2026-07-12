@@ -489,12 +489,18 @@
                       role="button" tabindex="0"
                       :aria-label="t('audio.gtrackSoloWaveColor')"
                     >
-                      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                        <q-color
-                          :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
-                          format-model="hex" no-header-tabs default-view="palette"
-                          @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
-                        />
+                      <!-- GT10.20 (owner 2026-07-12): open to the RIGHT of the circle, with a close (X). -->
+                      <q-popup-proxy anchor="top right" self="top left" :offset="[8, 0]" transition-show="scale" transition-hide="scale">
+                        <div class="tracks-panel__color-popup">
+                          <div class="row justify-end">
+                            <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
+                          </div>
+                          <q-color
+                            :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
+                            format-model="hex" no-header-tabs default-view="palette"
+                            @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
+                          />
+                        </div>
                       </q-popup-proxy>
                     </div>
                   </div>
@@ -3021,6 +3027,11 @@ onBeforeUnmount(() => {
 }
 .tracks-panel__color-swatch:hover {
   border-color: rgba(255, 255, 255, 0.85);
+}
+.tracks-panel__color-popup {
+  background: #1e293b;
+  border-radius: 6px;
+  padding: 2px;
 }
 
 /* GT10.43 (owner req.): the ordinal (#) column is narrow. */
