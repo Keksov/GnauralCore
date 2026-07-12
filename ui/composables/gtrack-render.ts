@@ -117,6 +117,19 @@ export function unitToValue(unit: number, axis: GTrackAxis): number {
  * inside the data's own corridor. A (near-)flat curve gets a wider span so it's editable at all
  * (e.g. wakeup.gnaural, whose voice is 36 points all at 100 Hz). View mode is unchanged (data-fit).
  */
+/**
+ * GT10.6/GT10.22 (owner req. 50/71): the value after a Ctrl+Arrow "big step" (±1) on a numeric
+ * field, clamped to the field's sane range (freqs/time/volume never negative; volume capped at 1).
+ * Pure so it is unit-testable; the panel handler just assigns the result.
+ */
+export function ctrlStepValue(current: number, field: string, direction: 1 | -1): number {
+  const base = Number.isFinite(current) ? current : 0
+  let next = base + direction
+  next = Math.max(0, next)
+  if (field === 'volL' || field === 'volR') next = Math.min(1, next)
+  return next
+}
+
 export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false): GTrackAxis {
   if (mode === 'volume') {
     return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }

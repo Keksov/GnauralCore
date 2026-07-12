@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GTrackPoint, GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit } from './gtrack-render'
+import { GTRACK_MODES, ctrlStepValue, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit } from './gtrack-render'
 
 function pt(over: Partial<GTrackPoint>): GTrackPoint {
   return { timeSec: 0, baseFreq: 200, beatFreqHalf: 5, volL: 0.5, volR: 0.5, ...over }
@@ -72,6 +72,15 @@ describe('gtrackAxis (GT2.1)', () => {
     const view = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base')
     expect(view.min).toBe(100)
     expect(view.max).toBe(200)
+  })
+
+  test('ctrlStepValue: ±1 big step, clamped per field (GT10.22)', () => {
+    expect(ctrlStepValue(100, 'baseFreq', 1)).toBe(101)
+    expect(ctrlStepValue(100, 'baseFreq', -1)).toBe(99)
+    expect(ctrlStepValue(0.3, 'volL', 1)).toBe(1) // volume capped at 1
+    expect(ctrlStepValue(0.3, 'volR', -1)).toBe(0) // never negative
+    expect(ctrlStepValue(0.5, 'timeSec', -1)).toBe(0) // time never negative
+    expect(ctrlStepValue(Number.NaN, 'beatFreq', 1)).toBe(1) // non-finite -> from 0
   })
 
   test('beat stays linear-auto with padding', () => {

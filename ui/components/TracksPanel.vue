@@ -1013,7 +1013,7 @@ import { useSpectrogram } from '../composables/use-spectrogram'
 import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
-import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
+import { GTRACK_MODES, ctrlStepValue, type GTrackMode } from '../composables/gtrack-render'
 import {
   fullWindow,
   isFullWindow,
@@ -1494,13 +1494,14 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
     gtracks.setPointValues({ voiceId: row.voiceId, pointIndex: row.pointIndex }, rowPatch(row))
   }
 }
-// GT10.6 (owner req. 50, owner's chosen variant): Ctrl+Arrow steps a numeric field by 1.0
-// (plain arrows keep the input's own fine step).
+// GT10.6/GT10.22 (owner req. 50/71): Ctrl+Arrow steps a numeric field by 1.0 (plain arrows keep the
+// input's own fine step). stopPropagation + preventDefault so the native number-input doesn't ALSO
+// step by its own `step` and the value lands exactly on ±1 (clamped to the field range).
 function ctrlStep(e: KeyboardEvent, obj: Record<string, unknown>, key: string): void {
   if (!e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
   e.preventDefault()
-  const cur = Number(obj[key])
-  obj[key] = (Number.isFinite(cur) ? cur : 0) + (e.key === 'ArrowUp' ? 1 : -1)
+  e.stopPropagation()
+  obj[key] = ctrlStepValue(Number(obj[key]), key, e.key === 'ArrowUp' ? 1 : -1)
 }
 
 // GT10.9 (owner req. 54): delete only the CHECKED table rows (one undo unit).
