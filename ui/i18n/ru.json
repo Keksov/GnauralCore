@@ -26,6 +26,8 @@
     "spectrogramTab": "Спектрограмма",
     "tracksTab": "Треки",
     "editorTab": "Редактор",
+    "menuFile": "Файл",
+    "menuOpen": "Открыть…",
     "noFileSelected": "Файл не выбран",
     "recentFilesEmpty": "Нет недавних файлов",
     "waveformCanvasLabel": "Волновая форма аудио",

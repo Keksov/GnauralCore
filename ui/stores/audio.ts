@@ -920,6 +920,36 @@ export const useAudioStore = defineStore('audio', () => {
     clearLocalError()
   }
 
+  // FB3.2 (file-browser FB-D7): select a file chosen from the universal open dialog. That file lives
+  // OUTSIDE presetsTree, so selectPath (which resolves nodes from the tree) would yield null; here we
+  // build the node from the known path + fileKind returned by the dialog instead.
+  function selectExternalPath(path: string, fileKind: AudioFileKind): void {
+    const name = path.split(/[\\/]/u).pop() ?? path
+    const node: PresetTreeNode = { name, path, isDir: false, fileKind }
+
+    if (pendingLocalStartPath.value !== null && pendingLocalStartPath.value !== path) {
+      cancelPendingLocalStart()
+    }
+
+    selectedNode.value = node
+    selectedPath.value = path
+    recordRecentFile(path)
+
+    if (
+      !isLocalAudioFileKind(node.fileKind) ||
+      path !== wavSourcePath.value ||
+      node.fileKind !== localFileKind.value
+    ) {
+      stopLocalPlayback()
+    }
+
+    if (fileKind === 'gnaural') {
+      void loadGnauralSchedule(path)
+    }
+
+    clearLocalError()
+  }
+
   function setClientError(message: string | null): void {
     lastError.value = message
   }
@@ -1084,6 +1114,7 @@ export const useAudioStore = defineStore('audio', () => {
     refreshPresets,
     loadGnauralSchedule,
     selectPath,
+    selectExternalPath,
     setClientError,
     queueLocalStartAfterRemoteStop,
     cancelPendingLocalStart,

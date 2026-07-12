@@ -81,6 +81,28 @@
 
       <div class="audio-page__content">
         <q-card flat bordered class="audio-page__card audio-page__content-card">
+          <!-- FB3.1 (owner req. 9): classic menu bar; File -> Open launches the universal dialog. -->
+          <div class="audio-page__menubar row items-center no-wrap">
+            <q-btn-dropdown flat dense no-caps :label="t('audio.menuFile')" class="audio-page__menu-file">
+              <q-list dense>
+                <q-item clickable v-close-popup @click="openFileDialog">
+                  <q-item-section avatar>
+                    <q-icon name="folder_open" />
+                  </q-item-section>
+                  <q-item-section>{{ t('audio.menuOpen') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-btn-dropdown>
+          </div>
+
+          <FileOpenDialog
+            v-model="fileOpenDialogOpen"
+            :initial-path="fileDialogInitialPath"
+            @open="handleExternalFileOpen"
+          />
+
+          <q-separator />
+
           <q-card-section v-if="audio.lastError !== null">
             <q-banner dense rounded class="bg-red-1 text-red-10">
               {{ audio.lastError }}
@@ -664,6 +686,7 @@ import GnauralSettingsTab from '../settings/GnauralSettingsTab.vue'
 import { useAudioTransport } from '../composables/use-audio-transport'
 import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
+import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { useAudioStore } from '../stores/audio'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
@@ -821,6 +844,46 @@ const {
 const wsService = useWsService()
 
 let selectionChangeToken = 0
+
+// FB3.1/FB3.2 (file-browser): the classic File -> Open menu opens the universal dialog; a chosen file
+// (which lives outside presetsTree) is fed into the editor's open path via audio.selectExternalPath,
+// reusing the unsaved-changes guard + view switching from the tree-selection flow.
+const fileOpenDialogOpen = ref(false)
+const fileDialogInitialPath = computed<string | undefined>(() => {
+  const root = audio.settings.presetsRoot
+  return root !== '' ? root : undefined
+})
+
+function openFileDialog(): void {
+  fileOpenDialogOpen.value = true
+}
+
+async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Promise<void> {
+  const selectionToken = selectionChangeToken + 1
+  selectionChangeToken = selectionToken
+
+  if (editorPanelRef.value !== null) {
+    const canProceed = await editorPanelRef.value.prepareForPathChange(path, fileKind)
+    if (selectionChangeToken !== selectionToken || !canProceed) {
+      return
+    }
+  }
+
+  if (audio.canStop) {
+    stopPlayback()
+  }
+
+  audio.selectExternalPath(path, fileKind)
+  syncRestoredTreeState()
+
+  if (isLocalAudioFileKind(fileKind)) {
+    activeContentTab.value = 'player'
+    if (activePlayerViewTab.value !== 'tracks') {
+      activePlayerViewTab.value = 'spectrogram'
+    }
+    void audio.ensureLocalAudioReady(path, fileKind)
+  }
+}
 
 function isLocalAudioFileKind(fileKind: AudioFileKind | null): fileKind is Exclude<AudioFileKind, 'gnaural'> {
   return fileKind === 'wav' || fileKind === 'flac'

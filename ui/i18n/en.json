@@ -26,6 +26,8 @@
     "spectrogramTab": "Spectrogram",
     "tracksTab": "Tracks",
     "editorTab": "Editor",
+    "menuFile": "File",
+    "menuOpen": "Open…",
     "noFileSelected": "No file selected",
     "recentFilesEmpty": "No recent files",
     "waveformCanvasLabel": "Audio waveform",
