@@ -262,9 +262,10 @@ function colorForVoice(voice: GTrackVoice, index: number): string {
 const hasData = computed(() => props.durationSec > 0 && props.voices.length > 0)
 // GT3.7: true when any voice in this lane is a locked generator (preparse) voice.
 const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
-// GT10.34-followup: in point-edit mode the freq axes gain headroom so a vertex can be dragged past
-// the current data range (otherwise the max/min point sits on the edge and clamps to itself).
-const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode))
+// GT10.34-followup: the freq axes gain headroom so a vertex can be dragged past the current data
+// range (otherwise the max/min point sits on the edge and clamps to itself). Active in point-edit
+// mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
+const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value))
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const view = computed<TimeWindow>({
@@ -573,9 +574,13 @@ let dragRef: GTrackPointRef | null = null
 let dragStart: { x: number; y: number } | null = null
 let dragMoved = false
 const DRAG_THRESHOLD_PX = 3
+// GT10.39-followup (owner 2026-07-12): a vertex drag makes the axis 'editable' too, so a Ctrl-drag
+// in NORMAL mode gets the same headroom as point-edit mode (drag a vertex past the data range).
+const dragging = ref(false)
 
 function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
   emit('select-point', hit)
+  dragging.value = true
   dragRef = hit
   dragStart = { x: aEvent.offsetX, y: aEvent.offsetY }
   dragMoved = false
@@ -663,6 +668,7 @@ function onPointerUp(aEvent: PointerEvent): void {
   const clicked = !dragMoved
   dragRef = null
   dragStart = null
+  dragging.value = false
   try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
   if (clicked) {
     // GT10.10 (owner req. 55): a press-release without movement is a CLICK — cancel the (empty)
