@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { GnauralScheduleData } from '@protocol'
 
 import { GTrackModel, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
-import { lintSchedule, type GTrackLintRule } from './gtrack-lint'
+import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackLintRule } from './gtrack-lint'
 
 function pt(timeSec: number, volL: number, volR: number, baseFreq = 200, beatFreqHalf = 5): GTrackPoint {
   return { timeSec, volL, volR, baseFreq, beatFreqHalf }
@@ -35,6 +35,17 @@ describe('lintSchedule (GT9.1 / GT-D21)', () => {
 
     const faded = sched([voice(0, [pt(0, 0.5, 0.5), pt(9.9, 0.5, 0.5), pt(10, 0, 0)])])
     expect(rules(faded)).not.toContain('end-click')
+  })
+
+  test('looped schedules (loops!=1) emit NO end-click — the seam rule governs (GT10.26)', () => {
+    // subterranean shape: constant loud voice in a 100x-looped file -> end==start -> NO diagnostics.
+    const constant = [pt(0, 0.34, 0.17), pt(15, 0.34, 0.17)]
+    expect(rules(sched([voice(1, constant)], 100))).toEqual([])
+    // loud end + different start in a looped file -> loop-click only, never end-click.
+    const uneven = [pt(0, 0.1, 0.1), pt(15, 0.6, 0.6)]
+    const rr = rules(sched([voice(1, uneven)], 100))
+    expect(rr).toContain('loop-click')
+    expect(rr).not.toContain('end-click')
   })
 
   test('loop-click: only when loopCount>1 and end volume != start volume', () => {
@@ -132,5 +143,59 @@ describe('GT9.3 auto-fix operations clear the diagnostic (model + lint)', () => 
       model.setPointFields(0, pts.length - 1, { volL: first.volL, volR: first.volR })
     })
     expect(lintSchedule(model.schedule).some((d) => d.rule === 'loop-click')).toBe(false)
+  })
+})
+
+// GT10.26: the PURE fix functions on real-world tail shapes (subterranean's Nizy Face = 0.1s tail).
+function dumpWith(entries: Array<{ dur: number; v0: number; v1: number }>): GnauralScheduleData {
+  let t = 0
+  const list = entries.map((e) => {
+    const seg = { startSec: t, endSec: t + e.dur, durationSec: e.dur, baseFreqStart: 150, baseFreqEnd: 150,
+      beatFreqHalfStart: 2, beatFreqHalfEnd: 2, volLStart: e.v0, volLEnd: e.v1, volRStart: e.v0, volREnd: e.v1 }
+    t += e.dur
+    return seg
+  })
+  return { title: '', author: '', description: '', totalTimeSec: t, loopCount: 1,
+    overallVolL: 1, overallVolR: 1, stereoSwap: false, voiceCount: 1,
+    voices: [{ id: 7, type: 'binaural', typeIndex: 0, description: 'v', hidden: false, muted: false,
+      mono: false, color: null, audioFilePath: '', totalDurationSec: t, entryCount: list.length, entries: list }] }
+}
+
+describe('applyEndClickFix (GT10.26) — pure, on real tail shapes', () => {
+  test('short 0.1s tail (Nizy Face shape): succeeds, dirties the model, clears the diagnostic', () => {
+    const m = new GTrackModel(dumpWith([{ dur: 14.925, v0: 0.3, v1: 0.34 }, { dur: 0.1, v0: 0.34, v1: 0.34 }]))
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'end-click')).toBe(true)
+    expect(applyEndClickFix(m, 7)).toBe(true)
+    expect(m.isDirty).toBe(true)
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'end-click')).toBe(false)
+    expect(m.canUndo).toBe(true) // one undo unit recorded
+  })
+
+  test('long tail: inserts a fade point 0.1s before the end and zeroes the last', () => {
+    const m = new GTrackModel(dumpWith([{ dur: 60, v0: 0.5, v1: 0.5 }]))
+    const before = m.schedule.voices[0]!.points.length
+    expect(applyEndClickFix(m, 7)).toBe(true)
+    const pts = m.schedule.voices[0]!.points
+    expect(pts.length).toBe(before + 1)
+    expect(pts[pts.length - 1]!.volL).toBe(0)
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'end-click')).toBe(false)
+  })
+
+  test('degenerate cluster: borrows the fade from the last real segment, zeroes the cluster', () => {
+    const m = new GTrackModel(dumpWith([
+      { dur: 30, v0: 0.4, v1: 0.4 }, { dur: 0.001, v0: 0.4, v1: 0.35 }, { dur: 0.0005, v0: 0.35, v1: 0.3 },
+    ]))
+    expect(applyEndClickFix(m, 7)).toBe(true)
+    const pts = m.schedule.voices[0]!.points
+    for (const p of pts.slice(-3)) expect(Math.max(p.volL, p.volR)).toBe(0) // cluster + fade target silenced
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'end-click')).toBe(false)
+  })
+
+  test('loop-click fix aligns the seam and dirties the model', () => {
+    const m = new GTrackModel({ ...dumpWith([{ dur: 10, v0: 0.2, v1: 0.8 }]), loopCount: 50 })
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'loop-click')).toBe(true)
+    expect(applyLoopClickFix(m, 7)).toBe(true)
+    expect(m.isDirty).toBe(true)
+    expect(lintSchedule(m.schedule).some((d) => d.rule === 'loop-click')).toBe(false)
   })
 })

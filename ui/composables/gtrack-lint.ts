@@ -101,17 +101,23 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
     }
   }
 
-  // end-click: the last point's volume is the final playing level.
+  // GT10.26 fix: looped schedules (loopCount != 1; 0 = upstream-infinite) are governed by the
+  // SEAM rule only — the 'end' repeats at every seam, where the correct de-click is end == start,
+  // not a fade to zero. Emitting end-click there created a trap: fixing it made the seam mismatch
+  // (loop-click appeared for the same voice), and fixing THAT restored the original state.
+  const looped = schedule.loopCount !== 1
+
+  // end-click (single-pass schedules only): the last point's volume is the final playing level.
   const endP = pts[last]!
   const endVol = Math.max(endP.volL, endP.volR)
-  if (endVol > opts.endVolumeThreshold) {
+  if (!looped && endVol > opts.endVolumeThreshold) {
     out.push({ rule: 'end-click', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
       message: `Voice "${name}" ends at volume ${fmt(endVol)} (no fade to zero) — likely a click at the end.`,
       messageKey: 'audio.lint_end_click', messageParams: { name, vol: fmt(endVol) } })
   }
 
   // loop-click: on a loop seam the playback jumps end -> start; a volume mismatch clicks each seam.
-  if (schedule.loopCount > 1 && pts.length >= 2) {
+  if (looped && pts.length >= 2) {
     const startP = pts[0]!
     const dl = Math.abs(startP.volL - endP.volL)
     const dr = Math.abs(startP.volR - endP.volR)
@@ -148,6 +154,76 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
       runStart = -1
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// GT9.3/GT10.26 auto-fixes — PURE functions over the model (bun-testable; the Vue composable
+// delegates here). Each is one undo unit and returns false only when genuinely impossible.
+// ---------------------------------------------------------------------------
+
+export const END_FADE_SEC = 0.1
+const MIN_TAIL_SEC = 0.02
+
+/**
+ * The minimal model surface the fixes need. Structural (not the GTrackModel class) because a Vue
+ * ref unwraps class instances to a structural type that drops private members — a nominal
+ * GTrackModel parameter would reject `model.value` at the call site.
+ */
+export interface GTrackFixTarget {
+  isVoiceEditable(voiceId: number): boolean
+  readonly schedule: GTrackSchedule
+  edit(mutator: () => void): void
+  insertPoint(voiceId: number, timeSec: number): number
+  setPointFields(voiceId: number, index: number, patch: Partial<Record<'timeSec' | 'baseFreq' | 'beatFreqHalf' | 'volL' | 'volR', number>>): void
+}
+
+/**
+ * Fade a voice to silence at its very end (fixes 'end-click'), duration preserved.
+ *  - long tail (> fade+0.01): insert a fade-start point 0.1s before the end, zero the last point;
+ *  - short tail (>= 0.02): zero the last point — the fade IS the tail;
+ *  - degenerate tail/cluster (< 0.02): walk back to the last REAL segment, borrow the fade from it
+ *    and zero every point after (the bulk click-fix script's proven borrow).
+ */
+export function applyEndClickFix(m: GTrackFixTarget, voiceId: number): boolean {
+  if (!m.isVoiceEditable(voiceId)) return false
+  const voice = m.schedule.voices.find((v) => v.id === voiceId)
+  if (voice === undefined || voice.points.length < 2) return false
+  const pts = voice.points
+  let r = pts.length - 1
+  while (r >= 1 && pts[r]!.timeSec - pts[r - 1]!.timeSec < MIN_TAIL_SEC) r -= 1
+  if (r === 0) return false // the whole voice is degenerate — nothing to fade over
+  const segEnd = pts[r]!.timeSec
+  const segDur = segEnd - pts[r - 1]!.timeSec
+  try {
+    m.edit(() => {
+      let zeroFrom = r
+      if (segDur > END_FADE_SEC + 0.01) {
+        zeroFrom = m.insertPoint(voiceId, segEnd - END_FADE_SEC) + 1
+      }
+      const v = m.schedule.voices.find((x) => x.id === voiceId)
+      if (v === undefined) throw new Error('gtrack: voice vanished during fix')
+      for (let i = zeroFrom; i < v.points.length; i += 1) {
+        m.setPointFields(voiceId, i, { volL: 0, volR: 0 })
+      }
+    })
+  } catch {
+    return false
+  }
+  return true
+}
+
+/** Align the loop seam (fixes 'loop-click'): last point volume := first point volume. */
+export function applyLoopClickFix(m: GTrackFixTarget, voiceId: number): boolean {
+  if (!m.isVoiceEditable(voiceId)) return false
+  const voice = m.schedule.voices.find((v) => v.id === voiceId)
+  if (voice === undefined || voice.points.length < 2) return false
+  const first = voice.points[0]!
+  try {
+    m.edit(() => m.setPointFields(voiceId, voice.points.length - 1, { volL: first.volL, volR: first.volR }))
+  } catch {
+    return false
+  }
+  return true
 }
 
 /** Run all lint rules over a schedule, returning diagnostics (errors first, then by voice). */
