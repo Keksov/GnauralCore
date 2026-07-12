@@ -221,6 +221,7 @@
                 @seek="handleSeek"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
+                @remove-lane="gtracks.removeLane(lane.id)"
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
                 @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
                 @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"

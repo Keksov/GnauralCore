@@ -46,6 +46,16 @@
       >
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
+      <!-- GT10.44 (owner 2026-07-12): remove this lane, under the hide/eye icon. -->
+      <q-btn
+        dense flat round size="xs"
+        icon="delete"
+        color="negative"
+        :aria-label="t('audio.gtrackRemoveLane')"
+        @click.stop="emit('remove-lane')"
+      >
+        <q-tooltip>{{ t('audio.gtrackRemoveLane') }}</q-tooltip>
+      </q-btn>
     </div>
     <!-- GT3.1: point-edit mode toggle + the lane settings gear. -->
     <div class="gtrack-view__actions">
@@ -169,6 +179,8 @@ const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
   (event: 'hide'): void
+  /** GT10.44: remove this lane (trash icon under the hide/eye icon). */
+  (event: 'remove-lane'): void
   (event: 'reorder-grip', ev: PointerEvent): void
   (event: 'toggle-point-mode'): void
   (event: 'select-point', point: GTrackPointRef | null): void
