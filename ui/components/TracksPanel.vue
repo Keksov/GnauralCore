@@ -1046,7 +1046,10 @@ const canSeek = computed(() => props.canSeek)
 const localPlayheadSec = ref<number | null>(null)
 function handleSeek(aSec: number): void {
   localPlayheadSec.value = aSec // persistent local cursor (survives an idle transport)
-  emit('seek', aSec)
+  // GT10.32 (owner 2026-07-12): only issue the REAL transport seek when a session is actually
+  // active — seeking an idle gnaural session errors ("Gnaural session is not active"). The visible
+  // local cursor is set regardless of transport state.
+  if (audio.transportState === 'playing' || audio.transportState === 'paused') emit('seek', aSec)
 }
 
 // GT-D10: OWN storage keys — never shared with the frozen Spectrogram tab.
