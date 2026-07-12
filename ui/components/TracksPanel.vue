@@ -2549,7 +2549,9 @@ onBeforeUnmount(() => {
   background: rgba(2, 6, 23, 0.45);
   inset: 0;
   position: absolute;
-  z-index: 20;
+  /* GT10.19 (owner req. 68): above the sticky header (z-index 40) so flyout panels are not
+     covered by the header's zoom buttons. */
+  z-index: 50;
 }
 
 .audio-page__spectrogram-settings-panel {
@@ -2564,7 +2566,8 @@ onBeforeUnmount(() => {
   right: 0;
   top: 0;
   width: 300px;
-  z-index: 30;
+  /* GT10.19 (owner req. 68): above the sticky header (z-index 40). */
+  z-index: 60;
 }
 
 .audio-page__spectrogram-settings-header {
@@ -2622,7 +2625,8 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   width: 340px;
-  z-index: 30;
+  /* GT10.19 (owner req. 68): above the sticky header (z-index 40). */
+  z-index: 60;
 }
 
 .gtrack-voices-panel-enter-active,
