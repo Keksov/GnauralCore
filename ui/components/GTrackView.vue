@@ -237,6 +237,18 @@ const AXIS_TIME_MARGIN = 18
 const AXIS_PLAIN_MARGIN = 10
 const marginTop = (): number => (props.showTimeAxisTop ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 const marginBottom = (): number => (props.showTimeAxisBottom ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
+// GT10.34 (owner 2026-07-12): inset the value axis by the vertex radius so a curve at the extreme
+// value (min/max) draws its NODES just inside the plot band instead of on its very edge — otherwise
+// the bottom half of those markers is clipped by the lane. Applied to BOTH the draw mapping and the
+// hit-tests so clicks still land on the drawn node. (This also aligns the extreme nodes with the
+// axis end labels, which drawAxes already insets by ~6px.)
+const VERTEX_VPAD = 6
+function valueUnitToY(plotY: number, plotH: number, unit: number): number {
+  return plotY + VERTEX_VPAD + (1 - unit) * Math.max(1, plotH - 2 * VERTEX_VPAD)
+}
+function yToValueUnit(plotY: number, plotH: number, offsetY: number): number {
+  return Math.max(0, Math.min(1, 1 - (offsetY - plotY - VERTEX_VPAD) / Math.max(1, plotH - 2 * VERTEX_VPAD)))
+}
 
 // Fallback palette when a voice has no explicit colour.
 const FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
@@ -309,7 +321,7 @@ function draw(): void {
   const win = view.value
   const ax = axis.value
   const timeToX = (sec: number): number => plotX + timeToFraction(sec, win) * plotW
-  const valueToY = (value: number): number => plotY + (1 - valueToUnit(value, ax)) * plotH
+  const valueToY = (value: number): number => valueUnitToY(plotY, plotH, valueToUnit(value, ax))
 
   // Shared time-range selection.
   const sel = shared?.selection.value ?? null
@@ -531,7 +543,7 @@ function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
     for (let i = 0; i < voice.points.length; i += 1) {
       const p = voice.points[i]!
       const x = plotX + timeToFraction(p.timeSec, win) * plotW
-      const y = plotY + (1 - valueToUnit(pointValue(p, props.mode), ax)) * plotH
+      const y = valueUnitToY(plotY, plotH, valueToUnit(pointValue(p, props.mode), ax))
       const dist = Math.hypot(x - offsetX, y - offsetY)
       if (dist <= bestDist) {
         bestDist = dist
@@ -548,7 +560,7 @@ function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number;
   if (rect === null) return null
   const { plotX, plotY, plotW, plotH } = rect
   const fx = Math.max(0, Math.min(1, (offsetX - plotX) / plotW))
-  const uy = Math.max(0, Math.min(1, 1 - (offsetY - plotY) / plotH))
+  const uy = yToValueUnit(plotY, plotH, offsetY)
   // GT2.8: inverse-map through the axis (handles the log frequency scale).
   return { timeSec: fractionToTime(fx, view.value), value: unitToValue(uy, axis.value) }
 }
@@ -736,7 +748,7 @@ function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number;
     const span = b.timeSec - a.timeSec
     const f = span > 0 ? (timeSec - a.timeSec) / span : 0
     const v = pointValue(a, props.mode) + f * (pointValue(b, props.mode) - pointValue(a, props.mode))
-    const y = plotY + (1 - valueToUnit(v, ax)) * plotH
+    const y = valueUnitToY(plotY, plotH, valueToUnit(v, ax))
     const dist = Math.abs(y - offsetY)
     if (dist <= bestDist) {
       bestDist = dist
