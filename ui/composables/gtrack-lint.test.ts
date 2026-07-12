@@ -56,12 +56,27 @@ describe('lintSchedule (GT9.1 / GT-D21)', () => {
     expect(rules(sched([voice(0, even)], 100))).not.toContain('loop-click')
   })
 
-  test('degenerate-tail: last segment ~zero duration (SummerSunshine 1e-13)', () => {
-    const s = sched([voice(0, [pt(0, 0.5, 0.5), pt(50, 0.5, 0.5), pt(50 + 1e-13, 0.1, 0.15)])])
-    const diags = lintSchedule(s)
-    expect(diags.some((d) => d.rule === 'degenerate-tail')).toBe(true)
-    // also end-click (ends at 0.15 > 0): both fire on this voice
-    expect(diags.some((d) => d.rule === 'end-click')).toBe(true)
+  test('degenerate-tail: only a genuine collapse; the lone terminal loop-return anchor is structural (GT10.21)', () => {
+    // A single terminal anchor (real segment, then a ~zero-duration jump to the wrap value) is
+    // NORMAL Gnaural structure -> NOT flagged (this was the mass false positive pre-GT10.21).
+    const anchorOnly = sched([voice(0, [pt(0, 0.5, 0.5), pt(50, 0.5, 0.5), pt(50 + 1e-13, 0.5, 0.5)])])
+    expect(rules(anchorOnly)).not.toContain('degenerate-tail')
+    // >= 2 trailing zero-duration segments = a real collapsed tail.
+    const collapsed = sched([voice(0, [pt(0, 0.5, 0.5), pt(50, 0.5, 0.5), pt(50, 0.3, 0.3), pt(50, 0.5, 0.5)])])
+    expect(rules(collapsed)).toContain('degenerate-tail')
+  })
+
+  test('GT10.21: the loop-return terminal (Gnaural circular wrap) is NOT an end-click / degenerate-tail', () => {
+    // ForestMeditation voice 0 shape: audible content fades to 0, then a zero-duration terminal node
+    // carrying point[0]'s volume (the circular loop-return). The AUDIBLE end is silent -> no click.
+    const forest0 = sched([voice(0, [pt(0, 0.72, 0.72), pt(29.9, 0.72, 0.72), pt(30, 0, 0), pt(30, 0.72, 0.72)])])
+    expect(rules(forest0)).not.toContain('end-click')
+    expect(rules(forest0)).not.toContain('degenerate-tail')
+    // Voice 20 shape: the last real segment ramps back UP to the start level (seam-aligned loop
+    // design) -> end == start -> not flagged even though it ends loud (fade-to-zero could not
+    // persist anyway: the wrap forces the final value back to point[0]).
+    const forest20 = sched([voice(20, [pt(0, 0.206, 0.206), pt(1453, 0, 0), pt(1500, 0.206, 0.206)])])
+    expect(rules(forest20)).not.toContain('end-click')
   })
 
   test('zero-run: >=2 consecutive zero-duration segments (CandyWreck)', () => {

@@ -101,41 +101,49 @@ function lintVoice(voice: GTrackVoice, schedule: GTrackSchedule, opts: Required<
     }
   }
 
-  // GT10.26 fix: looped schedules (loopCount != 1; 0 = upstream-infinite) are governed by the
-  // SEAM rule only — the 'end' repeats at every seam, where the correct de-click is end == start,
-  // not a fade to zero. Emitting end-click there created a trap: fixing it made the seam mismatch
-  // (loop-click appeared for the same voice), and fixing THAT restored the original state.
+  // GT10.21/GT10.26 fix — Gnaural schedules are CIRCULAR: the last entry always ramps back to the
+  // first (the "loop return"), so the dumped final model point MIRRORS point[0] and a trailing
+  // zero-duration terminal node is structural, not a defect. Two consequences drive these rules:
+  //   1. Evaluate end-of-audio on the EFFECTIVE end — the last point that terminates a real
+  //      (non-zero-duration) segment, skipping the terminal anchor(s). Otherwise every well-formed
+  //      file false-flags an end-click / degenerate tail it can NEVER clear (the anchor's value is
+  //      point[0]'s, not independently editable: a fade-to-zero reverts on save->redump).
+  //   2. effective-end == start means the voice is DESIGNED to loop (seamless when looped; the
+  //      author's chosen return level single-pass). Flag only a seam MISMATCH (end != start), which
+  //      clicks at every loop seam and, single-pass, truncates. end == start is never a click.
   const looped = schedule.loopCount !== 1
+  let eIdx = last
+  while (eIdx >= 1 && pts[eIdx]!.timeSec - pts[eIdx - 1]!.timeSec < opts.zeroDurationEpsilon) eIdx -= 1
+  const endP = pts[eIdx]!
+  const startP = pts[0]!
+  const trailingZeros = last - eIdx // the structural loop-return anchor contributes exactly 1
+  const seamAligned =
+    Math.abs(startP.volL - endP.volL) <= opts.loopVolumeEpsilon &&
+    Math.abs(startP.volR - endP.volR) <= opts.loopVolumeEpsilon
 
-  // end-click (single-pass schedules only): the last point's volume is the final playing level.
-  const endP = pts[last]!
+  // end-click (single pass): the effective end is loud AND does not return to the start level.
   const endVol = Math.max(endP.volL, endP.volR)
-  if (!looped && endVol > opts.endVolumeThreshold) {
-    out.push({ rule: 'end-click', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
+  if (!looped && endVol > opts.endVolumeThreshold && !seamAligned) {
+    out.push({ rule: 'end-click', severity: 'warning', voiceId: voice.id, pointIndex: eIdx, timeSec: endP.timeSec,
       message: `Voice "${name}" ends at volume ${fmt(endVol)} (no fade to zero) — likely a click at the end.`,
       messageKey: 'audio.lint_end_click', messageParams: { name, vol: fmt(endVol) } })
   }
 
-  // loop-click: on a loop seam the playback jumps end -> start; a volume mismatch clicks each seam.
-  if (looped && pts.length >= 2) {
-    const startP = pts[0]!
-    const dl = Math.abs(startP.volL - endP.volL)
-    const dr = Math.abs(startP.volR - endP.volR)
-    if (Math.max(dl, dr) > opts.loopVolumeEpsilon) {
-      out.push({ rule: 'loop-click', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
-        message: `Voice "${name}" loops ${schedule.loopCount}x but end volume (${fmt(endP.volL)}/${fmt(endP.volR)}) != start (${fmt(startP.volL)}/${fmt(startP.volR)}) — click at each loop seam.`,
-        messageKey: 'audio.lint_loop_click', messageParams: { name, loops: schedule.loopCount, endVol: `${fmt(endP.volL)}/${fmt(endP.volR)}`, startVol: `${fmt(startP.volL)}/${fmt(startP.volR)}` } })
-    }
+  // loop-click: a looped voice whose effective end != start clicks at every seam.
+  if (looped && pts.length >= 2 && !seamAligned) {
+    out.push({ rule: 'loop-click', severity: 'warning', voiceId: voice.id, pointIndex: eIdx, timeSec: endP.timeSec,
+      message: `Voice "${name}" loops ${schedule.loopCount}x but end volume (${fmt(endP.volL)}/${fmt(endP.volR)}) != start (${fmt(startP.volL)}/${fmt(startP.volR)}) — click at each loop seam.`,
+      messageKey: 'audio.lint_loop_click', messageParams: { name, loops: schedule.loopCount, endVol: `${fmt(endP.volL)}/${fmt(endP.volR)}`, startVol: `${fmt(startP.volL)}/${fmt(startP.volR)}` } })
   }
 
-  // degenerate-tail: the last segment (points[last-1] -> points[last]) has ~zero duration.
-  if (pts.length >= 2) {
-    const tailDur = endP.timeSec - pts[last - 1]!.timeSec
-    if (tailDur < opts.zeroDurationEpsilon) {
-      out.push({ rule: 'degenerate-tail', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: endP.timeSec,
-        message: `Voice "${name}" ends with a ~zero-duration segment (${fmt(tailDur)}s) — the flat tail never plays.`,
-        messageKey: 'audio.lint_degenerate_tail', messageParams: { name, dur: fmt(tailDur) } })
-    }
+  // degenerate-tail: a GENUINELY collapsed tail — the voice has no real segment at all (eIdx === 0),
+  // or MORE than the single structural loop-return anchor (>= 2 trailing zero-duration segments).
+  // A lone terminal anchor after a healthy segment is normal Gnaural structure and is not flagged.
+  if (pts.length >= 2 && (eIdx === 0 || trailingZeros >= 2)) {
+    const tailDur = pts[last]!.timeSec - endP.timeSec
+    out.push({ rule: 'degenerate-tail', severity: 'warning', voiceId: voice.id, pointIndex: last, timeSec: pts[last]!.timeSec,
+      message: `Voice "${name}" ends with a ~zero-duration tail (${fmt(tailDur)}s) — the flat tail never plays.`,
+      messageKey: 'audio.lint_degenerate_tail', messageParams: { name, dur: fmt(tailDur) } })
   }
 
   // zero-run: a run of >=2 consecutive zero-duration segments anywhere.
