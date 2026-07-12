@@ -13,7 +13,6 @@
       }"
       @wheel.prevent="onWheel"
       @click="onClick"
-      @dblclick="onDblClick"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -680,11 +679,20 @@ const hoverTooltip = computed<{ name: string; rows: TooltipRow[] } | null>(() =>
 })
 
 function onClick(aEvent: MouseEvent): void {
-  // GT3.1/3.2: in point mode, selection + drag are handled on pointerdown/up, so clicks are inert.
+  // GT3.1/3.2: in point mode, selection + drag (and the click-to-open dialog) are handled on
+  // pointerdown/up, so clicks here are inert.
   if (props.pointMode) return
   // GT10.10: Ctrl-clicks are edit gestures (drag vertex / add node), never a seek.
   if (aEvent.ctrlKey || aEvent.metaKey) return
-  if (props.seekable !== true || !hasData.value) return
+  if (!hasData.value) return
+  // GT10.25 (owner req. 74): in NORMAL mode a single click on a vertex opens its dialog; a click on
+  // empty space seeks (double-click is gone entirely — see the removed onDblClick).
+  const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+  if (hit !== null) {
+    emit('edit-point', hit)
+    return
+  }
+  if (props.seekable !== true) return
   const f = xFraction(aEvent)
   if (f === null) return
   emit('seek', Math.max(0, Math.min(props.durationSec, fractionToTime(f, view.value))))
@@ -726,23 +734,6 @@ function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number;
     }
   }
   return best === null ? null : { voiceId: best, timeSec }
-}
-
-function onDblClick(aEvent: MouseEvent): void {
-  if (!hasData.value) return
-  // GT3.14: while the Add/Delete tool is active, onPointerDown already handled both clicks of the
-  // double-click (each is one add/delete) — skip this handler to avoid a redundant third action.
-  if (props.pointMode && props.pointTool !== 'select') return
-  // On a vertex -> edit its parameters (GT10.10 req 56: works in NORMAL mode too);
-  // on a curve (point mode only) -> add an interpolated point there.
-  const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-  if (hit !== null) {
-    emit('edit-point', hit)
-    return
-  }
-  if (!props.pointMode) return
-  const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
-  if (curve !== null) emit('add-point', curve)
 }
 
 // Audacity-style keyboard nav (parity with the waveform lane), exposed for AudioPage delegation.

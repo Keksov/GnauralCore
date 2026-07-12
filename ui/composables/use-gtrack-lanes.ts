@@ -60,8 +60,9 @@ export interface GTrackAddPoint {
 
 /**
  * GT3.14 (owner req. 24): the active point-mode cursor tool. 'select' is the normal
- * select+drag+dblclick-edit behaviour; 'add' inserts a point on every click on a curve; 'delete'
- * removes a point on every click on a vertex. One global tool, shared across all lanes.
+ * select+drag behaviour (a motionless click on a vertex opens its dialog — GT10.25); 'add' inserts a
+ * point on every click on a curve; 'delete' removes a point on every click on a vertex. One global
+ * tool, shared across all lanes.
  */
 export type GTrackPointTool = 'select' | 'add' | 'delete'
 
