@@ -841,27 +841,27 @@
                 <tr v-for="row in multiForm" :key="`${row.voiceId}:${row.pointIndex}`">
                   <td><q-checkbox v-model="row.checked" dense /></td>
                   <td>{{ multiRowVoiceName(row.voiceId) }}</td>
-                  <td>
+                  <td data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.baseFreq" dense borderless type="number" data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.1" min="0"
+                      v-model.number="row.baseFreq" dense borderless type="number" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
-                  <td>
+                  <td data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.beatFreq" dense borderless type="number" data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.1" min="0"
+                      v-model.number="row.beatFreq" dense borderless type="number" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
-                  <td>
+                  <td data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.volL" dense borderless type="number" data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.01" min="0" max="1"
+                      v-model.number="row.volL" dense borderless type="number" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
-                  <td>
+                  <td data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.volR" dense borderless type="number" data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.01" min="0" max="1"
+                      v-model.number="row.volR" dense borderless type="number" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
@@ -893,29 +893,41 @@
                listener on this wrapper (the QInput @keydown didn't reliably see Ctrl / ran after the
                native step). Each field is tagged data-step-field so the handler knows which to step. -->
           <div class="audio-page__spectrogram-settings-body q-gutter-sm" @keydown.capture="onFormStepKey">
-            <q-input
-              v-model.number="pointForm.timeSec" dense outlined type="number" data-step-field="timeSec" step="0.01" min="0"
-              :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
-            <q-input
-              v-model.number="pointForm.baseFreq" dense outlined type="number" data-step-field="baseFreq" step="0.1" min="0"
-              :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
-            <q-input
-              v-model.number="pointForm.beatFreq" dense outlined type="number" data-step-field="beatFreq" step="0.1" min="0"
-              :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
+            <!-- data-step-field lives on a native display:contents span (layout unchanged) so
+                 closest() reliably finds it from the input regardless of QInput attr handling. -->
+            <span data-step-field="timeSec" style="display: contents">
+              <q-input
+                v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
+                :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+              />
+            </span>
+            <span data-step-field="baseFreq" style="display: contents">
+              <q-input
+                v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
+                :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+              />
+            </span>
+            <span data-step-field="beatFreq" style="display: contents">
+              <q-input
+                v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
+                :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+              />
+            </span>
             <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
                  these overlap the beat-frequency field inside a q-gutter parent. -->
             <div class="tracks-panel__vol-row">
-              <q-input
-                v-model.number="pointForm.volL" dense outlined type="number" data-step-field="volL" step="0.01" min="0" max="1"
-                :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-              />
-              <q-input
-                v-model.number="pointForm.volR" dense outlined type="number" data-step-field="volR" step="0.01" min="0" max="1"
-                :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-              />
+              <span data-step-field="volL" style="display: contents">
+                <q-input
+                  v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
+                  :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+                />
+              </span>
+              <span data-step-field="volR" style="display: contents">
+                <q-input
+                  v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
+                  :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
+                />
+              </span>
             </div>
             <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
             <!-- GT10.37 (owner 2026-07-12): Volume is a numeric field with steppers (was a slider). -->
@@ -1506,7 +1518,9 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
 // number-input applies its own `step`. data-step-field (and data-step-row for the table) identify
 // the target field; the value is clamped per field via ctrlStepValue.
 function stepFromEvent(e: KeyboardEvent): { field: string; dir: 1 | -1; el: HTMLElement } | null {
-  if (!e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return null
+  // GT10.22: Ctrl OR Alt is the "big step" modifier — some environments swallow Ctrl+Arrow before
+  // it reaches the page, so Alt+Arrow is an equivalent trigger.
+  if (!(e.ctrlKey || e.altKey) || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return null
   const el = (e.target as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
   const field = el?.getAttribute('data-step-field') ?? null
   if (el === null || field === null) return null
