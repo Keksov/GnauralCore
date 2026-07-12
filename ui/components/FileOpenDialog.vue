@@ -158,7 +158,7 @@
       <q-separator />
 
       <div class="file-open-dialog__footer row items-center no-wrap">
-        <div class="file-open-dialog__selected text-caption ellipsis col">{{ selectedPath ?? store.currentPath ?? '' }}</div>
+        <q-space />
         <q-btn flat :label="t('fsBrowser.cancel')" @click="close" />
         <q-btn color="primary" :label="t('fsBrowser.open')" :disable="!canOpen" @click="confirmOpen" />
       </div>
@@ -482,12 +482,6 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
   &__sidebar-header { font-weight: 600; }
 
   &__fav-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__selected {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
