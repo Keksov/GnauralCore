@@ -2387,6 +2387,21 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     void saveGtrackEdits()
     return
   }
+  // GT3.2/GT10.24 (owner req. 73): undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or
+  // Ctrl/Cmd+Y) — intercepted BEFORE the typing guard so Ctrl+Z undoes a just-added node even when
+  // focus landed on a button (a lane gear, the point-mode toggle) or an inspector field. Model undo
+  // is the editor's primary undo (field edits autosave into the same history).
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+    event.preventDefault()
+    if (event.shiftKey) redoWithFocus()
+    else undoWithFocus()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
+    event.preventDefault()
+    redoWithFocus()
+    return
+  }
 
   if (shouldIgnoreHotkey(event)) {
     return
@@ -2405,19 +2420,6 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
       gtracks.removeSelectedPoint()
       return
     }
-  }
-
-  // GT3.2: undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y).
-  if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
-    event.preventDefault()
-    if (event.shiftKey) redoWithFocus()
-    else undoWithFocus()
-    return
-  }
-  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
-    event.preventDefault()
-    redoWithFocus()
-    return
   }
 
   // SF21: route navigation keys to the primary track editor even if the canvas isn't focused.
