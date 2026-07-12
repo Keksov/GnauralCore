@@ -412,5 +412,27 @@
     "cacheDeleteEntry": "Delete this cache file",
     "cacheConfirmSource": "Delete all cached audio for this source file?",
     "cacheConfirmAll": "Delete the entire audio cache? Files will be re-rendered on demand."
+  },
+  "fsBrowser": {
+    "title": "Open file",
+    "open": "Open",
+    "cancel": "Cancel",
+    "up": "Up one level",
+    "refresh": "Refresh",
+    "roots": "Locations",
+    "favorites": "Favorites",
+    "addFavorite": "Add to favorites",
+    "removeFavorite": "Remove favorite",
+    "noFavorites": "No favorites yet",
+    "filterPlaceholder": "Filter (regexp)… — Ctrl+S",
+    "typeSupported": "Audio files",
+    "typeAll": "All files",
+    "showHidden": "Show hidden",
+    "unavailable": "The file browser is available only on the local host.",
+    "empty": "This folder is empty.",
+    "colName": "Name",
+    "colExt": "Ext",
+    "colSize": "Size",
+    "colDate": "Modified"
   }
 }

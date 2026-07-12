@@ -412,5 +412,27 @@
     "cacheDeleteEntry": "Удалить этот файл кэша",
     "cacheConfirmSource": "Удалить весь кэш для этого исходного файла?",
     "cacheConfirmAll": "Удалить весь аудио-кэш? Файлы будут перерендерены по требованию."
+  },
+  "fsBrowser": {
+    "title": "Открыть файл",
+    "open": "Открыть",
+    "cancel": "Отмена",
+    "up": "На уровень вверх",
+    "refresh": "Обновить",
+    "roots": "Расположения",
+    "favorites": "Избранное",
+    "addFavorite": "Добавить в избранное",
+    "removeFavorite": "Убрать из избранного",
+    "noFavorites": "Пока нет избранного",
+    "filterPlaceholder": "Фильтр (regexp)… — Ctrl+S",
+    "typeSupported": "Аудиофайлы",
+    "typeAll": "Все файлы",
+    "showHidden": "Показать скрытые",
+    "unavailable": "Обзор файлов доступен только на локальном хосте.",
+    "empty": "Папка пуста.",
+    "colName": "Имя",
+    "colExt": "Тип",
+    "colSize": "Размер",
+    "colDate": "Изменён"
   }
 }
