@@ -1340,16 +1340,35 @@ function applyPointDialog(): void {
 function maybeAutosave(): void {
   if (gtracks.pointAutosave.value) applyPointDialog()
 }
-// GT10.36 (owner 2026-07-12): after undo/redo, keep the visual focus on the inspected point — a
-// restored (previously deleted) point becomes selected again, so the white focus circle follows.
-function undoWithFocus(): void { gtracks.undoEdit(); refocusInspectedPoint() }
-function redoWithFocus(): void { gtracks.redoEdit(); refocusInspectedPoint() }
-function refocusInspectedPoint(): void {
+// GT10.36 (owner 2026-07-12): after undo/redo, move the focus to the point that CHANGED — a
+// restored (previously deleted) node becomes selected, wherever it landed. We diff the inspected
+// voice's point times before/after: a time that (re)appears is the restored/added node.
+function undoWithFocus(): void { withRestoredFocus(() => gtracks.undoEdit()) }
+function redoWithFocus(): void { withRestoredFocus(() => gtracks.redoEdit()) }
+function withRestoredFocus(op: () => void): void {
   const tgt = pointDialogTarget.value
-  if (tgt === null) return
-  const voice = gtracks.getVoice(tgt.voiceId)
-  if (voice === undefined || tgt.pointIndex >= voice.points.length) return
-  gtracks.selectPoint(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
+  if (tgt === null) { op(); return }
+  const { laneId, voiceId } = tgt
+  const before = gtracks.getVoice(voiceId)?.points.map((p) => p.timeSec) ?? []
+  op()
+  const voice = gtracks.getVoice(voiceId)
+  if (voice === undefined) return
+  // Multiset of prior times; the first current point whose time isn't accounted for is the one
+  // that (re)appeared (a restored/added node).
+  const remaining = new Map<number, number>()
+  for (const t of before) remaining.set(t, (remaining.get(t) ?? 0) + 1)
+  let idx = -1
+  for (let i = 0; i < voice.points.length; i += 1) {
+    const t = voice.points[i]!.timeSec
+    const n = remaining.get(t) ?? 0
+    if (n > 0) { remaining.set(t, n - 1); continue }
+    idx = i
+    break
+  }
+  if (idx < 0) idx = Math.min(tgt.pointIndex, voice.points.length - 1) // no new node — keep/clamp
+  if (idx < 0) return
+  pointDialogTarget.value = { laneId, voiceId, pointIndex: idx }
+  gtracks.selectPoint(laneId, { voiceId, pointIndex: idx })
 }
 // GT10.31 (owner req. 80): adding a point (Ctrl-click on a curve) opens its dialog immediately.
 // insertPointAt selects the new point on success, so the dialog targets it from the selection.

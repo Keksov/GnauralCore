@@ -371,9 +371,15 @@ function draw(): void {
     ctx.setLineDash([])
     // Vertex dots. In point mode they grow and gain hover/selected highlights (GT3.1).
     const baseR = props.pointMode ? 3.5 : 2
+    // GT10.34 (owner 2026-07-12): keep the whole dot inside the CANVAS. A value at/below the axis
+    // min (a sub-1 Hz base freq, a constant voice on the bottom line, an out-of-range volume) would
+    // otherwise draw the marker on (or beyond) the canvas edge and clip it in half. Clamp the dot's
+    // centre so its full radius (+ ring stroke) always fits.
+    const dotPad = baseR + 2 + 2 // largest ring radius + stroke
+    const clampDotY = (yy: number): number => Math.max(dotPad, Math.min(cssH - dotPad, yy))
     for (let i = 0; i < pts.length; i += 1) {
       const x = timeToX(pts[i]!.timeSec)
-      const y = valueToY(pointValue(pts[i]!, props.mode))
+      const y = clampDotY(valueToY(pointValue(pts[i]!, props.mode)))
       // GT3.17: hover ring shows regardless of point mode (anchors the always-on tooltip).
       const isHover = hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
       const isSelected = props.selection?.voiceId === voice.id && props.selection?.pointIndex === i
@@ -689,10 +695,17 @@ function onClick(aEvent: MouseEvent): void {
   if (aEvent.ctrlKey || aEvent.metaKey) return
   if (!hasData.value) return
   // GT10.25 (owner req. 74): in NORMAL mode a single click on a vertex opens its dialog.
-  // GT10.32 (owner req. 81): a click on EMPTY space does NOT seek the player (owner treats
-  // "click doesn't move the playhead" as intended). Keyboard arrows still seek (seekBy).
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-  if (hit !== null) emit('edit-point', hit)
+  if (hit !== null) {
+    emit('edit-point', hit)
+    return
+  }
+  // GT10.32 (revised 2026-07-12): a click on EMPTY space DOES move the playhead (owner wants the
+  // position cursor to follow the click). Keyboard arrows also seek (seekBy).
+  if (props.seekable !== true) return
+  const f = xFraction(aEvent)
+  if (f === null) return
+  emit('seek', Math.max(0, Math.min(props.durationSec, fractionToTime(f, view.value))))
 }
 
 // GT3.6: the voice whose curve is nearest to a canvas pixel (linear interpolation of the mode
