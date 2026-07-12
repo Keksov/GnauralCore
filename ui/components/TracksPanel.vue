@@ -1,5 +1,5 @@
 <template>
-  <div class="audio-page__output-section audio-page__output-section--spectrogram">
+  <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram">
     <div class="audio-page__player-toolbar">
       <!-- GT2.4: transport controls come from AudioPage (same pattern as GnauralScheduleView). -->
       <slot name="toolbar" />
@@ -2349,6 +2349,36 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
 // durationSec don't depend on the FFT params, so it's opened once per file (no reconfigure needed).
 watch(() => audio.displayFilePath, (path) => { void openMetaAnalysis(path) })
 
+// GT10.27 (owner req. 76): the flyout panels (voices / problems / spectrum settings) live inside the
+// scroll container, so as absolutely-positioned children they scroll AWAY with the lane stack and
+// open off-screen when the editor is scrolled. Pin them to the container's on-screen frame instead:
+// publish the container's viewport rect as CSS vars and switch the panels to position:fixed. The
+// vars inherit down the DOM, so the fixed panels track the visible editor regardless of scroll.
+const rootEl = ref<HTMLElement | null>(null)
+const overlayFrame = ref<Record<string, string>>({})
+const anyOverlayOpen = computed(() => voicesPanelOpen.value || diagnosticsOpen.value || spectrogramSettingsOpen.value)
+function measureOverlayFrame(): void {
+  const el = rootEl.value
+  if (el === null) return
+  const r = el.getBoundingClientRect()
+  overlayFrame.value = {
+    '--tp-top': `${r.top}px`,
+    '--tp-left': `${r.left}px`,
+    '--tp-right': `${Math.max(0, window.innerWidth - r.right)}px`,
+    '--tp-bottom': `${Math.max(0, window.innerHeight - r.bottom)}px`,
+  }
+}
+watch(anyOverlayOpen, (open) => {
+  if (open) {
+    measureOverlayFrame()
+    window.addEventListener('resize', measureOverlayFrame)
+    window.addEventListener('scroll', measureOverlayFrame, true) // capture: also catches inner scrolls
+  } else {
+    window.removeEventListener('resize', measureOverlayFrame)
+    window.removeEventListener('scroll', measureOverlayFrame, true)
+  }
+})
+
 onMounted(() => {
   window.addEventListener('keydown', handleTracksKeyDown)
   void openMetaAnalysis(audio.displayFilePath)
@@ -2356,6 +2386,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleTracksKeyDown)
+  window.removeEventListener('resize', measureOverlayFrame)
+  window.removeEventListener('scroll', measureOverlayFrame, true)
   metaSpec.dispose()
 })
 </script>
@@ -2547,8 +2579,13 @@ onBeforeUnmount(() => {
 /* SF3.1 (SF-D4): settings overlay "Параметры" over the plot (no main-content resize). */
 .audio-page__spectrogram-settings-backdrop {
   background: rgba(2, 6, 23, 0.45);
-  inset: 0;
-  position: absolute;
+  /* GT10.27 (owner req. 76): pinned to the editor's on-screen frame (position:fixed + the rect vars
+     published by measureOverlayFrame), so the overlay stays visible at any scroll position. */
+  position: fixed;
+  top: var(--tp-top, 0px);
+  left: var(--tp-left, 0px);
+  right: var(--tp-right, 0px);
+  bottom: var(--tp-bottom, 0px);
   /* GT10.19 (owner req. 68): above the sticky header (z-index 40) so flyout panels are not
      covered by the header's zoom buttons. */
   z-index: 50;
@@ -2557,14 +2594,15 @@ onBeforeUnmount(() => {
 .audio-page__spectrogram-settings-panel {
   background: #0f172a;
   border-left: 1px solid rgba(148, 163, 184, 0.24);
-  bottom: 0;
   box-shadow: -18px 0 40px rgba(2, 6, 23, 0.45);
   display: flex;
   flex-direction: column;
-  max-width: calc(100% - 56px);
-  position: absolute;
-  right: 0;
-  top: 0;
+  max-width: calc(100vw - 56px);
+  /* GT10.27 (owner req. 76): pinned to the editor frame (see backdrop). */
+  position: fixed;
+  right: var(--tp-right, 0px);
+  top: var(--tp-top, 0px);
+  bottom: var(--tp-bottom, 0px);
   width: 300px;
   /* GT10.19 (owner req. 68): above the sticky header (z-index 40). */
   z-index: 60;
@@ -2616,14 +2654,15 @@ onBeforeUnmount(() => {
 .tracks-panel__voices-panel {
   background: #0f172a;
   border-right: 1px solid rgba(148, 163, 184, 0.24);
-  bottom: 0;
   box-shadow: 18px 0 40px rgba(2, 6, 23, 0.45);
   display: flex;
   flex-direction: column;
-  left: 0;
-  max-width: calc(100% - 56px);
-  position: absolute;
-  top: 0;
+  max-width: calc(100vw - 56px);
+  /* GT10.27 (owner req. 76): pinned to the editor frame (see backdrop). */
+  position: fixed;
+  left: var(--tp-left, 0px);
+  top: var(--tp-top, 0px);
+  bottom: var(--tp-bottom, 0px);
   width: 340px;
   /* GT10.19 (owner req. 68): above the sticky header (z-index 40). */
   z-index: 60;
