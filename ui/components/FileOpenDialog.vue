@@ -185,7 +185,7 @@
                   @dblclick="activate(item)"
                 >
                   <div class="file-open-dialog__col-name row items-center no-wrap">
-                    <q-icon :name="entryIcon(item)" size="18px" class="file-open-dialog__row-icon" />
+                    <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="file-open-dialog__row-icon" />
                     <span class="file-open-dialog__row-name">{{ item.name }}</span>
                   </div>
                   <div class="file-open-dialog__col-ext">{{ item.isDir ? '' : item.ext }}</div>
@@ -210,7 +210,7 @@
                   @click="select(item)"
                   @dblclick="activate(item)"
                 >
-                  <q-icon :name="entryIcon(item)" size="18px" class="file-open-dialog__row-icon" />
+                  <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="file-open-dialog__row-icon" />
                   <span class="file-open-dialog__row-name">{{ item.name }}</span>
                 </div>
               </q-virtual-scroll>
@@ -226,7 +226,7 @@
                 @click="select(item)"
                 @dblclick="activate(item)"
               >
-                <q-icon :name="entryIcon(item)" :size="iconTileSize" />
+                <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" :size="iconTileSize" />
                 <div class="file-open-dialog__tile-label">{{ item.name }}</div>
               </div>
             </div>
@@ -305,11 +305,26 @@ const rootIcon = (kind: FsRootKind): string => {
   }
 }
 
-const entryIcon = (entry: FsEntry): string => {
+// FB4.4 (FB-D14): a distinct icon + colour per file kind, applied across all three views. gnaural
+// aligns with the editor tree's 'graphic_eq'; wav/flac/dir/unsupported each get their own.
+interface EntryVisual {
+  readonly icon: string
+  readonly color: string
+}
+const entryVisual = (entry: FsEntry): EntryVisual => {
   if (entry.isDir) {
-    return 'folder'
+    return { icon: 'folder', color: 'amber-8' }
   }
-  return isSupported(entry) ? 'music_note' : 'insert_drive_file'
+  switch (audioFileKindForExt(entry.ext)) {
+    case 'gnaural':
+      return { icon: 'graphic_eq', color: 'purple-5' }
+    case 'wav':
+      return { icon: 'audiotrack', color: 'light-blue-6' }
+    case 'flac':
+      return { icon: 'music_note', color: 'teal-5' }
+    default:
+      return { icon: 'insert_drive_file', color: 'blue-grey-5' }
+  }
 }
 
 const numberFormat = new Intl.NumberFormat()

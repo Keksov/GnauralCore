@@ -1,5 +1,26 @@
 <template>
   <q-page class="audio-page" :style-fn="pageStyle">
+    <!-- FB4.1 (owner req. 12, FB-D12): the menu bar spans the whole Audio form — above the side
+         panels (Presets, and any future panel) AND the content — like a classic app menu bar. -->
+    <div class="audio-page__menubar row items-center no-wrap">
+      <q-btn-dropdown flat dense no-caps :label="t('audio.menuFile')" class="audio-page__menu-file">
+        <q-list dense>
+          <q-item clickable v-close-popup @click="openFileDialog">
+            <q-item-section avatar>
+              <q-icon name="folder_open" />
+            </q-item-section>
+            <q-item-section>{{ t('audio.menuOpen') }}</q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
+    </div>
+
+    <FileOpenDialog
+      v-model="fileOpenDialogOpen"
+      :initial-path="fileDialogInitialPath"
+      @open="handleExternalFileOpen"
+    />
+
     <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
@@ -81,28 +102,6 @@
 
       <div class="audio-page__content">
         <q-card flat bordered class="audio-page__card audio-page__content-card">
-          <!-- FB3.1 (owner req. 9): classic menu bar; File -> Open launches the universal dialog. -->
-          <div class="audio-page__menubar row items-center no-wrap">
-            <q-btn-dropdown flat dense no-caps :label="t('audio.menuFile')" class="audio-page__menu-file">
-              <q-list dense>
-                <q-item clickable v-close-popup @click="openFileDialog">
-                  <q-item-section avatar>
-                    <q-icon name="folder_open" />
-                  </q-item-section>
-                  <q-item-section>{{ t('audio.menuOpen') }}</q-item-section>
-                </q-item>
-              </q-list>
-            </q-btn-dropdown>
-          </div>
-
-          <FileOpenDialog
-            v-model="fileOpenDialogOpen"
-            :initial-path="fileDialogInitialPath"
-            @open="handleExternalFileOpen"
-          />
-
-          <q-separator />
-
           <q-card-section v-if="audio.lastError !== null">
             <q-banner dense rounded class="bg-red-1 text-red-10">
               {{ audio.lastError }}
@@ -2024,15 +2023,24 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 }
 
 .audio-page {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* FB4.1 (FB-D12): form-wide classic menu bar above the sidebar + content. */
+.audio-page__menubar {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
 }
 
 .audio-page__inner {
   box-sizing: border-box;
   display: flex;
+  flex: 1 1 auto;
   gap: 5px;
-  height: 100%;
   min-height: 0;
   overflow: hidden;
   padding: 0;
