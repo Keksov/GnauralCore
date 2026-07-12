@@ -8,12 +8,13 @@
       <q-btn flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()" />
       <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="store.refresh()" />
 
-      <div class="fs-entry-list__breadcrumbs row items-center no-wrap col">
+      <div v-if="!isColumn" class="fs-entry-list__breadcrumbs row items-center no-wrap col">
         <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
           <q-icon v-if="index > 0" name="chevron_right" size="16px" class="fs-entry-list__crumb-sep" />
           <q-btn flat dense no-caps size="sm" :label="crumb.label" class="fs-entry-list__crumb" @click="store.openDir(crumb.path)" />
         </template>
       </div>
+      <q-space v-else />
 
       <q-btn-toggle
         :model-value="store.viewMode"
@@ -49,6 +50,15 @@
       <q-btn flat dense round :color="store.filterVisible || store.filterText !== '' ? 'primary' : undefined" icon="filter_alt" :aria-label="t('fsBrowser.filterToggle')" @click="store.toggleFilter()">
         <q-tooltip>{{ t('fsBrowser.filterToggle') }}</q-tooltip>
       </q-btn>
+    </div>
+
+    <!-- FB4-refine: in the narrow vertical (left/right dock) layout, breadcrumbs get their own row
+         right under the button toolbar, so the buttons row is not crowded. -->
+    <div v-if="isColumn" class="fs-entry-list__crumbbar row items-center no-wrap">
+      <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
+        <q-icon v-if="index > 0" name="chevron_right" size="16px" class="fs-entry-list__crumb-sep" />
+        <q-btn flat dense no-caps size="sm" :label="crumb.label" class="fs-entry-list__crumb" @click="store.openDir(crumb.path)" />
+      </template>
     </div>
 
     <q-separator />
@@ -178,6 +188,8 @@ const listScroll = ref<QVirtualScroll | null>(null)
 const filterInput = ref<QInput | null>(null)
 
 const entries = computed<readonly FsEntry[]>(() => store.visibleEntries)
+// Narrow vertical layout (left/right dock): breadcrumbs move to their own row under the buttons.
+const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
 
 const viewOptions = computed(() => [
   { value: 'table', icon: 'table_chart' },
@@ -322,6 +334,13 @@ const onColResize = (event: PointerEvent, key: keyof FsTableColWidths): void => 
   &__breadcrumbs {
     overflow-x: auto;
     min-width: 0;
+  }
+
+  // Dedicated breadcrumb row for the narrow vertical (left/right dock) layout.
+  &__crumbbar {
+    flex: 0 0 auto;
+    padding: 0 6px 2px;
+    overflow-x: auto;
   }
 
   &__crumb { min-height: 24px; }
