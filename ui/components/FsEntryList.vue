@@ -1,118 +1,206 @@
 <template>
-  <!-- FB4.3-refine: the file listing extracted so it can be reused in both the two-pane layout and
-       the single-column accordion (left/right dock). Purely presentational — selection lives in the
-       parent; this emits select/activate/sort/nav-up. -->
+  <!-- The file-list panel: its own sticky toolbar (nav + view controls + filter funnel), the
+       scrollable listing, and a sticky bottom filter — all in the SAME panel as the list
+       (FB4-refine 2/3/4). Selection lives in the parent; this emits select/activate. -->
   <div class="fs-entry-list" tabindex="0" @keydown="onKeydown">
-    <div v-if="loading" class="fs-entry-list__center">
-      <q-spinner-hourglass color="primary" size="32px" />
-    </div>
-    <div v-else-if="error" class="fs-entry-list__center text-negative">{{ error }}</div>
-    <div v-else-if="entries.length === 0" class="fs-entry-list__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
+    <!-- Sticky top toolbar (FB4-refine 2): stays pinned; only the listing scrolls. -->
+    <div class="fs-entry-list__toolbar row items-center q-gutter-xs">
+      <q-btn flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()" />
+      <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="store.refresh()" />
 
-    <!-- Table view (Total Commander style). -->
-    <template v-else-if="viewMode === 'table'">
-      <div class="fs-entry-list__thead row no-wrap">
-        <div class="fs-entry-list__th fs-entry-list__col-name" @click="emit('sort', 'name')">
-          {{ t('fsBrowser.colName') }}<q-icon v-if="sortKey === 'name'" :name="sortIcon" size="16px" />
-        </div>
-        <div class="fs-entry-list__th fs-entry-list__col-ext" @click="emit('sort', 'ext')">
-          {{ t('fsBrowser.colExt') }}<q-icon v-if="sortKey === 'ext'" :name="sortIcon" size="16px" />
-        </div>
-        <div class="fs-entry-list__th fs-entry-list__col-size" @click="emit('sort', 'size')">
-          {{ t('fsBrowser.colSize') }}<q-icon v-if="sortKey === 'size'" :name="sortIcon" size="16px" />
-        </div>
-        <div class="fs-entry-list__th fs-entry-list__col-date" @click="emit('sort', 'mtime')">
-          {{ t('fsBrowser.colDate') }}<q-icon v-if="sortKey === 'mtime'" :name="sortIcon" size="16px" />
-        </div>
+      <div class="fs-entry-list__breadcrumbs row items-center no-wrap col">
+        <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
+          <q-icon v-if="index > 0" name="chevron_right" size="16px" class="fs-entry-list__crumb-sep" />
+          <q-btn flat dense no-caps size="sm" :label="crumb.label" class="fs-entry-list__crumb" @click="store.openDir(crumb.path)" />
+        </template>
       </div>
-      <q-virtual-scroll ref="tableScroll" :items="entries" class="fs-entry-list__scroll" v-slot="{ item }">
-        <div
-          :key="item.path"
-          class="fs-entry-list__row row no-wrap items-center"
-          :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
-          @click="emit('select', item)"
-          @dblclick="emit('activate', item)"
-        >
-          <div class="fs-entry-list__col-name row items-center no-wrap">
+
+      <q-btn-toggle
+        :model-value="store.viewMode"
+        flat
+        dense
+        toggle-color="primary"
+        :options="viewOptions"
+        @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
+      />
+      <q-btn-toggle
+        v-if="store.viewMode === 'icons'"
+        :model-value="store.iconSize"
+        flat
+        dense
+        toggle-color="primary"
+        :options="iconSizeOptions"
+        @update:model-value="(v: FsIconSize) => (store.iconSize = v)"
+      />
+      <q-btn-dropdown flat dense no-caps :label="store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll')">
+        <q-list dense>
+          <q-item clickable v-close-popup @click="store.typeFilter = 'supported'">
+            <q-item-section>{{ t('fsBrowser.typeSupported') }}</q-item-section>
+          </q-item>
+          <q-item clickable v-close-popup @click="store.typeFilter = 'all'">
+            <q-item-section>{{ t('fsBrowser.typeAll') }}</q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
+      <q-btn flat dense round :color="store.showHidden ? 'primary' : undefined" icon="visibility" :aria-label="t('fsBrowser.showHidden')" @click="store.showHidden = !store.showHidden">
+        <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
+      </q-btn>
+      <!-- FB4-refine 3: the filter is summoned by this funnel (or Ctrl-S), never always-on. -->
+      <q-btn flat dense round :color="store.filterVisible || store.filterText !== '' ? 'primary' : undefined" icon="filter_alt" :aria-label="t('fsBrowser.filterToggle')" @click="store.toggleFilter()">
+        <q-tooltip>{{ t('fsBrowser.filterToggle') }}</q-tooltip>
+      </q-btn>
+    </div>
+
+    <q-separator />
+
+    <div class="fs-entry-list__content">
+      <div v-if="store.loading" class="fs-entry-list__center">
+        <q-spinner-hourglass color="primary" size="32px" />
+      </div>
+      <div v-else-if="store.error" class="fs-entry-list__center text-negative">{{ store.error }}</div>
+      <div v-else-if="entries.length === 0" class="fs-entry-list__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
+
+      <!-- Table view — resizable columns (FB4-refine 1). name/ext/size persist; date flex-fills. -->
+      <template v-else-if="store.viewMode === 'table'">
+        <div class="fs-entry-list__thead row no-wrap">
+          <div class="fs-entry-list__th" :style="colStyle('name')" @click="store.setSort('name')">
+            {{ t('fsBrowser.colName') }}<q-icon v-if="store.sortKey === 'name'" :name="sortIcon" size="16px" />
+            <div class="fs-entry-list__col-resizer" @pointerdown="onColResize($event, 'name')" @click.stop />
+          </div>
+          <div class="fs-entry-list__th" :style="colStyle('ext')" @click="store.setSort('ext')">
+            {{ t('fsBrowser.colExt') }}<q-icon v-if="store.sortKey === 'ext'" :name="sortIcon" size="16px" />
+            <div class="fs-entry-list__col-resizer" @pointerdown="onColResize($event, 'ext')" @click.stop />
+          </div>
+          <div class="fs-entry-list__th" :style="colStyle('size')" @click="store.setSort('size')">
+            {{ t('fsBrowser.colSize') }}<q-icon v-if="store.sortKey === 'size'" :name="sortIcon" size="16px" />
+            <div class="fs-entry-list__col-resizer" @pointerdown="onColResize($event, 'size')" @click.stop />
+          </div>
+          <div class="fs-entry-list__th fs-entry-list__col-date" @click="store.setSort('mtime')">
+            {{ t('fsBrowser.colDate') }}<q-icon v-if="store.sortKey === 'mtime'" :name="sortIcon" size="16px" />
+          </div>
+        </div>
+        <q-virtual-scroll ref="tableScroll" :items="entries" class="fs-entry-list__scroll" v-slot="{ item }">
+          <div
+            :key="item.path"
+            class="fs-entry-list__row row no-wrap items-center"
+            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+            @click="emit('select', item)"
+            @dblclick="emit('activate', item)"
+          >
+            <div class="fs-entry-list__cell fs-entry-list__cell--name row items-center no-wrap" :style="colStyle('name')">
+              <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="fs-entry-list__row-icon" />
+              <span class="fs-entry-list__row-name">{{ item.name }}</span>
+            </div>
+            <div class="fs-entry-list__cell" :style="colStyle('ext')">{{ item.isDir ? '' : item.ext }}</div>
+            <div class="fs-entry-list__cell fs-entry-list__cell--size" :style="colStyle('size')">{{ item.isDir ? '' : formatSize(item.size) }}</div>
+            <div class="fs-entry-list__cell fs-entry-list__col-date">{{ formatDate(item.mtimeMs) }}</div>
+          </div>
+        </q-virtual-scroll>
+      </template>
+
+      <!-- List view (names only). -->
+      <template v-else-if="store.viewMode === 'list'">
+        <q-virtual-scroll ref="listScroll" :items="entries" class="fs-entry-list__scroll" v-slot="{ item }">
+          <div
+            :key="item.path"
+            class="fs-entry-list__row fs-entry-list__row--list row no-wrap items-center"
+            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+            @click="emit('select', item)"
+            @dblclick="emit('activate', item)"
+          >
             <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="fs-entry-list__row-icon" />
             <span class="fs-entry-list__row-name">{{ item.name }}</span>
           </div>
-          <div class="fs-entry-list__col-ext">{{ item.isDir ? '' : item.ext }}</div>
-          <div class="fs-entry-list__col-size">{{ item.isDir ? '' : formatSize(item.size) }}</div>
-          <div class="fs-entry-list__col-date">{{ formatDate(item.mtimeMs) }}</div>
-        </div>
-      </q-virtual-scroll>
-    </template>
+        </q-virtual-scroll>
+      </template>
 
-    <!-- List view (names only). -->
-    <template v-else-if="viewMode === 'list'">
-      <q-virtual-scroll ref="listScroll" :items="entries" class="fs-entry-list__scroll" v-slot="{ item }">
+      <!-- Icon view (sm/md/lg). Not virtualized. -->
+      <div v-else class="fs-entry-list__scroll fs-entry-list__icons" :class="`fs-entry-list__icons--${store.iconSize}`">
         <div
+          v-for="item in entries"
           :key="item.path"
-          class="fs-entry-list__row fs-entry-list__row--list row no-wrap items-center"
-          :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+          class="fs-entry-list__tile column items-center"
+          :class="{ 'fs-entry-list__tile--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
           @click="emit('select', item)"
           @dblclick="emit('activate', item)"
         >
-          <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="fs-entry-list__row-icon" />
-          <span class="fs-entry-list__row-name">{{ item.name }}</span>
+          <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" :size="iconTileSize" />
+          <div class="fs-entry-list__tile-label">{{ item.name }}</div>
         </div>
-      </q-virtual-scroll>
-    </template>
-
-    <!-- Icon view (sm/md/lg). Not virtualized. -->
-    <div v-else class="fs-entry-list__scroll fs-entry-list__icons" :class="`fs-entry-list__icons--${iconSize}`">
-      <div
-        v-for="item in entries"
-        :key="item.path"
-        class="fs-entry-list__tile column items-center"
-        :class="{ 'fs-entry-list__tile--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
-        @click="emit('select', item)"
-        @dblclick="emit('activate', item)"
-      >
-        <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" :size="iconTileSize" />
-        <div class="fs-entry-list__tile-label">{{ item.name }}</div>
       </div>
     </div>
+
+    <!-- Sticky bottom filter (FB4-refine 4): shows below the list, never scrolls with it. -->
+    <template v-if="store.filterVisible">
+      <q-separator />
+      <div class="fs-entry-list__filter">
+        <q-input
+          ref="filterInput"
+          :model-value="store.filterText"
+          dense
+          outlined
+          clearable
+          autofocus
+          :placeholder="t('fsBrowser.filterPlaceholder')"
+          @update:model-value="(v: string | number | null) => (store.filterText = v === null ? '' : String(v))"
+          @keydown.esc.stop.prevent="store.setFilterVisible(false)"
+        >
+          <template #prepend>
+            <q-icon name="filter_alt" size="18px" />
+          </template>
+        </q-input>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { QVirtualScroll } from 'quasar'
+import type { QInput, QVirtualScroll } from 'quasar'
 import type { FsEntry } from '@protocol'
-import { audioFileKindForExt, type FsIconSize, type FsSortDir, type FsSortKey, type FsViewMode } from '../stores/fs-browser'
+import { audioFileKindForExt, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
 
 const props = defineProps<{
-  readonly entries: readonly FsEntry[]
-  readonly loading: boolean
-  readonly error: string | null
-  readonly viewMode: FsViewMode
-  readonly iconSize: FsIconSize
-  readonly sortKey: FsSortKey
-  readonly sortDir: FsSortDir
   readonly selectedPath: string | null
 }>()
 
 const emit = defineEmits<{
   select: [entry: FsEntry]
   activate: [entry: FsEntry]
-  sort: [key: FsSortKey]
-  'nav-up': []
 }>()
 
 const { t } = useI18n()
+const store = useFsBrowserStore()
 
 const tableScroll = ref<QVirtualScroll | null>(null)
 const listScroll = ref<QVirtualScroll | null>(null)
+const filterInput = ref<QInput | null>(null)
 
-const sortIcon = computed(() => (props.sortDir === 'asc' ? 'arrow_drop_up' : 'arrow_drop_down'))
-const iconTileSize = computed(() => (props.iconSize === 'sm' ? '32px' : props.iconSize === 'lg' ? '72px' : '48px'))
+const entries = computed<readonly FsEntry[]>(() => store.visibleEntries)
+
+const viewOptions = computed(() => [
+  { value: 'table', icon: 'table_chart' },
+  { value: 'list', icon: 'view_list' },
+  { value: 'icons', icon: 'grid_view' },
+])
+const iconSizeOptions = [
+  { value: 'sm', label: 'S' },
+  { value: 'md', label: 'M' },
+  { value: 'lg', label: 'L' },
+]
+
+const sortIcon = computed(() => (store.sortDir === 'asc' ? 'arrow_drop_up' : 'arrow_drop_down'))
+const iconTileSize = computed(() => (store.iconSize === 'sm' ? '32px' : store.iconSize === 'lg' ? '72px' : '48px'))
+
+// name/ext/size are fixed + resizable; the date column flex-fills the remainder.
+const colStyle = (key: keyof FsTableColWidths): Record<string, string> => {
+  const w = store.tableColWidths[key]
+  return { flex: `0 0 ${w}px`, width: `${w}px` }
+}
 
 const isSupported = (entry: FsEntry): boolean => audioFileKindForExt(entry.ext) !== null
 
-// FB4.4 (FB-D14): a distinct icon + colour per file kind.
 interface EntryVisual {
   readonly icon: string
   readonly color: string
@@ -149,8 +237,23 @@ const formatDate = (mtimeMs: number): string => {
   return mtimeMs > 0 ? dateFormat.format(new Date(mtimeMs)) : ''
 }
 
+// Focus the filter as soon as it is summoned.
+watch(() => store.filterVisible, (visible) => {
+  if (visible) {
+    void nextTick(() => filterInput.value?.focus())
+  }
+})
+
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+}
+
 const onKeydown = (event: KeyboardEvent): void => {
-  const items = props.entries
+  // Never hijack typing in the filter field.
+  if (isEditableTarget(event.target)) {
+    return
+  }
+  const items = entries.value
   if (items.length === 0) {
     return
   }
@@ -170,18 +273,35 @@ const onKeydown = (event: KeyboardEvent): void => {
     }
   } else if (event.key === 'Backspace') {
     event.preventDefault()
-    emit('nav-up')
+    void store.goUp()
   }
 }
 
 const selectAtIndex = (index: number): void => {
-  const entry = props.entries[index]
+  const entry = entries.value[index]
   if (entry === undefined) {
     return
   }
   emit('select', entry)
   tableScroll.value?.scrollTo(index)
   listScroll.value?.scrollTo(index)
+}
+
+// Column resize (FB4-refine 1): drag a header's right edge; width persists via the store.
+const onColResize = (event: PointerEvent, key: keyof FsTableColWidths): void => {
+  event.preventDefault()
+  event.stopPropagation()
+  const startX = event.clientX
+  const startW = store.tableColWidths[key]
+  const move = (moveEvent: PointerEvent): void => {
+    store.setTableColWidth(key, startW + (moveEvent.clientX - startX))
+  }
+  const up = (): void => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
 }
 </script>
 
@@ -192,6 +312,32 @@ const selectAtIndex = (index: number): void => {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+
+  &__toolbar {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    flex-wrap: nowrap;
+  }
+
+  &__breadcrumbs {
+    overflow-x: auto;
+    min-width: 0;
+  }
+
+  &__crumb { min-height: 24px; }
+  &__crumb-sep { opacity: 0.5; }
+
+  &__content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__filter {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+  }
 
   &__center {
     flex: 1 1 auto;
@@ -214,25 +360,45 @@ const selectAtIndex = (index: number): void => {
   }
 
   &__th {
+    position: relative;
     padding: 4px 8px;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
+    overflow: hidden;
   }
 
-  &__col-name { flex: 1 1 auto; min-width: 0; }
-  &__col-ext { flex: 0 0 56px; }
-  &__col-size { flex: 0 0 88px; text-align: right; }
-  &__col-date { flex: 0 0 132px; }
+  &__col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+
+    &:hover { background: rgba(25, 118, 210, 0.4); }
+  }
+
+  &__col-date { flex: 1 1 auto; min-width: 0; }
+
+  &__cell {
+    padding: 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    &--size { text-align: right; }
+  }
 
   &__row {
-    padding: 2px 8px;
+    padding: 2px 0;
     cursor: pointer;
 
     &:hover { background: rgba(128, 128, 128, 0.12); }
     &--active { background: rgba(25, 118, 210, 0.25); }
     &--muted { opacity: 0.5; }
   }
+
+  &__row--list { padding: 2px 8px; }
 
   &__row-icon { margin-right: 6px; }
 

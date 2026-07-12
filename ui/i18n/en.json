@@ -433,6 +433,7 @@
     "addFavorite": "Add to favorites",
     "removeFavorite": "Remove favorite",
     "noFavorites": "No favorites yet",
+    "filterToggle": "Filter (Ctrl+S)",
     "filterPlaceholder": "Filter (regexp)… — Ctrl+S",
     "typeSupported": "Audio files",
     "typeAll": "All files",

@@ -22,6 +22,13 @@ export interface FsFloatRect {
   h: number
 }
 
+// FB4-refine 1: persisted table column widths (name/ext/size are resizable; date flex-fills).
+export interface FsTableColWidths {
+  name: number
+  ext: number
+  size: number
+}
+
 export interface FsFavorite {
   readonly providerId: string
   readonly path: string
@@ -53,9 +60,11 @@ const KEY_FAVORITES = `${STORAGE_PREFIX}favorites`
 const KEY_WIN_MODE = `${STORAGE_PREFIX}win-mode`
 const KEY_DOCK_SIZE = `${STORAGE_PREFIX}dock-size`
 const KEY_FLOAT = `${STORAGE_PREFIX}float`
+const KEY_COLS = `${STORAGE_PREFIX}cols`
 
 const DEFAULT_FLOAT: FsFloatRect = { x: 140, y: 90, w: 900, h: 600 }
 const DEFAULT_DOCK_SIZE = 380
+const DEFAULT_COLS: FsTableColWidths = { name: 260, ext: 60, size: 92 }
 
 const readString = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
   try {
@@ -82,6 +91,23 @@ const readNumber = (key: string, fallback: number): number => {
     return Number.isFinite(parsed) ? parsed : fallback
   } catch {
     return fallback
+  }
+}
+
+const readCols = (): FsTableColWidths => {
+  try {
+    const raw = localStorage.getItem(KEY_COLS)
+    if (raw === null) {
+      return { ...DEFAULT_COLS }
+    }
+    const parsed = JSON.parse(raw) as Partial<FsTableColWidths>
+    return {
+      name: typeof parsed.name === 'number' ? parsed.name : DEFAULT_COLS.name,
+      ext: typeof parsed.ext === 'number' ? parsed.ext : DEFAULT_COLS.ext,
+      size: typeof parsed.size === 'number' ? parsed.size : DEFAULT_COLS.size,
+    }
+  } catch {
+    return { ...DEFAULT_COLS }
   }
 }
 
@@ -169,6 +195,8 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const loading = ref<boolean>(false)
   const error = ref<string | null>(null)
   const filterText = ref<string>('')
+  // FB4-refine 3: the filter is hidden until summoned by the funnel icon / Ctrl-S (session state).
+  const filterVisible = ref<boolean>(false)
 
   // Persisted preferences.
   const viewMode = ref<FsViewMode>(readString(KEY_VIEW, ['table', 'list', 'icons'], 'table'))
@@ -183,6 +211,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const windowMode = ref<FsWindowMode>(readString(KEY_WIN_MODE, ['floating', 'left', 'right', 'top', 'bottom'], 'floating'))
   const dockSize = ref<number>(readNumber(KEY_DOCK_SIZE, DEFAULT_DOCK_SIZE))
   const floatRect = ref<FsFloatRect>(readFloatRect())
+  const tableColWidths = ref<FsTableColWidths>(readCols())
 
   watch(viewMode, (v) => persist(KEY_VIEW, v))
   watch(iconSize, (v) => persist(KEY_ICON, v))
@@ -194,6 +223,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   watch(windowMode, (v) => persist(KEY_WIN_MODE, v))
   watch(dockSize, (v) => persist(KEY_DOCK_SIZE, String(Math.round(v))))
   watch(floatRect, (v) => persist(KEY_FLOAT, JSON.stringify(v)), { deep: true })
+  watch(tableColWidths, (v) => persist(KEY_COLS, JSON.stringify(v)), { deep: true })
   // Re-list when hidden-file visibility flips (server-side filter).
   watch(showHidden, () => {
     if (currentPath.value !== null) {
@@ -412,6 +442,21 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     floatRect.value = { ...floatRect.value, ...rect }
   }
 
+  const setFilterVisible = (visible: boolean): void => {
+    filterVisible.value = visible
+    if (!visible) {
+      filterText.value = ''
+    }
+  }
+
+  const toggleFilter = (): void => {
+    setFilterVisible(!filterVisible.value)
+  }
+
+  const setTableColWidth = (key: keyof FsTableColWidths, px: number): void => {
+    tableColWidths.value = { ...tableColWidths.value, [key]: Math.max(40, Math.min(px, 800)) }
+  }
+
   return {
     // state
     info,
@@ -423,6 +468,8 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     loading,
     error,
     filterText,
+    filterVisible,
+    tableColWidths,
     viewMode,
     iconSize,
     sortKey,
@@ -452,5 +499,8 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     setWindowMode,
     setDockSize,
     setFloatRect,
+    setFilterVisible,
+    toggleFilter,
+    setTableColWidth,
   }
 })

@@ -433,6 +433,7 @@
     "addFavorite": "Добавить в избранное",
     "removeFavorite": "Убрать из избранного",
     "noFavorites": "Пока нет избранного",
+    "filterToggle": "Фильтр (Ctrl+S)",
     "filterPlaceholder": "Фильтр (regexp)… — Ctrl+S",
     "typeSupported": "Аудиофайлы",
     "typeAll": "Все файлы",

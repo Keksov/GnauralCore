@@ -50,85 +50,9 @@
     </div>
 
     <template v-else>
-      <!-- Toolbar: navigation + breadcrumbs + view/type controls. -->
-      <div class="file-open-dialog__toolbar row items-center no-wrap q-gutter-xs">
-        <q-btn flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()" />
-        <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="store.refresh()" />
-
-        <div class="file-open-dialog__breadcrumbs row items-center no-wrap">
-          <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
-            <q-icon v-if="index > 0" name="chevron_right" size="16px" class="file-open-dialog__crumb-sep" />
-            <q-btn flat dense no-caps size="sm" :label="crumb.label" class="file-open-dialog__crumb" @click="store.openDir(crumb.path)" />
-          </template>
-        </div>
-
-        <q-space />
-
-        <q-btn-toggle
-          :model-value="store.viewMode"
-          flat
-          dense
-          toggle-color="primary"
-          :options="viewOptions"
-          @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
-        />
-        <q-btn-toggle
-          v-if="store.viewMode === 'icons'"
-          :model-value="store.iconSize"
-          flat
-          dense
-          toggle-color="primary"
-          :options="iconSizeOptions"
-          @update:model-value="(v: FsIconSize) => (store.iconSize = v)"
-        />
-
-        <q-btn-dropdown flat dense no-caps :label="store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll')">
-          <q-list dense>
-            <q-item clickable v-close-popup @click="store.typeFilter = 'supported'">
-              <q-item-section>{{ t('fsBrowser.typeSupported') }}</q-item-section>
-            </q-item>
-            <q-item clickable v-close-popup @click="store.typeFilter = 'all'">
-              <q-item-section>{{ t('fsBrowser.typeAll') }}</q-item-section>
-            </q-item>
-          </q-list>
-        </q-btn-dropdown>
-
-        <q-btn
-          flat
-          dense
-          round
-          :color="store.showHidden ? 'primary' : undefined"
-          icon="visibility"
-          :aria-label="t('fsBrowser.showHidden')"
-          @click="store.showHidden = !store.showHidden"
-        >
-          <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
-        </q-btn>
-      </div>
-
-      <!-- Ctrl-S quick regexp filter (FB-D5). -->
-      <div class="file-open-dialog__filter row items-center no-wrap">
-        <q-input
-          ref="filterInput"
-          :model-value="store.filterText"
-          dense
-          outlined
-          clearable
-          class="col"
-          :placeholder="t('fsBrowser.filterPlaceholder')"
-          @update:model-value="(v: string | number | null) => (store.filterText = v === null ? '' : String(v))"
-          @keydown.esc.stop.prevent="store.filterText = ''"
-        >
-          <template #prepend>
-            <q-icon name="filter_alt" size="18px" />
-          </template>
-        </q-input>
-      </div>
-
-      <q-separator />
-
       <!-- FB4.3-refine 2: left/right dock -> single-column accordion (File list / Locations /
-           Favorites); every other mode keeps the two-pane sidebar + list. -->
+           Favorites); every other mode keeps the two-pane sidebar + list. The nav toolbar + view
+           controls + filter now live INSIDE the file-list panel (FsEntryList), FB4-refine 2/3/4. -->
       <div v-if="isColumn" class="file-open-dialog__body file-open-dialog__body--column">
         <q-expansion-item
           default-opened
@@ -137,18 +61,9 @@
           class="file-open-dialog__acc file-open-dialog__acc--grow"
         >
           <FsEntryList
-            :entries="store.visibleEntries"
-            :loading="store.loading"
-            :error="store.error"
-            :view-mode="store.viewMode"
-            :icon-size="store.iconSize"
-            :sort-key="store.sortKey"
-            :sort-dir="store.sortDir"
             :selected-path="selectedPath"
             @select="select"
             @activate="activate"
-            @sort="store.setSort"
-            @nav-up="store.goUp"
           />
         </q-expansion-item>
 
@@ -234,18 +149,9 @@
         <q-separator vertical />
 
         <FsEntryList
-          :entries="store.visibleEntries"
-          :loading="store.loading"
-          :error="store.error"
-          :view-mode="store.viewMode"
-          :icon-size="store.iconSize"
-          :sort-key="store.sortKey"
-          :sort-dir="store.sortDir"
           :selected-path="selectedPath"
           @select="select"
           @activate="activate"
-          @sort="store.setSort"
-          @nav-up="store.goUp"
         />
       </div>
 
@@ -272,9 +178,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { QInput } from 'quasar'
 import type { AudioFileKind, FsEntry, FsRootKind } from '@protocol'
-import { audioFileKindForExt, useFsBrowserStore, type FsFavorite, type FsIconSize, type FsViewMode, type FsWindowMode } from '../stores/fs-browser'
+import { audioFileKindForExt, useFsBrowserStore, type FsFavorite, type FsWindowMode } from '../stores/fs-browser'
 import FsEntryList from './FsEntryList.vue'
 
 const props = defineProps<{
@@ -291,7 +196,6 @@ const { t } = useI18n()
 const store = useFsBrowserStore()
 
 const selectedPath = ref<string | null>(null)
-const filterInput = ref<QInput | null>(null)
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')
 const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
@@ -322,17 +226,6 @@ const dockOptions: readonly DockOption[] = [
   { mode: 'bottom', icon: 'border_bottom', label: 'fsBrowser.dockBottom' },
 ]
 const modeIcon = computed<string>(() => dockOptions.find((o) => o.mode === store.windowMode)?.icon ?? 'picture_in_picture_alt')
-
-const viewOptions = computed(() => [
-  { value: 'table', icon: 'table_chart' },
-  { value: 'list', icon: 'view_list' },
-  { value: 'icons', icon: 'grid_view' },
-])
-const iconSizeOptions = [
-  { value: 'sm', label: 'S' },
-  { value: 'md', label: 'M' },
-  { value: 'lg', label: 'L' },
-]
 
 const selectedEntry = computed<FsEntry | null>(() => {
   return store.visibleEntries.find((e) => e.path === selectedPath.value) ?? null
@@ -421,11 +314,12 @@ onMounted(() => {
   }
 })
 
-// Ctrl-S focuses the quick filter (TC habit), and never triggers the browser's Save dialog.
+// Ctrl-S summons the quick filter (TC habit); FsEntryList focuses it when it appears. Never lets
+// the browser's Save dialog through.
 const onKeydown = (event: KeyboardEvent): void => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault()
-    filterInput.value?.focus()
+    store.setFilterVisible(true)
   }
 }
 
@@ -542,23 +436,11 @@ const onDockResizePointerDown = (event: PointerEvent): void => {
 
   &__unavailable { padding: 12px; }
 
-  &__toolbar,
-  &__filter,
   &__footer {
     flex: 0 0 auto;
+    padding: 6px 8px;
+    gap: 8px;
   }
-
-  &__toolbar { padding: 4px 8px; }
-  &__filter { padding: 0 8px 4px; }
-  &__footer { padding: 6px 8px; gap: 8px; }
-
-  &__breadcrumbs {
-    overflow-x: auto;
-    max-width: 40%;
-  }
-
-  &__crumb { min-height: 24px; }
-  &__crumb-sep { opacity: 0.5; }
 
   &__body {
     flex: 1 1 auto;
