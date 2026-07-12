@@ -481,16 +481,22 @@
               <template v-if="gtrackSettingsLane.soloMode === 'wave' || gtrackSettingsLane.soloMode === 'both'">
                 <div class="row items-center q-col-gutter-sm q-mt-sm">
                   <div class="col-5">
-                    <q-input
-                      dense outlined
-                      :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
-                      :label="t('audio.gtrackSoloWaveColor')"
-                      @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
+                    <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloWaveColor') }}</div>
+                    <!-- GT10.20 (owner req. 69): the colour circle opens a colour picker on click. -->
+                    <div
+                      class="tracks-panel__color-swatch"
+                      :style="{ background: gtrackSettingsLane.soloWaveColor ?? '#f59e0b' }"
+                      role="button" tabindex="0"
+                      :aria-label="t('audio.gtrackSoloWaveColor')"
                     >
-                      <template #append>
-                        <q-badge rounded :style="{ background: gtrackSettingsLane.soloWaveColor ?? '#f59e0b' }" />
-                      </template>
-                    </q-input>
+                      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                        <q-color
+                          :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
+                          format-model="hex" no-header-tabs default-view="palette"
+                          @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
+                        />
+                      </q-popup-proxy>
+                    </div>
                   </div>
                   <div class="col-7">
                     <div class="text-caption text-grey">
@@ -3004,6 +3010,19 @@ onBeforeUnmount(() => {
   width: 28px;
   text-align: center;
 }
+/* GT10.20 (owner req. 69): clickable colour circle that opens the colour picker. */
+.tracks-panel__color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(2, 6, 23, 0.5);
+  cursor: pointer;
+  height: 28px;
+  width: 28px;
+}
+.tracks-panel__color-swatch:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
 /* GT10.43 (owner req.): the ordinal (#) column is narrow. */
 .tracks-panel__multi-table th.tracks-panel__col-idx,
 .tracks-panel__multi-table td.tracks-panel__col-idx {
