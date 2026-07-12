@@ -830,6 +830,7 @@
               <thead>
                 <tr>
                   <th class="tracks-panel__col-chk"></th>
+                  <th class="tracks-panel__col-num tracks-panel__col-idx">#</th>
                   <th class="tracks-panel__col-num">{{ t('audio.gtrackPointTime') }}</th>
                   <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBase') }}</th>
                   <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBeat') }}</th>
@@ -841,7 +842,7 @@
                 <!-- GT10.41 (owner req.): points grouped by voice under a collapsible header. -->
                 <template v-for="group in groupedMultiForm" :key="group.voiceId">
                   <tr class="tracks-panel__group-row" @click="toggleGroup(group.voiceId)">
-                    <td colspan="6">
+                    <td colspan="7">
                       <q-icon :name="collapsedGroups.has(group.voiceId) ? 'chevron_right' : 'expand_more'" size="18px" />
                       {{ group.name }} <span class="text-grey">({{ group.rows.length }})</span>
                     </td>
@@ -849,6 +850,8 @@
                   <template v-if="!collapsedGroups.has(group.voiceId)">
                     <tr v-for="row in group.rows" :key="`${row.voiceId}:${row.pointIndex}`">
                       <td class="tracks-panel__col-chk"><q-checkbox v-model="row.checked" dense /></td>
+                      <!-- GT10.43 (owner req.): the point's ordinal (index) within its voice. -->
+                      <td class="tracks-panel__col-num tracks-panel__col-idx text-grey">{{ row.pointIndex }}</td>
                       <!-- GT10.40: time is read-only in the table (crossover reindexing would desync keys). -->
                       <td class="tracks-panel__col-num">{{ row.timeSec }}</td>
                       <td class="tracks-panel__col-num" data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
@@ -3000,6 +3003,12 @@ onBeforeUnmount(() => {
   min-width: 0;
   width: 28px;
   text-align: center;
+}
+/* GT10.43 (owner req.): the ordinal (#) column is narrow. */
+.tracks-panel__multi-table th.tracks-panel__col-idx,
+.tracks-panel__multi-table td.tracks-panel__col-idx {
+  min-width: 0;
+  width: 36px;
 }
 
 /* GT10.41 (owner req.): collapsible per-voice group header row. */
