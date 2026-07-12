@@ -453,14 +453,16 @@ export class GTrackModel {
     return index
   }
 
-  /** Remove a point. A voice must keep at least 2 points (>= 1 segment). (GT-D8 / owner req. 9) */
+  /**
+   * Remove a point. GT10.33 (owner 2026-07-12): a voice may be emptied entirely — the editor no
+   * longer floors at 2 points; the user's safety net is Undo (the inspector stays open on the last
+   * delete). Note insertPoint still needs >= 2 points to interpolate, so an emptied voice can only
+   * be restored via Undo.
+   */
   public removePoint(voiceId: number, index: number): void {
     this.ensureOpen()
     this.assertEditable(voiceId)
     const voice = this.findVoice(voiceId)
-    if (voice.points.length <= 2) {
-      throw new Error('gtrack: cannot remove; a voice must keep at least 2 points')
-    }
     if (index < 0 || index >= voice.points.length) {
       throw new Error(`gtrack: point index ${index} out of range for voice ${voiceId}`)
     }

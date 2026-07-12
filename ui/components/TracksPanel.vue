@@ -803,14 +803,14 @@
           <q-btn
             flat round dense icon="undo" :disable="!gtracks.canUndo.value"
             :aria-label="t('audio.gtrackUndo')"
-            @click="gtracks.undoEdit()"
+            @click="undoWithFocus()"
           >
             <q-tooltip>{{ t('audio.gtrackUndo') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat round dense icon="redo" :disable="!gtracks.canRedo.value"
             :aria-label="t('audio.gtrackRedo')"
-            @click="gtracks.redoEdit()"
+            @click="redoWithFocus()"
           >
             <q-tooltip>{{ t('audio.gtrackRedo') }}</q-tooltip>
           </q-btn>
@@ -913,17 +913,22 @@
               />
             </div>
             <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
-            <div class="text-caption text-grey">{{ t('audio.gtrackMode_volume') }}: {{ pointFormVolume.toFixed(2) }}</div>
-            <q-slider
-              :model-value="pointFormVolume" :min="0" :max="1" :step="0.01" dense
-              @update:model-value="(v) => setPointFormVolume(v ?? 0)" @change="maybeAutosave"
+            <!-- GT10.37 (owner 2026-07-12): Volume is a numeric field with steppers (was a slider). -->
+            <q-input
+              :model-value="Number(pointFormVolume.toFixed(3))" dense outlined type="number" step="0.01" min="0" max="1"
+              :label="t('audio.gtrackMode_volume')"
+              @update:model-value="(v) => setPointFormVolume(Number(v) || 0)"
+              @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <template v-if="!pointDialogVoiceMono">
               <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
-              <q-slider
-                :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
-                @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
-              />
+              <!-- GT10.38 (owner 2026-07-12): horizontal padding so the thumb doesn't overflow the dialog. -->
+              <div class="tracks-panel__balance-slider">
+                <q-slider
+                  :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
+                  @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
+                />
+              </div>
             </template>
             <q-checkbox
               :model-value="gtracks.pointAutosave.value" dense
@@ -1170,9 +1175,18 @@ const pointDialogHasNext = computed(() => {
 function syncPointFormFromModel(): void {
   const tgt = pointDialogTarget.value
   if (tgt === null) return
-  const point = gtracks.getPoint({ voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
+  const voice = gtracks.getVoice(tgt.voiceId)
+  if (voice === undefined) {
+    pointDialogTarget.value = null // the voice is gone — nothing to show
+    return
+  }
+  const point = voice.points[tgt.pointIndex] ?? null
   if (point === null) {
-    pointDialogTarget.value = null // the point is gone (deleted elsewhere) — nothing to show
+    // GT10.33 (owner 2026-07-12): if the voice was emptied (last point deleted), KEEP the dialog
+    // open with the frozen values so the user can Undo. Otherwise the point was deleted elsewhere
+    // while others remain — close.
+    if (voice.points.length === 0) return
+    pointDialogTarget.value = null
     return
   }
   pointForm.timeSec = Number(point.timeSec.toFixed(3))
@@ -1189,6 +1203,9 @@ function openPointDialog(laneId: number, p: GTrackPointRef): void {
     return
   }
   pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
+  // GT10.35 (owner 2026-07-12): move the visual focus (selected vertex / white circle) to the
+  // clicked point too, so it doesn't stay on the previously added/selected node.
+  gtracks.selectPoint(laneId, { voiceId: p.voiceId, pointIndex: p.pointIndex })
   syncPointFormFromModel()
 }
 // GT3.7 (owner req. 11 / R6): fixing bakes the generator's expansion into concrete points and
@@ -1323,6 +1340,17 @@ function applyPointDialog(): void {
 function maybeAutosave(): void {
   if (gtracks.pointAutosave.value) applyPointDialog()
 }
+// GT10.36 (owner 2026-07-12): after undo/redo, keep the visual focus on the inspected point — a
+// restored (previously deleted) point becomes selected again, so the white focus circle follows.
+function undoWithFocus(): void { gtracks.undoEdit(); refocusInspectedPoint() }
+function redoWithFocus(): void { gtracks.redoEdit(); refocusInspectedPoint() }
+function refocusInspectedPoint(): void {
+  const tgt = pointDialogTarget.value
+  if (tgt === null) return
+  const voice = gtracks.getVoice(tgt.voiceId)
+  if (voice === undefined || tgt.pointIndex >= voice.points.length) return
+  gtracks.selectPoint(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
+}
 // GT10.31 (owner req. 80): adding a point (Ctrl-click on a curve) opens its dialog immediately.
 // insertPointAt selects the new point on success, so the dialog targets it from the selection.
 function onAddPoint(laneId: number, e: GTrackAddPoint): void {
@@ -1330,9 +1358,10 @@ function onAddPoint(laneId: number, e: GTrackAddPoint): void {
   const sel = gtracks.selection.value
   if (sel !== null) openPointDialog(laneId, { voiceId: sel.voiceId, pointIndex: sel.pointIndex })
 }
-// GT3.12 (owner req. 31) / GT10.33 (owner req. 82): delete the inspected point and MOVE FOCUS —
-// to the right neighbour (same index after the shift), else the previous point, else close the
-// dialog. Blocked deletions (a voice must keep >= 2 points) leave the dialog and notify.
+// GT3.12 (owner req. 31) / GT10.33 (owner req. 82, revised 2026-07-12): delete the inspected point
+// and MOVE FOCUS — to the right neighbour (same index after the shift), else the previous point.
+// Deleting the LAST point empties the voice but keeps the dialog OPEN (frozen values) so the user
+// can Undo. No min-2 floor / no block.
 function deleteCurrentPointFromDialog(): void {
   const tgt = pointDialogTarget.value
   if (tgt === null) return
@@ -1340,12 +1369,9 @@ function deleteCurrentPointFromDialog(): void {
   if (voice === undefined) return
   const countBefore = voice.points.length
   const idx = tgt.pointIndex
-  if (!gtracks.deletePointAt(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: idx })) {
-    $q.notify({ type: 'warning', message: t('audio.gtrackDeleteBlocked') })
-    return
-  }
+  if (!gtracks.deletePointAt(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: idx })) return
   const remaining = countBefore - 1
-  if (remaining <= 0) { closePointDialog(); return }
+  if (remaining <= 0) return // voice emptied — leave the dialog open (frozen) for Undo
   // Right neighbour has shifted into `idx`; if we deleted the last point, fall back to the previous.
   const nextIndex = Math.min(idx, remaining - 1)
   const laneId = tgt.laneId
@@ -2348,13 +2374,13 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
   // GT3.2: undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y).
   if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
     event.preventDefault()
-    if (event.shiftKey) gtracks.redoEdit()
-    else gtracks.undoEdit()
+    if (event.shiftKey) redoWithFocus()
+    else undoWithFocus()
     return
   }
   if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
     event.preventDefault()
-    gtracks.redoEdit()
+    redoWithFocus()
     return
   }
 
@@ -2785,6 +2811,12 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 8px;
+}
+
+/* GT10.38 (owner 2026-07-12): inset the balance slider so its thumb at the extremes stays inside
+   the dialog (otherwise it overflows and triggers a horizontal scrollbar). */
+.tracks-panel__balance-slider {
+  padding: 0 10px;
 }
 
 /* GT3.21 (owner req. 41): the inspector title bar is a drag handle (grows to fill the bar). */

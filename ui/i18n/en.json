@@ -56,7 +56,6 @@
     "gtrackPointVolR": "Volume R",
     "gtrackAutosave": "Autosave",
     "gtrackDeletePoint": "Delete node",
-    "gtrackDeleteBlocked": "Can't delete: a voice must keep at least 2 nodes.",
     "gtrackMultiSelected": "{count} nodes selected",
     "gtrackDeleteSelected": "Delete selected",
     "gtrackAddPointRight": "Add node →",

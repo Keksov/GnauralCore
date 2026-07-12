@@ -231,7 +231,10 @@ function positionTooltip(): void {
 
 const AXIS_MARGIN = { left: 46, right: 8 }
 const AXIS_TIME_MARGIN = 18
-const AXIS_PLAIN_MARGIN = 6
+// GT10.34 (owner 2026-07-12): reserve enough vertical room for the largest vertex marker (point
+// mode, selected = baseR 3.5 + 2, plus its stroke) so a curve running along the top/bottom edge of
+// the lane isn't drawn with its nodes clipped in half.
+const AXIS_PLAIN_MARGIN = 10
 const marginTop = (): number => (props.showTimeAxisTop ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 const marginBottom = (): number => (props.showTimeAxisBottom ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 

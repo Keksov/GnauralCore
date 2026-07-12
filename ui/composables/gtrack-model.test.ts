@@ -273,12 +273,16 @@ describe('gtrack model insert/remove points (GT1.3 / GT-D8)', () => {
     expect(() => model.edit(() => model.insertPoint(7, 99))).toThrow(/strictly inside/) // outside
   })
 
-  test('removePoint deletes a vertex; keeps >= 2 points', () => {
+  test('removePoint deletes a vertex; GT10.33 allows emptying the voice entirely', () => {
     const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)])) // 3 points
     model.edit(() => model.removePoint(7, 1))
     expect(model.schedule.voices[0]!.points.map((p) => p.timeSec)).toEqual([0, 20])
-    // now only 2 points -> cannot remove further
-    expect(() => model.edit(() => model.removePoint(7, 0))).toThrow(/at least 2 points/)
+    // GT10.33 (owner 2026-07-12): no min-2 floor — a voice may be emptied (Undo is the safety net).
+    model.edit(() => model.removePoint(7, 0))
+    model.edit(() => model.removePoint(7, 0))
+    expect(model.schedule.voices[0]!.points).toEqual([])
+    // out-of-range still throws
+    expect(() => model.edit(() => model.removePoint(7, 0))).toThrow(/out of range/)
   })
 
   test('insert then remove round-trips via undo', () => {
