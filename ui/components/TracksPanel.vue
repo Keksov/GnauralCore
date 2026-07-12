@@ -823,7 +823,9 @@
         <!-- Table mode (owner req. 30): view + edit VALUE fields (not time — see GT-D16 note in
              the composable) across every multi-selected vertex, plus a bulk-delete action. -->
         <template v-if="inspectorMode === 'table'">
-          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap">
+          <!-- GT10.22 (owner req. 71): Ctrl+Arrow big-step via a native capture-phase listener (see
+               onTableStepKey); data-step-field + data-step-row identify the cell to step. -->
+          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap" @keydown.capture="onTableStepKey">
             <q-markup-table dense flat dark class="tracks-panel__multi-table">
               <thead>
                 <tr>
@@ -841,25 +843,25 @@
                   <td>{{ multiRowVoiceName(row.voiceId) }}</td>
                   <td>
                     <q-input
-                      v-model.number="row.baseFreq" dense borderless type="number" @keydown="ctrlStep($event, row, 'baseFreq')" step="0.1" min="0"
+                      v-model.number="row.baseFreq" dense borderless type="number" data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.beatFreq" dense borderless type="number" @keydown="ctrlStep($event, row, 'beatFreq')" step="0.1" min="0"
+                      v-model.number="row.beatFreq" dense borderless type="number" data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.1" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.volL" dense borderless type="number" @keydown="ctrlStep($event, row, 'volL')" step="0.01" min="0" max="1"
+                      v-model.number="row.volL" dense borderless type="number" data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td>
                     <q-input
-                      v-model.number="row.volR" dense borderless type="number" @keydown="ctrlStep($event, row, 'volR')" step="0.01" min="0" max="1"
+                      v-model.number="row.volR" dense borderless type="number" data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`" step="0.01" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
@@ -887,28 +889,31 @@
 
         <!-- Single-point mode (GT3.3/GT3.12): unchanged. -->
         <template v-else>
-          <div class="audio-page__spectrogram-settings-body q-gutter-sm">
+          <!-- GT10.22 (owner req. 71): Ctrl+Arrow big-step is handled by a NATIVE capture-phase
+               listener on this wrapper (the QInput @keydown didn't reliably see Ctrl / ran after the
+               native step). Each field is tagged data-step-field so the handler knows which to step. -->
+          <div class="audio-page__spectrogram-settings-body q-gutter-sm" @keydown.capture="onFormStepKey">
             <q-input
-              v-model.number="pointForm.timeSec" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'timeSec')" step="0.01" min="0"
+              v-model.number="pointForm.timeSec" dense outlined type="number" data-step-field="timeSec" step="0.01" min="0"
               :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <q-input
-              v-model.number="pointForm.baseFreq" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'baseFreq')" step="0.1" min="0"
+              v-model.number="pointForm.baseFreq" dense outlined type="number" data-step-field="baseFreq" step="0.1" min="0"
               :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <q-input
-              v-model.number="pointForm.beatFreq" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'beatFreq')" step="0.1" min="0"
+              v-model.number="pointForm.beatFreq" dense outlined type="number" data-step-field="beatFreq" step="0.1" min="0"
               :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
             />
             <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
                  these overlap the beat-frequency field inside a q-gutter parent. -->
             <div class="tracks-panel__vol-row">
               <q-input
-                v-model.number="pointForm.volL" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'volL')" step="0.01" min="0" max="1"
+                v-model.number="pointForm.volL" dense outlined type="number" data-step-field="volL" step="0.01" min="0" max="1"
                 :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
               <q-input
-                v-model.number="pointForm.volR" dense outlined type="number" @keydown="ctrlStep($event, pointForm, 'volR')" step="0.01" min="0" max="1"
+                v-model.number="pointForm.volR" dense outlined type="number" data-step-field="volR" step="0.01" min="0" max="1"
                 :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
             </div>
@@ -1495,13 +1500,38 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
   }
 }
 // GT10.6/GT10.22 (owner req. 50/71): Ctrl+Arrow steps a numeric field by 1.0 (plain arrows keep the
-// input's own fine step). stopPropagation + preventDefault so the native number-input doesn't ALSO
-// step by its own `step` and the value lands exactly on ±1 (clamped to the field range).
-function ctrlStep(e: KeyboardEvent, obj: Record<string, unknown>, key: string): void {
-  if (!e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+// input's own fine step). Handled by a NATIVE capture-phase listener on the form/table wrapper — the
+// QInput's own @keydown didn't reliably carry Ctrl / ran after the native step, so the big step was
+// lost. The wrapper sees the native event (ctrlKey intact) and preventDefaults BEFORE the native
+// number-input applies its own `step`. data-step-field (and data-step-row for the table) identify
+// the target field; the value is clamped per field via ctrlStepValue.
+function stepFromEvent(e: KeyboardEvent): { field: string; dir: 1 | -1; el: HTMLElement } | null {
+  if (!e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return null
+  const el = (e.target as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
+  const field = el?.getAttribute('data-step-field') ?? null
+  if (el === null || field === null) return null
+  return { field, dir: e.key === 'ArrowUp' ? 1 : -1, el }
+}
+function onFormStepKey(e: KeyboardEvent): void {
+  const s = stepFromEvent(e)
+  if (s === null) return
   e.preventDefault()
   e.stopPropagation()
-  obj[key] = ctrlStepValue(Number(obj[key]), key, e.key === 'ArrowUp' ? 1 : -1)
+  const form = pointForm as unknown as Record<string, number>
+  form[s.field] = ctrlStepValue(Number(form[s.field]), s.field, s.dir)
+  maybeAutosave()
+}
+function onTableStepKey(e: KeyboardEvent): void {
+  const s = stepFromEvent(e)
+  if (s === null) return
+  const rowKey = s.el.getAttribute('data-step-row')
+  const row = multiForm.value.find((r) => `${r.voiceId}:${r.pointIndex}` === rowKey)
+  if (row === undefined) return
+  e.preventDefault()
+  e.stopPropagation()
+  const r = row as unknown as Record<string, number>
+  r[s.field] = ctrlStepValue(Number(r[s.field]), s.field, s.dir)
+  maybeAutosaveMultiRow(row)
 }
 
 // GT10.9 (owner req. 54): delete only the CHECKED table rows (one undo unit).
