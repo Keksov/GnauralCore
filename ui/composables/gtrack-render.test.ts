@@ -59,6 +59,21 @@ describe('gtrackAxis (GT2.1)', () => {
     expect(a.max).toBeCloseTo(180, 6)
   })
 
+  test('editable base adds headroom so a flat curve can be dragged past its range (GT10.34-followup)', () => {
+    // wakeup.gnaural shape: every point at the same frequency.
+    const flat = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 100 })])], 'base', true)
+    expect(flat.min).toBeLessThan(100) // room below
+    expect(flat.max).toBeGreaterThan(100) // room above -> draggable in both directions
+    // A normal range also gains headroom on both sides.
+    const ranged = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base', true)
+    expect(ranged.min).toBeLessThan(100)
+    expect(ranged.max).toBeGreaterThan(200)
+    // View mode (no flag) is unchanged — data fits the axis.
+    const view = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base')
+    expect(view.min).toBe(100)
+    expect(view.max).toBe(200)
+  })
+
   test('beat stays linear-auto with padding', () => {
     const a = gtrackAxis([voice([pt({ beatFreqHalf: 2 }), pt({ beatFreqHalf: 5 })])], 'beat')
     expect(a.scale).toBe('linear')

@@ -262,7 +262,9 @@ function colorForVoice(voice: GTrackVoice, index: number): string {
 const hasData = computed(() => props.durationSec > 0 && props.voices.length > 0)
 // GT3.7: true when any voice in this lane is a locked generator (preparse) voice.
 const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
-const axis = computed(() => gtrackAxis(props.voices, props.mode))
+// GT10.34-followup: in point-edit mode the freq axes gain headroom so a vertex can be dragged past
+// the current data range (otherwise the max/min point sits on the edge and clamps to itself).
+const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode))
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const view = computed<TimeWindow>({

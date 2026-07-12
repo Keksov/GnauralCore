@@ -110,8 +110,14 @@ export function unitToValue(unit: number, axis: GTrackAxis): number {
  * Base freq is LOGARITHMIC, matching the classic schedule editor (GnauralScheduleView): range from
  * the data, min clamped to >= 1, a flat range padded to min*1.25. Beat freq stays linear-auto
  * (small 0..N Hz values).
+ *
+ * GT10.34-followup (owner 2026-07-12): with `editable` (point-edit mode) the auto-ranged freq axes
+ * (base/beat) get EXTRA headroom above and below the data so a vertex can be dragged BEYOND the
+ * current range — the axis re-fits on the next frame, so you can drag freely instead of being stuck
+ * inside the data's own corridor. A (near-)flat curve gets a wider span so it's editable at all
+ * (e.g. wakeup.gnaural, whose voice is 36 points all at 100 Hz). View mode is unchanged (data-fit).
  */
-export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode): GTrackAxis {
+export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false): GTrackAxis {
   if (mode === 'volume') {
     return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
   }
@@ -137,6 +143,12 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode): GT
     let min = Math.max(lo, 1)
     let max = Math.max(hi, min)
     if (max <= min) max = min * 1.25
+    if (editable) {
+      // Multiplicative headroom (log axis). A (near-)flat curve gets a wider span.
+      const factor = max <= min * 1.05 ? 1.5 : 1.15
+      min = Math.max(1, min / factor)
+      max = max * factor
+    }
     const mid = Math.pow(10, (Math.log10(min) + Math.log10(max)) / 2) // geometric midpoint
     return {
       min,
@@ -156,6 +168,12 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode): GT
     const pad = (hi - lo) * 0.08
     lo = Math.max(0, lo - pad)
     hi += pad
+  }
+  if (editable) {
+    // Extra headroom above/below so a vertex can be dragged past the current range.
+    const extra = Math.max(1, (hi - lo) * 0.25)
+    lo = Math.max(0, lo - extra)
+    hi += extra
   }
   const mid = (lo + hi) / 2
   return {
