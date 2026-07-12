@@ -224,7 +224,7 @@
                 @drag-end="gtracks.endPointDrag()"
                 @drag-cancel="gtracks.cancelPointDrag()"
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
-                @add-point="(e: GTrackAddPoint) => gtracks.insertPointAt(lane.id, e.voiceId, e.timeSec)"
+                @add-point="(e: GTrackAddPoint) => onAddPoint(lane.id, e)"
                 @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
                 @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
               />
@@ -1231,20 +1231,24 @@ let inspectorDrag: { px: number; py: number; left: number; top: number } | null 
 function onInspectorDragStart(event: PointerEvent): void {
   const el = inspectorEl.value
   if (event.button !== 0 || el === null) return
-  inspectorDrag = { px: event.clientX, py: event.clientY, left: el.offsetLeft, top: el.offsetTop }
+  // GT10.30: the inspector is position:fixed now, so drag in viewport coordinates (getBoundingClientRect).
+  const r = el.getBoundingClientRect()
+  inspectorDrag = { px: event.clientX, py: event.clientY, left: r.left, top: r.top }
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   event.preventDefault()
 }
 function onInspectorDragMove(event: PointerEvent): void {
   if (inspectorDrag === null) return
   const el = inspectorEl.value
-  const parent = el?.offsetParent as HTMLElement | null
-  if (el === null || parent === null) return
+  const root = rootEl.value
+  if (el === null || root === null) return
+  // GT10.30: clamp to the editor's on-screen frame (viewport rect), matching the fixed pinning.
+  const frame = root.getBoundingClientRect()
   const left = inspectorDrag.left + (event.clientX - inspectorDrag.px)
   const top = inspectorDrag.top + (event.clientY - inspectorDrag.py)
   inspectorPos.value = {
-    left: Math.max(0, Math.min(left, parent.clientWidth - el.offsetWidth)),
-    top: Math.max(0, Math.min(top, parent.clientHeight - el.offsetHeight)),
+    left: Math.max(frame.left, Math.min(left, frame.right - el.offsetWidth)),
+    top: Math.max(frame.top, Math.min(top, frame.bottom - el.offsetHeight)),
   }
 }
 function onInspectorDragEnd(event: PointerEvent): void {
@@ -1319,12 +1323,36 @@ function applyPointDialog(): void {
 function maybeAutosave(): void {
   if (gtracks.pointAutosave.value) applyPointDialog()
 }
-// GT3.12 (owner req. 31): delete the inspected point (mirrors the Delete-key path).
+// GT10.31 (owner req. 80): adding a point (Ctrl-click on a curve) opens its dialog immediately.
+// insertPointAt selects the new point on success, so the dialog targets it from the selection.
+function onAddPoint(laneId: number, e: GTrackAddPoint): void {
+  if (!gtracks.insertPointAt(laneId, e.voiceId, e.timeSec)) return
+  const sel = gtracks.selection.value
+  if (sel !== null) openPointDialog(laneId, { voiceId: sel.voiceId, pointIndex: sel.pointIndex })
+}
+// GT3.12 (owner req. 31) / GT10.33 (owner req. 82): delete the inspected point and MOVE FOCUS —
+// to the right neighbour (same index after the shift), else the previous point, else close the
+// dialog. Blocked deletions (a voice must keep >= 2 points) leave the dialog and notify.
 function deleteCurrentPointFromDialog(): void {
   const tgt = pointDialogTarget.value
   if (tgt === null) return
-  gtracks.selectPoint(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex })
-  gtracks.removeSelectedPoint()
+  const voice = gtracks.getVoice(tgt.voiceId)
+  if (voice === undefined) return
+  const countBefore = voice.points.length
+  const idx = tgt.pointIndex
+  if (!gtracks.deletePointAt(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: idx })) {
+    $q.notify({ type: 'warning', message: t('audio.gtrackDeleteBlocked') })
+    return
+  }
+  const remaining = countBefore - 1
+  if (remaining <= 0) { closePointDialog(); return }
+  // Right neighbour has shifted into `idx`; if we deleted the last point, fall back to the previous.
+  const nextIndex = Math.min(idx, remaining - 1)
+  const laneId = tgt.laneId
+  const voiceId = tgt.voiceId
+  pointDialogTarget.value = { laneId, voiceId, pointIndex: nextIndex }
+  gtracks.selectPoint(laneId, { voiceId, pointIndex: nextIndex })
+  syncPointFormFromModel()
 }
 // GT3.12 (owner req. 32): insert an interpolated point to the right, at the midpoint of the
 // segment leading to the next point (disabled when this is the voice's last point).
@@ -2356,7 +2384,8 @@ watch(() => audio.displayFilePath, (path) => { void openMetaAnalysis(path) })
 // vars inherit down the DOM, so the fixed panels track the visible editor regardless of scroll.
 const rootEl = ref<HTMLElement | null>(null)
 const overlayFrame = ref<Record<string, string>>({})
-const anyOverlayOpen = computed(() => voicesPanelOpen.value || diagnosticsOpen.value || spectrogramSettingsOpen.value)
+// GT10.30 (owner req. 79): the point inspector is pinned to the same frame, so measure while it is open too.
+const anyOverlayOpen = computed(() => voicesPanelOpen.value || diagnosticsOpen.value || spectrogramSettingsOpen.value || inspectorMode.value !== 'none')
 function measureOverlayFrame(): void {
   const el = rootEl.value
   if (el === null) return
@@ -2728,13 +2757,16 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
   display: flex;
   flex-direction: column;
-  max-height: calc(100% - 24px);
   overflow: auto;
-  position: absolute;
-  right: 12px;
-  top: 12px;
+  /* GT10.30 (owner req. 79): pinned to the editor's on-screen frame (see GT10.27's --tp-* vars) so
+     the dialog is not covered by the sticky header/toolbar and does not scroll away. Dragging sets
+     inline left/top (viewport coords) which override the default corner. */
+  position: fixed;
+  top: calc(var(--tp-top, 0px) + 12px);
+  right: calc(var(--tp-right, 0px) + 12px);
+  max-height: calc(100vh - var(--tp-top, 0px) - var(--tp-bottom, 0px) - 24px);
   width: 300px;
-  z-index: 30;
+  z-index: 45;
 }
 
 .gtrack-point-inspector-enter-active,

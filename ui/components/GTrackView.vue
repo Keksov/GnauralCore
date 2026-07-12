@@ -685,17 +685,11 @@ function onClick(aEvent: MouseEvent): void {
   // GT10.10: Ctrl-clicks are edit gestures (drag vertex / add node), never a seek.
   if (aEvent.ctrlKey || aEvent.metaKey) return
   if (!hasData.value) return
-  // GT10.25 (owner req. 74): in NORMAL mode a single click on a vertex opens its dialog; a click on
-  // empty space seeks (double-click is gone entirely — see the removed onDblClick).
+  // GT10.25 (owner req. 74): in NORMAL mode a single click on a vertex opens its dialog.
+  // GT10.32 (owner req. 81): a click on EMPTY space does NOT seek the player (owner treats
+  // "click doesn't move the playhead" as intended). Keyboard arrows still seek (seekBy).
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-  if (hit !== null) {
-    emit('edit-point', hit)
-    return
-  }
-  if (props.seekable !== true) return
-  const f = xFraction(aEvent)
-  if (f === null) return
-  emit('seek', Math.max(0, Math.min(props.durationSec, fractionToTime(f, view.value))))
+  if (hit !== null) emit('edit-point', hit)
 }
 
 // GT3.6: the voice whose curve is nearest to a canvas pixel (linear interpolation of the mode

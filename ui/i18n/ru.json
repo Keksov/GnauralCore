@@ -56,6 +56,7 @@
     "gtrackPointVolR": "Громкость R",
     "gtrackAutosave": "Автосохранение",
     "gtrackDeletePoint": "Удалить узел",
+    "gtrackDeleteBlocked": "Нельзя удалить: у голоса должно остаться минимум 2 узла.",
     "gtrackMultiSelected": "Выбрано узлов: {count}",
     "gtrackDeleteSelected": "Удалить выбранные",
     "gtrackAddPointRight": "Добавить узел →",
