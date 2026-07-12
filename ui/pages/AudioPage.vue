@@ -15,13 +15,19 @@
       </q-btn-dropdown>
     </div>
 
-    <FileOpenDialog
-      v-model="fileOpenDialogOpen"
-      :initial-path="fileDialogInitialPath"
-      @open="handleExternalFileOpen"
-    />
+    <!-- FB4.3 (FB-D13): docked panel + editor reflow. Floating -> teleported to <body> (fixed
+         overlay, no ancestor clipping); docked -> a flex sibling of the inner form. -->
+    <div class="audio-page__dock-wrap" :class="dockWrapClass">
+      <Teleport to="body" :disabled="!fsFloating">
+        <FileOpenDialog
+          v-if="fileOpenDialogOpen"
+          v-model="fileOpenDialogOpen"
+          :initial-path="fileDialogInitialPath"
+          @open="handleExternalFileOpen"
+        />
+      </Teleport>
 
-    <div class="audio-page__inner">
+      <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
           <q-card-section class="audio-page__sidebar-header">
@@ -649,6 +655,7 @@
           </q-tab-panels>
         </q-card>
       </div>
+      </div>
     </div>
 
     <!-- SF7.1: small non-blocking load-progress dialog over the tracks screen. -->
@@ -687,6 +694,7 @@ import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { useAudioStore } from '../stores/audio'
+import { useFsBrowserStore } from '../stores/fs-browser'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -852,6 +860,16 @@ const fileDialogInitialPath = computed<string | undefined>(() => {
   const root = audio.settings.presetsRoot
   return root !== '' ? root : undefined
 })
+
+// FB4.3 (FB-D13): the open dialog is a dockable panel. When floating it teleports to <body>; when
+// docked it is a flex sibling of the page inner, and the form reflows around it.
+const fsBrowser = useFsBrowserStore()
+const fsFloating = computed<boolean>(() => fsBrowser.windowMode === 'floating')
+const dockWrapClass = computed<string>(() =>
+  fsBrowser.windowMode === 'top' || fsBrowser.windowMode === 'bottom'
+    ? 'audio-page__dock-wrap--col'
+    : 'audio-page__dock-wrap--row',
+)
 
 function openFileDialog(): void {
   fileOpenDialogOpen.value = true
@@ -2036,10 +2054,22 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   border-bottom: 1px solid rgba(128, 128, 128, 0.25);
 }
 
+/* FB4.3 (FB-D13): wraps the docked file panel + the form inner; reflows around the dock side. */
+.audio-page__dock-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.audio-page__dock-wrap--row { flex-direction: row; }
+.audio-page__dock-wrap--col { flex-direction: column; }
+
 .audio-page__inner {
   box-sizing: border-box;
   display: flex;
   flex: 1 1 auto;
+  order: 1;
   gap: 5px;
   min-height: 0;
   overflow: hidden;

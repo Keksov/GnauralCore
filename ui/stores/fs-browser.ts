@@ -12,6 +12,15 @@ export type FsIconSize = 'sm' | 'md' | 'lg'
 export type FsSortKey = 'name' | 'ext' | 'size' | 'mtime'
 export type FsSortDir = 'asc' | 'desc'
 export type FsTypeFilter = 'supported' | 'all'
+// FB4.2/FB4.3 (FB-D13): floating (draggable) vs docked to an edge of the editor form.
+export type FsWindowMode = 'floating' | 'left' | 'right' | 'top' | 'bottom'
+
+export interface FsFloatRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 export interface FsFavorite {
   readonly providerId: string
@@ -41,6 +50,12 @@ const KEY_SORT_DIR = `${STORAGE_PREFIX}sort-dir`
 const KEY_HIDDEN = `${STORAGE_PREFIX}show-hidden`
 const KEY_TYPE = `${STORAGE_PREFIX}type-filter`
 const KEY_FAVORITES = `${STORAGE_PREFIX}favorites`
+const KEY_WIN_MODE = `${STORAGE_PREFIX}win-mode`
+const KEY_DOCK_SIZE = `${STORAGE_PREFIX}dock-size`
+const KEY_FLOAT = `${STORAGE_PREFIX}float`
+
+const DEFAULT_FLOAT: FsFloatRect = { x: 140, y: 90, w: 900, h: 600 }
+const DEFAULT_DOCK_SIZE = 380
 
 const readString = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
   try {
@@ -57,6 +72,34 @@ const readBool = (key: string, fallback: boolean): boolean => {
     return raw === null ? fallback : raw === '1' || raw === 'true'
   } catch {
     return fallback
+  }
+}
+
+const readNumber = (key: string, fallback: number): number => {
+  try {
+    const raw = localStorage.getItem(key)
+    const parsed = raw === null ? Number.NaN : Number(raw)
+    return Number.isFinite(parsed) ? parsed : fallback
+  } catch {
+    return fallback
+  }
+}
+
+const readFloatRect = (): FsFloatRect => {
+  try {
+    const raw = localStorage.getItem(KEY_FLOAT)
+    if (raw === null) {
+      return { ...DEFAULT_FLOAT }
+    }
+    const parsed = JSON.parse(raw) as Partial<FsFloatRect>
+    return {
+      x: typeof parsed.x === 'number' ? parsed.x : DEFAULT_FLOAT.x,
+      y: typeof parsed.y === 'number' ? parsed.y : DEFAULT_FLOAT.y,
+      w: typeof parsed.w === 'number' ? parsed.w : DEFAULT_FLOAT.w,
+      h: typeof parsed.h === 'number' ? parsed.h : DEFAULT_FLOAT.h,
+    }
+  } catch {
+    return { ...DEFAULT_FLOAT }
   }
 }
 
@@ -136,6 +179,11 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const typeFilter = ref<FsTypeFilter>(readString(KEY_TYPE, ['supported', 'all'], 'supported'))
   const favorites = ref<FsFavorite[]>(readFavorites())
 
+  // Window model (FB4.2/FB4.3): floating vs docked to a form edge, with persisted geometry.
+  const windowMode = ref<FsWindowMode>(readString(KEY_WIN_MODE, ['floating', 'left', 'right', 'top', 'bottom'], 'floating'))
+  const dockSize = ref<number>(readNumber(KEY_DOCK_SIZE, DEFAULT_DOCK_SIZE))
+  const floatRect = ref<FsFloatRect>(readFloatRect())
+
   watch(viewMode, (v) => persist(KEY_VIEW, v))
   watch(iconSize, (v) => persist(KEY_ICON, v))
   watch(sortKey, (v) => persist(KEY_SORT_KEY, v))
@@ -143,6 +191,9 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   watch(showHidden, (v) => persist(KEY_HIDDEN, v ? '1' : '0'))
   watch(typeFilter, (v) => persist(KEY_TYPE, v))
   watch(favorites, (v) => persist(KEY_FAVORITES, JSON.stringify(v)), { deep: true })
+  watch(windowMode, (v) => persist(KEY_WIN_MODE, v))
+  watch(dockSize, (v) => persist(KEY_DOCK_SIZE, String(Math.round(v))))
+  watch(floatRect, (v) => persist(KEY_FLOAT, JSON.stringify(v)), { deep: true })
   // Re-list when hidden-file visibility flips (server-side filter).
   watch(showHidden, () => {
     if (currentPath.value !== null) {
@@ -348,6 +399,19 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     favorites.value = favorites.value.filter((f) => !(f.providerId === providerKey && f.path === path))
   }
 
+  const setWindowMode = (mode: FsWindowMode): void => {
+    windowMode.value = mode
+  }
+
+  const setDockSize = (px: number): void => {
+    // Clamp so the docked panel never eats the whole form or collapses.
+    dockSize.value = Math.max(240, Math.min(px, 900))
+  }
+
+  const setFloatRect = (rect: Partial<FsFloatRect>): void => {
+    floatRect.value = { ...floatRect.value, ...rect }
+  }
+
   return {
     // state
     info,
@@ -366,6 +430,9 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     showHidden,
     typeFilter,
     favorites,
+    windowMode,
+    dockSize,
+    floatRect,
     // getters
     available,
     baseUrl,
@@ -382,5 +449,8 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     isFavorite,
     addFavorite,
     removeFavorite,
+    setWindowMode,
+    setDockSize,
+    setFloatRect,
   }
 })
