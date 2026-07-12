@@ -843,25 +843,25 @@
                   <td>{{ multiRowVoiceName(row.voiceId) }}</td>
                   <td data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.baseFreq" dense borderless type="number" step="0.1" min="0"
+                      v-model.number="row.baseFreq" dense borderless type="number" :step="fieldStep('0.1')" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.beatFreq" dense borderless type="number" step="0.1" min="0"
+                      v-model.number="row.beatFreq" dense borderless type="number" :step="fieldStep('0.1')" min="0"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.volL" dense borderless type="number" step="0.01" min="0" max="1"
+                      v-model.number="row.volL" dense borderless type="number" :step="fieldStep('0.01')" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
                   <td data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
                     <q-input
-                      v-model.number="row.volR" dense borderless type="number" step="0.01" min="0" max="1"
+                      v-model.number="row.volR" dense borderless type="number" :step="fieldStep('0.01')" min="0" max="1"
                       @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
                     />
                   </td>
@@ -897,19 +897,19 @@
                  closest() reliably finds it from the input regardless of QInput attr handling. -->
             <span data-step-field="timeSec" style="display: contents">
               <q-input
-                v-model.number="pointForm.timeSec" dense outlined type="number" step="0.01" min="0"
+                v-model.number="pointForm.timeSec" dense outlined type="number" :step="fieldStep('0.01')" min="0"
                 :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
             </span>
             <span data-step-field="baseFreq" style="display: contents">
               <q-input
-                v-model.number="pointForm.baseFreq" dense outlined type="number" step="0.1" min="0"
+                v-model.number="pointForm.baseFreq" dense outlined type="number" :step="fieldStep('0.1')" min="0"
                 :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
             </span>
             <span data-step-field="beatFreq" style="display: contents">
               <q-input
-                v-model.number="pointForm.beatFreq" dense outlined type="number" step="0.1" min="0"
+                v-model.number="pointForm.beatFreq" dense outlined type="number" :step="fieldStep('0.1')" min="0"
                 :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
               />
             </span>
@@ -918,13 +918,13 @@
             <div class="tracks-panel__vol-row">
               <span data-step-field="volL" style="display: contents">
                 <q-input
-                  v-model.number="pointForm.volL" dense outlined type="number" step="0.01" min="0" max="1"
+                  v-model.number="pointForm.volL" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
                   :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
                 />
               </span>
               <span data-step-field="volR" style="display: contents">
                 <q-input
-                  v-model.number="pointForm.volR" dense outlined type="number" step="0.01" min="0" max="1"
+                  v-model.number="pointForm.volR" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
                   :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
                 />
               </span>
@@ -932,7 +932,7 @@
             <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
             <!-- GT10.37 (owner 2026-07-12): Volume is a numeric field with steppers (was a slider). -->
             <q-input
-              :model-value="Number(pointFormVolume.toFixed(3))" dense outlined type="number" step="0.01" min="0" max="1"
+              :model-value="Number(pointFormVolume.toFixed(3))" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
               :label="t('audio.gtrackMode_volume')"
               @update:model-value="(v) => setPointFormVolume(Number(v) || 0)"
               @blur="maybeAutosave" @keyup.enter="maybeAutosave"
@@ -1516,6 +1516,13 @@ function maybeAutosaveMultiRow(row: MultiFormRow): void {
 // only listener proven to reliably carry the modifier while an inspector field is focused (same path
 // as Ctrl+S / Ctrl+Z). The field is located from the focused element's data-step-field ancestor
 // (data-step-row for the table row); the value is clamped per field via ctrlStepValue.
+// GT10.22 (owner 2026-07-12): while Alt is held, a numeric field's native `step` becomes 1, so an
+// Alt+click on the browser spinner arrows (and Alt+ArrowKey) steps by ±1 instead of the fine step.
+// Kept in sync from the window key handlers + a blur reset (so a missed keyup can't strand it).
+const altBigStep = ref(false)
+function fieldStep(fine: string): string {
+  return altBigStep.value ? '1' : fine
+}
 function applyFieldBigStep(el: HTMLElement, dir: 1 | -1): void {
   const field = el.getAttribute('data-step-field')
   if (field === null) return
@@ -2385,6 +2392,7 @@ async function saveGtrackEdits(): Promise<void> {
 }
 
 function handleTracksKeyDown(event: KeyboardEvent): void {
+  altBigStep.value = event.altKey // GT10.22: keep the spinner big-step in sync with the Alt key
   // GT3.9: Escape closes the voice panel first, then the settings overlay.
   if (event.key === 'Escape' && voicesPanelOpen.value) {
     event.preventDefault()
@@ -2432,10 +2440,11 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     redoWithFocus()
     return
   }
-  // GT10.22 (owner req. 71): Ctrl/Alt+Arrow = big step (±1) on a focused numeric field. BEFORE the
-  // typing guard (focus is inside the input) — the window keydown reliably carries the modifier,
-  // unlike the QInput @keydown / a wrapper capture listener, which didn't fire the step.
-  if ((event.ctrlKey || event.altKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+  // GT10.22 (owner req. 71, owner 2026-07-12): Alt+Arrow = big step (±1) on a focused numeric field.
+  // BEFORE the typing guard (focus is inside the input) — the window keydown reliably carries the
+  // modifier, unlike the QInput @keydown / a wrapper capture listener, which didn't fire the step.
+  // (Alt+click on the native spinner is handled separately via the altBigStep `step` toggle.)
+  if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
     const fieldEl = (document.activeElement as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
     if (fieldEl !== null) {
       event.preventDefault()
@@ -2513,13 +2522,22 @@ watch(anyOverlayOpen, (open) => {
   }
 })
 
+// GT10.22: track the Alt key so the spinner big-step (`fieldStep`) follows it; reset on blur so a
+// missed keyup (e.g. Alt+Tab away) can't leave the fields stuck on step 1.
+function syncAltBigStep(event: KeyboardEvent): void { altBigStep.value = event.altKey }
+function clearAltBigStep(): void { altBigStep.value = false }
+
 onMounted(() => {
   window.addEventListener('keydown', handleTracksKeyDown)
+  window.addEventListener('keyup', syncAltBigStep)
+  window.addEventListener('blur', clearAltBigStep)
   void openMetaAnalysis(audio.displayFilePath)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleTracksKeyDown)
+  window.removeEventListener('keyup', syncAltBigStep)
+  window.removeEventListener('blur', clearAltBigStep)
   window.removeEventListener('resize', measureOverlayFrame)
   window.removeEventListener('scroll', measureOverlayFrame, true)
   metaSpec.dispose()
