@@ -364,13 +364,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   )
 
   // --- operations ---
-  function addLane(): void {
+  function addLane(): number {
     // GT10.14 (owner req. 63): "+ lane" adds an EMPTY lane; voices are added via its gear.
+    // GT10.28 (owner req. 77): return the new id so the caller can scroll to + highlight it.
+    const id = nextLaneId++
     lanes.value = [
       ...lanes.value,
-      { id: nextLaneId++, voiceIds: [], mode: defaultLaneConfig().mode, hidden: false },
+      { id, voiceIds: [], mode: defaultLaneConfig().mode, hidden: false },
     ]
     persist()
+    return id
   }
   function removeLane(id: number): void {
     lanes.value = lanes.value.filter((l) => l.id !== id)

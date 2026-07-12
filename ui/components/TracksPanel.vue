@@ -101,7 +101,7 @@
             icon="add"
             :label="t('audio.gtrackAddLane')"
             :aria-label="t('audio.gtrackAddLane')"
-            @click="gtracks.addLane()"
+            @click="onAddLane"
           >
             <q-tooltip>{{ t('audio.gtrackAddLane') }}</q-tooltip>
           </q-btn>
@@ -167,7 +167,12 @@
         <div v-if="showGtracks" class="audio-page__gtrack-stack">
           <template v-for="(lane, gIndex) in gtracks.visibleLanes.value" :key="lane.id">
             <!-- GT4.2 (GT-D17): a curve lane sits over an optional inline solo-audio underlay -->
-            <div class="tracks-panel__gtrack-inline" :style="{ height: `${gtracks.laneHeight.value}px` }">
+            <div
+              class="tracks-panel__gtrack-inline"
+              :class="{ 'tracks-panel__gtrack-inline--new': lane.id === newLaneId }"
+              :data-gtrack-lane-wrap="lane.id"
+              :style="{ height: `${gtracks.laneHeight.value}px` }"
+            >
               <waveform-view
                 v-if="laneInlineKind(lane) === 'wave'"
                 class="tracks-panel__gtrack-underlay"
@@ -1039,7 +1044,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, defineAsyncComponent, defineComponent, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import { QSpinnerHourglass, useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -1088,6 +1093,19 @@ const canSeek = computed(() => props.canSeek)
 // the shared optimistic seek reverts to 0 once the transport is idle, which made the cursor snap
 // back to 0. (gtrackPlayheadSec + the reactivity live after the audio store is created below.)
 const localPlayheadSec = ref<number | null>(null)
+// GT10.28 (owner req. 77): after "+ lane" adds an (empty) lane, scroll the editor to it and flash a
+// highlight so the user sees where the new lane landed.
+const newLaneId = ref<number | null>(null)
+let newLaneTimer: ReturnType<typeof setTimeout> | null = null
+function onAddLane(): void {
+  const id = gtracks.addLane()
+  newLaneId.value = id
+  if (newLaneTimer !== null) clearTimeout(newLaneTimer)
+  newLaneTimer = setTimeout(() => { newLaneId.value = null; newLaneTimer = null }, 1800)
+  void nextTick(() => {
+    document.querySelector(`[data-gtrack-lane-wrap="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
 function handleSeek(aSec: number): void {
   localPlayheadSec.value = aSec // persistent local cursor (survives an idle transport)
   // GT10.32 (owner 2026-07-12): only issue the REAL transport seek when a session is actually
@@ -2593,6 +2611,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', clearAltBigStep)
   window.removeEventListener('resize', measureOverlayFrame)
   window.removeEventListener('scroll', measureOverlayFrame, true)
+  if (newLaneTimer !== null) clearTimeout(newLaneTimer)
   metaSpec.dispose()
 })
 </script>
@@ -2698,6 +2717,17 @@ onBeforeUnmount(() => {
 .tracks-panel__gtrack-inline {
   position: relative;
   width: 100%;
+}
+/* GT10.28 (owner req. 77): flash a highlight on a freshly added lane. */
+.tracks-panel__gtrack-inline--new {
+  animation: tracks-panel-new-lane 1.8s ease-out;
+  outline: 2px solid rgba(103, 232, 249, 0.9);
+  outline-offset: -2px;
+  z-index: 2;
+}
+@keyframes tracks-panel-new-lane {
+  0% { outline-color: rgba(103, 232, 249, 0.95); box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.35); }
+  100% { outline-color: rgba(103, 232, 249, 0); box-shadow: 0 0 0 3px rgba(103, 232, 249, 0); }
 }
 
 .tracks-panel__gtrack-underlay {
