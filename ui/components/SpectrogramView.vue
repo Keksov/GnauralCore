@@ -142,8 +142,7 @@ import { useI18n } from 'vue-i18n'
 import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
-import { useAudioModel } from '../composables/use-audio-model'
-import { amplitudeToDb } from '../composables/audio-model'
+import { amplitudeToDb, type AudioPeak } from '../composables/audio-model'
 import { peaksToColumns, type WaveformScale } from '../composables/waveform-render'
 import { tileToImage, type SpectrogramRenderOptions } from '../composables/spectrogram-render'
 import {
@@ -251,10 +250,43 @@ const canvasEl = ref<HTMLCanvasElement | null>(null)
 // fallback keeps the plot responsive meanwhile.
 const spec = useSpectrogram({ refetchDebounceMs: 200 })
 
-// SF22.3: optional waveform overlay (audio model + memoized peak columns for the visible view).
-const wfModel = useAudioModel(computed(() => props.waveformBuffer ?? null))
+// GT7.3 (owner 2026-07-13): the optional waveform overlay comes from the BACKEND worker peaks
+// (spec.getPeaks — the same source WaveformView uses), NOT a client-decoded AudioBuffer. The channel
+// is baked into this track's analysis, so getPeaks already returns the right channel. Fetched async
+// + cached; drawWaveformOverlay just renders the cached columns.
 let wfCacheSig = ''
 let wfCacheColumns = peaksToColumns([], 'linear')
+let wfCacheRaw: AudioPeak[] = []
+let wfFetchTimer: ReturnType<typeof setTimeout> | null = null
+function overlayPlotWidthNow(): number {
+  const canvas = canvasEl.value
+  if (canvas === null) return 1
+  return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
+}
+async function fetchWaveformOverlay(): Promise<void> {
+  if (props.waveformOverlay !== true || spec.analysis.value === null) {
+    wfCacheRaw = []
+    wfCacheColumns = peaksToColumns([], 'linear')
+    return
+  }
+  const win = view.value
+  const plotW = overlayPlotWidthNow()
+  const scale: WaveformScale = props.waveformScale ?? 'linear'
+  const sig = `${win.startSec}|${win.endSec}|${plotW}`
+  if (sig !== wfCacheSig || wfCacheRaw.length === 0) {
+    const peaks = await spec.getPeaks(win.startSec, win.endSec, plotW)
+    // Drop a stale response (the view moved / resized while awaiting).
+    if (`${view.value.startSec}|${view.value.endSec}|${overlayPlotWidthNow()}` !== sig) return
+    wfCacheRaw = peaks
+    wfCacheSig = sig
+  }
+  wfCacheColumns = peaksToColumns(wfCacheRaw, scale)
+  scheduleDraw()
+}
+function scheduleWaveformFetch(): void {
+  if (wfFetchTimer !== null) clearTimeout(wfFetchTimer)
+  wfFetchTimer = setTimeout(() => { wfFetchTimer = null; void fetchWaveformOverlay() }, 120)
+}
 function drawWaveformOverlay(
   ctx: CanvasRenderingContext2D,
   plotX: number,
@@ -263,16 +295,8 @@ function drawWaveformOverlay(
   plotH: number,
   win: TimeWindow,
 ): void {
+  void win
   if (props.waveformOverlay !== true) return
-  const info = wfModel.info.value
-  if (info === null) return
-  const scale: WaveformScale = props.waveformScale ?? 'linear'
-  const ch = props.waveformChannel ?? 0
-  const sig = `${win.startSec}|${win.endSec}|${plotW}|${scale}|${ch}|${info.length}`
-  if (sig !== wfCacheSig) {
-    wfCacheColumns = peaksToColumns(wfModel.peaks(win.startSec, win.endSec, plotW, ch), scale)
-    wfCacheSig = sig
-  }
   const cols = wfCacheColumns
   const n = cols.length
   if (n === 0) return
@@ -704,9 +728,13 @@ const tooltipText = computed<string | null>(() => {
   if (hover.value !== null) {
     const h = hover.value
     let text = `${formatTimeSec(h.timeSec)} · ${formatHz(h.freqHz)} Hz · ${h.db.toFixed(1)} dB`
-    // SF22.4: unified readout — also query the audio model (amplitude) at the cursor.
-    if (wfModel.info.value !== null) {
-      const amp = wfModel.sampleAt(h.timeSec, props.waveformChannel ?? 0)
+    // SF22.4/GT7.3: unified readout — amplitude at the cursor, sampled from the backend peak columns.
+    if (props.waveformOverlay === true && wfCacheRaw.length > 0) {
+      const win = view.value
+      const span = Math.max(1e-9, win.endSec - win.startSec)
+      const idx = Math.max(0, Math.min(wfCacheRaw.length - 1, Math.floor(((h.timeSec - win.startSec) / span) * wfCacheRaw.length)))
+      const p = wfCacheRaw[idx]!
+      const amp = Math.max(Math.abs(p.max), Math.abs(p.min))
       text += ` · amp ${amp.toFixed(3)} (${amplitudeToDb(amp).toFixed(1)} dBFS)`
     }
     return text
@@ -917,6 +945,7 @@ watch(() => (props.soloVoiceIds ?? []).join(','), () => {
 // the new range and redraw (axes/playhead/selection move even if tiles are cached).
 watch(view, () => {
   applyView()
+  scheduleWaveformFetch() // GT7.3: refetch overlay peaks for the new range
   scheduleDraw()
 }, { deep: true })
 
@@ -942,6 +971,7 @@ if (shared !== null) {
 }
 
 watch([spec.tiles, spec.analysis], () => {
+  scheduleWaveformFetch() // GT7.3: analysis (re)ready -> (re)fetch overlay peaks
   scheduleDraw()
 })
 
@@ -961,10 +991,10 @@ watch(() => props.windowOverride, () => {
   applyView()
 })
 
-// SF22.3: waveform overlay toggles/inputs -> redraw.
+// SF22.3/GT7.3: waveform overlay toggles/inputs -> refetch overlay peaks (scale/toggle) + redraw.
 watch(
-  () => [props.waveformOverlay, props.waveformScale, props.waveformChannel, props.waveformBuffer, props.waveformColor, props.waveformOpacity],
-  () => scheduleDraw(),
+  () => [props.waveformOverlay, props.waveformScale, props.waveformChannel, props.waveformColor, props.waveformOpacity],
+  () => { scheduleWaveformFetch(); scheduleDraw() },
 )
 
 // analysis params changed -> re-analyse the open source (reconfigure), then refetch.
@@ -991,6 +1021,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (wfFetchTimer !== null) { clearTimeout(wfFetchTimer); wfFetchTimer = null }
   if (reconfigureTimer !== null) {
     clearTimeout(reconfigureTimer)
     reconfigureTimer = null
