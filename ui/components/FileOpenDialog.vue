@@ -67,7 +67,8 @@
           />
         </q-expansion-item>
 
-        <q-expansion-item dense :label="t('fsBrowser.roots')" class="file-open-dialog__acc">
+        <!-- In tree mode the roots are already the top of the tree, so this list is redundant. -->
+        <q-expansion-item v-if="store.viewMode !== 'tree'" dense :label="t('fsBrowser.roots')" class="file-open-dialog__acc">
           <div class="file-open-dialog__acc-body">
             <q-list dense>
               <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="navigateToDir(root.path)">
@@ -113,13 +114,16 @@
       <div v-else class="file-open-dialog__body row no-wrap">
         <div class="file-open-dialog__sidebar">
           <q-list dense>
-            <q-item-label header class="file-open-dialog__sidebar-header">{{ t('fsBrowser.roots') }}</q-item-label>
-            <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="navigateToDir(root.path)">
-              <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
-              <q-item-section>{{ root.label }}</q-item-section>
-            </q-item>
+            <!-- In tree mode the roots are already the top of the tree, so this list is redundant. -->
+            <template v-if="store.viewMode !== 'tree'">
+              <q-item-label header class="file-open-dialog__sidebar-header">{{ t('fsBrowser.roots') }}</q-item-label>
+              <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="navigateToDir(root.path)">
+                <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
+                <q-item-section>{{ root.label }}</q-item-section>
+              </q-item>
 
-            <q-separator spaced />
+              <q-separator spaced />
+            </template>
             <q-item-label header class="file-open-dialog__sidebar-header row items-center no-wrap">
               <span>{{ t('fsBrowser.favorites') }}</span>
               <q-space />

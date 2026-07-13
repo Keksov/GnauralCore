@@ -83,6 +83,7 @@
         <q-tree
           v-else
           ref="treeRef"
+          dense
           :nodes="treeNodes"
           node-key="path"
           label-key="name"
@@ -650,17 +651,20 @@ const onColResize = (event: PointerEvent, key: keyof FsTableColWidths): void => 
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 4px 4px 4px 0;
+    padding: 2px 4px 2px 0;
+
+    // Compact rows (owner): remove q-tree's per-node vertical padding + highlight box so the
+    // tree reads densely, TC-style. Selection still shows via q-tree's selected-color.
+    :deep(.q-tree__node-header) {
+      margin-top: 0;
+      padding: 0 4px;
+    }
   }
 
   &__tree-node {
     flex: 1 1 auto;
     min-width: 0;
     cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 4px;
-
-    &:hover { background: rgba(128, 128, 128, 0.12); }
   }
 
   &__row-icon { margin-right: 6px; }
