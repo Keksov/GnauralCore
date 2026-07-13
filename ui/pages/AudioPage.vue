@@ -13,6 +13,18 @@
           </q-item>
         </q-list>
       </q-btn-dropdown>
+      <!-- GT10.45 (owner 2026-07-13): "Edit" menu with Settings (Ctrl+P), next to "File". -->
+      <q-btn-dropdown flat dense no-caps :label="t('audio.editMenu')" class="audio-page__menu-file">
+        <q-list dense>
+          <q-item clickable v-close-popup @click="goToSettings">
+            <q-item-section avatar>
+              <q-icon name="settings" />
+            </q-item-section>
+            <q-item-section>{{ t('audio.openSettings') }}</q-item-section>
+            <q-item-section side><span class="text-caption text-grey">Ctrl+P</span></q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
     </div>
 
     <!-- FB4.3 (FB-D13): docked panel + editor reflow. Floating -> teleported to <body> (fixed
@@ -59,16 +71,6 @@
 
           <q-card-actions align="between">
             <q-btn flat color="primary" icon="refresh" :label="t('audio.refresh')" :loading="audio.presetsLoading" @click="refreshPresets" />
-            <!-- GT10.45 (owner req. 2026-07-13): "Edit" menu with Settings (Ctrl+P). -->
-            <q-btn-dropdown flat no-caps color="primary" icon="edit" :label="t('audio.editMenu')">
-              <q-list>
-                <q-item clickable v-close-popup @click="goToSettings">
-                  <q-item-section avatar><q-icon name="settings" /></q-item-section>
-                  <q-item-section>{{ t('audio.openSettings') }}</q-item-section>
-                  <q-item-section side><span class="text-caption text-grey">Ctrl+P</span></q-item-section>
-                </q-item>
-              </q-list>
-            </q-btn-dropdown>
           </q-card-actions>
 
           <!-- GT10.17 (owner req. 66): audio settings live on the Audio tab now. -->
