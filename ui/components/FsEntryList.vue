@@ -322,19 +322,68 @@ const treeSort = (a: FsEntry, b: FsEntry): number => {
   return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 }
 
+const loadChildrenNodes = async (path: string): Promise<FsTreeNode[]> => {
+  const children = await store.listChildren(path)
+  return children
+    .filter((child) => child.isDir || store.typeFilter === 'all' || audioFileKindForExt(child.ext) !== null)
+    .slice()
+    .sort(treeSort)
+    .map(toTreeNode)
+}
+
 const onTreeLazyLoad = async (details: TreeLazyDetails): Promise<void> => {
   try {
-    const children = await store.listChildren(details.node.path)
-    const nodes = children
-      .filter((child) => child.isDir || store.typeFilter === 'all' || audioFileKindForExt(child.ext) !== null)
-      .slice()
-      .sort(treeSort)
-      .map(toTreeNode)
-    details.done(nodes)
+    details.done(await loadChildrenNodes(details.node.path))
   } catch {
     details.fail()
   }
 }
+
+// FB5.1 fix: reveal a directory in the tree — expand each ancestor (lazy-loading children as
+// needed), expand the target folder to show its contents, and select it. This is what a favorite
+// or a root click drives in tree mode, where a flat store.openDir() has no visible effect.
+const revealPath = async (path: string): Promise<void> => {
+  if (store.viewMode !== 'tree') {
+    await store.openDir(path)
+    return
+  }
+  if (treeNodes.value.length === 0) {
+    resetTree()
+  }
+  const crumbs = store.pathCrumbs(path)
+  if (crumbs.length === 0) {
+    return
+  }
+  let level: FsTreeNode[] = treeNodes.value
+  const expanded = [...treeExpanded.value]
+  let target: FsTreeNode | undefined
+  for (const crumb of crumbs) {
+    const node = level.find((n) => n.path === crumb.path)
+    if (node === undefined) {
+      break
+    }
+    target = node
+    if (!node.isDir) {
+      break
+    }
+    let children = node.children
+    if (children === undefined) {
+      children = await loadChildrenNodes(node.path)
+      node.children = children
+      node.lazy = false
+    }
+    if (!expanded.includes(node.path)) {
+      expanded.push(node.path)
+    }
+    level = children
+  }
+  treeExpanded.value = expanded
+  if (target !== undefined) {
+    emit('select', target.entry)
+  }
+}
+
+defineExpose({ revealPath })
 
 const treeFilterMethod = (node: FsTreeNode, filter: string): boolean => fsNameMatches(node.name, filter)
 

@@ -61,6 +61,7 @@
           class="file-open-dialog__acc file-open-dialog__acc--grow"
         >
           <FsEntryList
+            ref="fsEntryListRef"
             :selected-path="selectedPath"
             @select="select"
             @activate="activate"
@@ -70,7 +71,7 @@
         <q-expansion-item dense :label="t('fsBrowser.roots')" class="file-open-dialog__acc">
           <div class="file-open-dialog__acc-body">
             <q-list dense>
-              <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="store.openDir(root.path)">
+              <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="navigateToDir(root.path)">
                 <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
                 <q-item-section>{{ root.label }}</q-item-section>
               </q-item>
@@ -114,7 +115,7 @@
         <div class="file-open-dialog__sidebar">
           <q-list dense>
             <q-item-label header class="file-open-dialog__sidebar-header">{{ t('fsBrowser.roots') }}</q-item-label>
-            <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="store.openDir(root.path)">
+            <q-item v-for="root in store.roots" :key="root.id" clickable dense @click="navigateToDir(root.path)">
               <q-item-section avatar><q-icon :name="rootIcon(root.kind)" size="20px" /></q-item-section>
               <q-item-section>{{ root.label }}</q-item-section>
             </q-item>
@@ -149,6 +150,7 @@
         <q-separator vertical />
 
         <FsEntryList
+          ref="fsEntryListRef"
           :selected-path="selectedPath"
           @select="select"
           @activate="activate"
@@ -199,6 +201,21 @@ const selectedPath = ref<string | null>(null)
 // FB5.1: the tree view can select a file outside the current dir, so the entry may not be in
 // store.visibleEntries — remember the emitted entry directly (flat views still fall back to lookup).
 const selectedEntryRef = ref<FsEntry | null>(null)
+
+// FB5.1 fix: navigating to a folder must reveal it IN the tree when tree mode is active (a flat
+// store.openDir has no visible effect there); FsEntryList owns the tree state and exposes revealPath.
+interface FsEntryListExposed {
+  revealPath: (path: string) => Promise<void>
+}
+const fsEntryListRef = ref<FsEntryListExposed | null>(null)
+
+const navigateToDir = (path: string): void => {
+  if (fsEntryListRef.value !== null) {
+    void fsEntryListRef.value.revealPath(path)
+  } else {
+    void store.openDir(path)
+  }
+}
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')
 const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
@@ -267,6 +284,13 @@ const activate = (entry: FsEntry): void => {
   const kind = audioFileKindForExt(entry.ext)
   if (kind !== null) {
     emit('open', entry.path, kind)
+    closeAfterOpen()
+  }
+}
+
+// Req: keep a DOCKED panel open after opening a file; only the floating window auto-closes.
+const closeAfterOpen = (): void => {
+  if (isFloating.value) {
     close()
   }
 }
@@ -292,13 +316,13 @@ const addCurrentToFavorites = (): void => {
 
 const activateFavorite = (fav: FsFavorite): void => {
   if (fav.kind === 'dir') {
-    void store.openDir(fav.path)
+    navigateToDir(fav.path)
     return
   }
   const kind = audioFileKindForExt(fav.path.split('.').pop() ?? '')
   if (kind !== null) {
     emit('open', fav.path, kind)
-    close()
+    closeAfterOpen()
   }
 }
 

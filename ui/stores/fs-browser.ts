@@ -296,12 +296,10 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     readonly path: string
   }
 
-  // Split the current absolute path into cumulative-path crumbs. Works for both C:\a\b and /a/b.
-  const breadcrumbs = computed<Breadcrumb[]>(() => {
-    const path = currentPath.value
-    if (path === null) {
-      return []
-    }
+  // Split an absolute path into cumulative-path crumbs (root -> ... -> leaf). Works for both
+  // C:\a\b and /a/b. Reused by the breadcrumbs bar and by the tree view's reveal-a-folder logic
+  // (FB5.1) to build the ancestor chain it must expand.
+  const pathCrumbs = (path: string): Breadcrumb[] => {
     const isWindows = /^[A-Za-z]:[\\/]/.test(path)
     const sep = isWindows ? '\\' : '/'
     const normalized = path.replace(/[\\/]+$/, '')
@@ -324,7 +322,11 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
       }
     }
     return crumbs
-  })
+  }
+
+  const breadcrumbs = computed<Breadcrumb[]>(() =>
+    currentPath.value === null ? [] : pathCrumbs(currentPath.value),
+  )
 
   let openToken = 0
 
@@ -509,6 +511,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     visibleEntries,
     breadcrumbs,
     // actions
+    pathCrumbs,
     init,
     openDir,
     listChildren,
