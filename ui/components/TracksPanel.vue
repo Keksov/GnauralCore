@@ -337,7 +337,6 @@
             :render="spectrogramStore.renderOptions"
             :window-override="spectrogramWindowOverride"
             :waveform-overlay="waveformOverlay"
-            :waveform-buffer="audio.spectrogramBuffer"
             :waveform-scale="wfScale(track.channel)"
             :waveform-color="wfColor(track.channel)"
             :waveform-opacity="wfOpacity(track.channel)"
@@ -1648,13 +1647,8 @@ function voiceDotColor(v: GTrackVoice, index: number): string {
 }
 // GT2.6 fix: gtracks come from the schedule, not the rendered WAV — show them even when the
 // spectrogram buffer is missing (e.g. AndromedaHell renders a 868 MB WAV from 4900 loops that the
-// browser can't decode). The waveform/spectrum lanes stay gated on the decoded buffer.
-const hasBuffer = computed(() => audio.spectrogramBuffer !== null)
-
-// GT7.2 (GT-D12, thin client): source spectrogram metadata (channel count, duration, ready gate)
-// from the BACKEND analysis instead of the decoded client WAV buffer. A lightweight analysis opened
-// for the display file yields channelCount + durationSec (GT7.1). The client buffer is kept only as
-// a fallback (and, until GT7.3, for the waveform overlay), so this change is non-regressive.
+// GT7.2/GT7.4 (thin client): spectrogram metadata (channel count, duration, ready gate) comes from
+// the BACKEND analysis — the client WAV decode is gone (GT7.3 moved the wave overlay to getPeaks).
 const metaSpec = useSpectrogram({ refetchDebounceMs: 400 })
 const backendAnalysis = computed(() => metaSpec.analysis.value)
 async function openMetaAnalysis(path: string | null): Promise<void> {
@@ -1663,11 +1657,11 @@ async function openMetaAnalysis(path: string | null): Promise<void> {
   try {
     await metaSpec.open({ filePath: path, ...spectrogramStore.analysisParams, channel: 0 })
   } catch {
-    // WS/analysis error -> fall back to the client buffer metadata
+    // WS/analysis error -> no spectrogram (backend is the only source now)
   }
 }
-// Backend analysis is available -> we can render the stack even without a decoded client buffer.
-const hasSpectrogramData = computed(() => hasBuffer.value || backendAnalysis.value !== null)
+// Backend analysis is available -> render the stack.
+const hasSpectrogramData = computed(() => backendAnalysis.value !== null)
 // SF9.2: independent per-track heights; length is kept in sync with the track count
 // (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
 const spectrogramTrackHeights = ref<number[]>(loadStoredSpectrogramTrackHeights())
@@ -1705,9 +1699,9 @@ const openStages = computed<{ key: string; label: string; active: boolean }[]>((
   return stages.some((st) => st.active) ? stages : []
 })
 
-// GT7.2: prefer the backend analysis' channelCount; fall back to the decoded buffer.
+// GT7.2/GT7.4: channelCount from the backend analysis (client buffer decode removed).
 const isSpectrogramStereo = computed(
-  () => (backendAnalysis.value?.channelCount ?? audio.spectrogramBuffer?.numberOfChannels ?? 1) >= 2,
+  () => (backendAnalysis.value?.channelCount ?? 1) >= 2,
 )
 
 // SF22 + SF23: audio view prefs — Audacity-style view mode + waveform scale/colour/opacity.
@@ -2188,9 +2182,9 @@ watch(() => audio.displayFilePath, () => {
 // for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
 // Effective time span for the header zoom/fit math: the decoded WAV duration, or (when there is no
 // WAV yet, e.g. gtracks-only) the schedule's single-loop duration so the shared view still works.
-// GT7.2: duration from the backend analysis, then the buffer, then the gnaural schedule length.
+// GT7.2/GT7.4: duration from the backend analysis, then the gnaural schedule length (gtracks-only).
 const spectrogramDuration = computed(
-  () => backendAnalysis.value?.durationSec || audio.spectrogramBuffer?.duration || gtracks.durationSec.value,
+  () => backendAnalysis.value?.durationSec || gtracks.durationSec.value,
 )
 
 // SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
