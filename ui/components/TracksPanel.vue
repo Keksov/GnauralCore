@@ -219,10 +219,12 @@
                 :point-tool="gtracks.pointTool.value"
                 :multi-selected="gtracks.multiSelection.value"
                 :accent-color="laneAccentColor(lane)"
+                :muted="laneMuted(lane)"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
+                @toggle-mute="onToggleLaneMuted(lane)"
                 @remove-lane="onRemoveLane(lane.id)"
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
                 @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
@@ -1102,6 +1104,8 @@ const emit = defineEmits<{
   (event: 'toggle-play'): void
   /** BK8a: per-voice playback mute (persisted voice_mute). AudioPage owns the schedule patch+reload. */
   (event: 'patch-voice-state', patch: { voiceId: number; muted?: boolean; hidden?: boolean; color?: string }): void
+  /** BK8a: batch mute for a multi-voice lane — one server round-trip + reload. */
+  (event: 'patch-voice-state-batch', patches: readonly { voiceId: number; muted?: boolean; hidden?: boolean; color?: string }[]): void
 }>()
 
 // Aliases keep the moved template byte-identical to the frozen original.
@@ -2510,6 +2514,22 @@ async function onToggleVoiceMuted(aVoiceId: number): Promise<void> {
     if (gtracks.dirty.value) return
   }
   emit('patch-voice-state', { voiceId: aVoiceId, muted: !isVoiceMuted(aVoiceId) })
+}
+
+// BK8a (owner 2026-07-13): the same mute mirrored on each lane (button above the eye). A lane groups
+// one or more voices; it counts as muted only when ALL are muted, and toggling flips them together in
+// one batch patch (one server round-trip + reload).
+function laneMuted(aLane: { voices: readonly { id: number }[] }): boolean {
+  return aLane.voices.length > 0 && aLane.voices.every((v) => isVoiceMuted(v.id))
+}
+async function onToggleLaneMuted(aLane: { voices: readonly { id: number }[] }): Promise<void> {
+  if (aLane.voices.length === 0) return
+  const nextMuted = !laneMuted(aLane)
+  if (gtracks.dirty.value) {
+    await saveGtrackEdits()
+    if (gtracks.dirty.value) return
+  }
+  emit('patch-voice-state-batch', aLane.voices.map((v) => ({ voiceId: v.id, muted: nextMuted })))
 }
 
 function handleTracksKeyDown(event: KeyboardEvent): void {

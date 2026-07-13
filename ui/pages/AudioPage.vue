@@ -343,6 +343,7 @@
                       @seek="handleSeek"
                       @toggle-play="handleTracksTogglePlay"
                       @patch-voice-state="handleScheduleVoiceStatePatch"
+                      @patch-voice-state-batch="handleScheduleVoiceStateBatch"
                     >
                       <template #toolbar>
                         <gnaural-transport-controls

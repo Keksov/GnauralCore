@@ -38,6 +38,16 @@
       >
         <q-tooltip>{{ t('audio.trackReorder') }}</q-tooltip>
       </q-icon>
+      <!-- BK8a (owner 2026-07-13): per-voice playback mute mirrored on the lane, above the eye. -->
+      <q-btn
+        dense flat round size="xs"
+        :icon="muted ? 'volume_off' : 'volume_up'"
+        :color="muted ? 'grey-7' : undefined"
+        :aria-label="muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute')"
+        @click.stop="emit('toggle-mute')"
+      >
+        <q-tooltip>{{ muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
+      </q-btn>
       <q-btn
         dense flat round size="xs"
         icon="visibility_off"
@@ -162,6 +172,9 @@ interface Props {
   /** GT4.2 (GT-D17): punch a transparent hole in the plot area so a solo audio layer behind this
    *  lane shows through under the curves; also makes the lane root background transparent. */
   inlineUnderlay?: boolean
+  /** BK8a (owner 2026-07-13): the lane's aggregate playback-mute state (all its voices muted) — drives
+   *  the lane mute button mirrored above the eye. */
+  muted?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -174,11 +187,14 @@ const props = withDefaults(defineProps<Props>(), {
   multiSelected: null,
   accentColor: null,
   inlineUnderlay: false,
+  muted: false,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
   (event: 'hide'): void
+  /** BK8a: toggle playback mute for this lane's voice(s) (mirror of the voices-panel mute). */
+  (event: 'toggle-mute'): void
   /** GT10.44: remove this lane (trash icon under the hide/eye icon). */
   (event: 'remove-lane'): void
   (event: 'reorder-grip', ev: PointerEvent): void
