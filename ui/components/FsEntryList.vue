@@ -64,6 +64,39 @@
     <q-separator />
 
     <div class="fs-entry-list__content">
+      <!-- Tree view (FB5.1, FB-D18): hierarchical + lazy-loaded, independent of the flat dir listing.
+           Roots -> lazy dirs -> type-filtered children; the quick filter drives q-tree's own :filter. -->
+      <div v-if="store.viewMode === 'tree'" class="fs-entry-list__tree">
+        <div v-if="treeNodes.length === 0" class="fs-entry-list__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
+        <q-tree
+          v-else
+          :nodes="treeNodes"
+          node-key="path"
+          label-key="name"
+          children-key="children"
+          :selected="selectedPath ?? ''"
+          selected-color="primary"
+          no-selection-unset
+          :filter="store.filterText"
+          :filter-method="treeFilterMethod"
+          v-model:expanded="treeExpanded"
+          @lazy-load="(details) => void onTreeLazyLoad(details)"
+        >
+          <template #default-header="prop">
+            <div
+              class="fs-entry-list__tree-node row items-center no-wrap"
+              :class="{ 'fs-entry-list__row--muted': !prop.node.isDir && !isSupported(prop.node.ext) }"
+              @click="onTreeNodeClick(prop.node)"
+              @dblclick="onTreeNodeDblClick(prop.node)"
+            >
+              <q-icon :name="entryVisual(prop.node.isDir, prop.node.ext).icon" :color="entryVisual(prop.node.isDir, prop.node.ext).color" size="18px" class="fs-entry-list__row-icon" />
+              <span class="fs-entry-list__row-name">{{ prop.node.name }}</span>
+            </div>
+          </template>
+        </q-tree>
+      </div>
+
+      <template v-else>
       <div v-if="store.loading" class="fs-entry-list__center">
         <q-spinner-hourglass color="primary" size="32px" />
       </div>
@@ -93,12 +126,12 @@
           <div
             :key="item.path"
             class="fs-entry-list__row row no-wrap items-center"
-            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item.ext) }"
             @click="emit('select', item)"
             @dblclick="emit('activate', item)"
           >
             <div class="fs-entry-list__cell fs-entry-list__cell--name row items-center no-wrap" :style="colStyle('name')">
-              <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="fs-entry-list__row-icon" />
+              <q-icon :name="entryVisual(item.isDir, item.ext).icon" :color="entryVisual(item.isDir, item.ext).color" size="18px" class="fs-entry-list__row-icon" />
               <span class="fs-entry-list__row-name">{{ item.name }}</span>
             </div>
             <div class="fs-entry-list__cell" :style="colStyle('ext')">{{ item.isDir ? '' : item.ext }}</div>
@@ -114,11 +147,11 @@
           <div
             :key="item.path"
             class="fs-entry-list__row fs-entry-list__row--list row no-wrap items-center"
-            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+            :class="{ 'fs-entry-list__row--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item.ext) }"
             @click="emit('select', item)"
             @dblclick="emit('activate', item)"
           >
-            <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" size="18px" class="fs-entry-list__row-icon" />
+            <q-icon :name="entryVisual(item.isDir, item.ext).icon" :color="entryVisual(item.isDir, item.ext).color" size="18px" class="fs-entry-list__row-icon" />
             <span class="fs-entry-list__row-name">{{ item.name }}</span>
           </div>
         </q-virtual-scroll>
@@ -130,14 +163,15 @@
           v-for="item in entries"
           :key="item.path"
           class="fs-entry-list__tile column items-center"
-          :class="{ 'fs-entry-list__tile--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item) }"
+          :class="{ 'fs-entry-list__tile--active': item.path === selectedPath, 'fs-entry-list__row--muted': !item.isDir && !isSupported(item.ext) }"
           @click="emit('select', item)"
           @dblclick="emit('activate', item)"
         >
-          <q-icon :name="entryVisual(item).icon" :color="entryVisual(item).color" :size="iconTileSize" />
+          <q-icon :name="entryVisual(item.isDir, item.ext).icon" :color="entryVisual(item.isDir, item.ext).color" :size="iconTileSize" />
           <div class="fs-entry-list__tile-label">{{ item.name }}</div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- Sticky bottom filter (FB4-refine 4): shows below the list, never scrolls with it. -->
@@ -168,8 +202,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { QInput, QVirtualScroll } from 'quasar'
-import type { FsEntry } from '@protocol'
-import { audioFileKindForExt, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
+import type { FsEntry, FsRoot } from '@protocol'
+import { audioFileKindForExt, fsNameMatches, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
 
 const props = defineProps<{
   readonly selectedPath: string | null
@@ -195,6 +229,7 @@ const viewOptions = computed(() => [
   { value: 'table', icon: 'table_chart' },
   { value: 'list', icon: 'view_list' },
   { value: 'icons', icon: 'grid_view' },
+  { value: 'tree', icon: 'account_tree' },
 ])
 const iconSizeOptions = [
   { value: 'sm', label: 'S' },
@@ -211,17 +246,18 @@ const colStyle = (key: keyof FsTableColWidths): Record<string, string> => {
   return { flex: `0 0 ${w}px`, width: `${w}px` }
 }
 
-const isSupported = (entry: FsEntry): boolean => audioFileKindForExt(entry.ext) !== null
+const isSupported = (ext: string): boolean => audioFileKindForExt(ext) !== null
 
 interface EntryVisual {
   readonly icon: string
   readonly color: string
 }
-const entryVisual = (entry: FsEntry): EntryVisual => {
-  if (entry.isDir) {
+// Shared by the flat rows (FsEntry) and the tree nodes (FsTreeNode) — both carry isDir + ext.
+const entryVisual = (isDir: boolean, ext: string): EntryVisual => {
+  if (isDir) {
     return { icon: 'folder', color: 'amber-8' }
   }
-  switch (audioFileKindForExt(entry.ext)) {
+  switch (audioFileKindForExt(ext)) {
     case 'gnaural':
       return { icon: 'graphic_eq', color: 'purple-5' }
     case 'wav':
@@ -232,6 +268,102 @@ const entryVisual = (entry: FsEntry): EntryVisual => {
       return { icon: 'insert_drive_file', color: 'blue-grey-5' }
   }
 }
+
+// ---- Tree view (FB5.1, FB-D18) ---------------------------------------------------------------
+// A hierarchical q-tree with lazy-loaded children, independent of the flat single-dir listing.
+interface FsTreeNode {
+  path: string
+  name: string
+  isDir: boolean
+  ext: string
+  lazy?: boolean
+  children?: FsTreeNode[]
+  // The FsEntry this node represents (synthetic for provider roots) — carried so selecting a tree
+  // node in any subtree gives the dialog a full entry, not just a path it must re-look-up.
+  entry: FsEntry
+}
+
+interface TreeLazyDetails {
+  node: FsTreeNode
+  key: string
+  done: (children?: readonly FsTreeNode[]) => void
+  fail: () => void
+}
+
+const treeNodes = ref<FsTreeNode[]>([])
+const treeExpanded = ref<string[]>([])
+
+const rootEntry = (root: FsRoot): FsEntry => ({
+  name: root.label, path: root.path, isDir: true, isSymlink: false, size: 0, mtimeMs: 0, ext: '', kind: 'dir',
+})
+
+const toTreeNode = (entry: FsEntry): FsTreeNode => ({
+  path: entry.path,
+  name: entry.name,
+  isDir: entry.isDir,
+  ext: entry.ext,
+  ...(entry.isDir ? { lazy: true } : {}),
+  entry,
+})
+
+const buildTreeRoots = (): FsTreeNode[] =>
+  store.roots.map((root) => ({ path: root.path, name: root.label, isDir: true, ext: '', lazy: true, entry: rootEntry(root) }))
+
+const resetTree = (): void => {
+  treeNodes.value = buildTreeRoots()
+  treeExpanded.value = []
+}
+
+// Dirs first, then case-insensitive name — a stable, TC-like order for the tree children.
+const treeSort = (a: FsEntry, b: FsEntry): number => {
+  if (a.isDir !== b.isDir) {
+    return a.isDir ? -1 : 1
+  }
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+}
+
+const onTreeLazyLoad = async (details: TreeLazyDetails): Promise<void> => {
+  try {
+    const children = await store.listChildren(details.node.path)
+    const nodes = children
+      .filter((child) => child.isDir || store.typeFilter === 'all' || audioFileKindForExt(child.ext) !== null)
+      .slice()
+      .sort(treeSort)
+      .map(toTreeNode)
+    details.done(nodes)
+  } catch {
+    details.fail()
+  }
+}
+
+const treeFilterMethod = (node: FsTreeNode, filter: string): boolean => fsNameMatches(node.name, filter)
+
+const onTreeNodeClick = (node: FsTreeNode): void => {
+  emit('select', node.entry)
+}
+
+const onTreeNodeDblClick = (node: FsTreeNode): void => {
+  if (!node.isDir) {
+    emit('activate', node.entry)
+    return
+  }
+  // Double-clicking a folder toggles it (the caret also expands + lazy-loads).
+  treeExpanded.value = treeExpanded.value.includes(node.path)
+    ? treeExpanded.value.filter((path) => path !== node.path)
+    : [...treeExpanded.value, node.path]
+}
+
+// (Re)build the tree when tree mode is entered, when roots load, or when a filter that changes the
+// visible children (hidden/type) flips. Immediate so an already-'tree' mode builds on mount.
+watch(
+  [() => store.viewMode, () => store.roots, () => store.showHidden, () => store.typeFilter],
+  ([mode]) => {
+    if (mode === 'tree') {
+      resetTree()
+    }
+  },
+  { immediate: true },
+)
 
 const formatSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`
@@ -263,6 +395,11 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 const onKeydown = (event: KeyboardEvent): void => {
   // Never hijack typing in the filter field.
   if (isEditableTarget(event.target)) {
+    return
+  }
+  // The tree view manages its own keyboard traversal (q-tree); the flat-list arrow nav below
+  // operates on visibleEntries, which the tree does not render.
+  if (store.viewMode === 'tree') {
     return
   }
   const items = entries.value
@@ -418,6 +555,24 @@ const onColResize = (event: PointerEvent, key: keyof FsTableColWidths): void => 
   }
 
   &__row--list { padding: 2px 8px; }
+
+  // Tree view (FB5.1): scrollable q-tree with clickable custom node headers.
+  &__tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px 4px 4px 0;
+  }
+
+  &__tree-node {
+    flex: 1 1 auto;
+    min-width: 0;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+
+    &:hover { background: rgba(128, 128, 128, 0.12); }
+  }
 
   &__row-icon { margin-right: 6px; }
 

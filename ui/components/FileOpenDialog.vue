@@ -196,6 +196,9 @@ const { t } = useI18n()
 const store = useFsBrowserStore()
 
 const selectedPath = ref<string | null>(null)
+// FB5.1: the tree view can select a file outside the current dir, so the entry may not be in
+// store.visibleEntries — remember the emitted entry directly (flat views still fall back to lookup).
+const selectedEntryRef = ref<FsEntry | null>(null)
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')
 const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
@@ -228,6 +231,9 @@ const dockOptions: readonly DockOption[] = [
 const modeIcon = computed<string>(() => dockOptions.find((o) => o.mode === store.windowMode)?.icon ?? 'picture_in_picture_alt')
 
 const selectedEntry = computed<FsEntry | null>(() => {
+  if (selectedEntryRef.value !== null && selectedEntryRef.value.path === selectedPath.value) {
+    return selectedEntryRef.value
+  }
   return store.visibleEntries.find((e) => e.path === selectedPath.value) ?? null
 })
 
@@ -248,11 +254,13 @@ const rootIcon = (kind: FsRootKind): string => {
 
 const select = (entry: FsEntry): void => {
   selectedPath.value = entry.path
+  selectedEntryRef.value = entry
 }
 
 const activate = (entry: FsEntry): void => {
   if (entry.isDir) {
     selectedPath.value = null
+    selectedEntryRef.value = null
     void store.openDir(entry.path)
     return
   }
@@ -301,6 +309,7 @@ const close = (): void => {
 // Init (discover the loopback server + open a start dir) whenever the panel becomes visible.
 const initBrowser = (): void => {
   selectedPath.value = null
+  selectedEntryRef.value = null
   void store.init(props.initialPath)
 }
 watch(() => props.modelValue, (open) => {

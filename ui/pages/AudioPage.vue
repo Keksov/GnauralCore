@@ -20,8 +20,8 @@
     <div class="audio-page__dock-wrap" :class="dockWrapClass">
       <Teleport to="body" :disabled="!fsFloating">
         <FileOpenDialog
-          v-if="fileOpenDialogOpen"
-          v-model="fileOpenDialogOpen"
+          v-if="fsBrowser.open"
+          v-model="fsBrowser.open"
           :initial-path="fileDialogInitialPath"
           @open="handleExternalFileOpen"
         />
@@ -59,11 +59,21 @@
 
           <q-card-actions align="between">
             <q-btn flat color="primary" icon="refresh" :label="t('audio.refresh')" :loading="audio.presetsLoading" @click="refreshPresets" />
-            <q-btn flat color="primary" icon="settings" :label="t('audio.openSettings')" @click="goToSettings" />
+            <!-- GT10.45 (owner req. 2026-07-13): "Edit" menu with Settings (Ctrl+P). -->
+            <q-btn-dropdown flat no-caps color="primary" icon="edit" :label="t('audio.editMenu')">
+              <q-list>
+                <q-item clickable v-close-popup @click="goToSettings">
+                  <q-item-section avatar><q-icon name="settings" /></q-item-section>
+                  <q-item-section>{{ t('audio.openSettings') }}</q-item-section>
+                  <q-item-section side><span class="text-caption text-grey">Ctrl+P</span></q-item-section>
+                </q-item>
+              </q-list>
+            </q-btn-dropdown>
           </q-card-actions>
 
           <!-- GT10.17 (owner req. 66): audio settings live on the Audio tab now. -->
-          <!-- GT10.29 (owner req. 78): settings dialog with a title + close (X) and a Close button. -->
+          <!-- GT10.29 (owner req. 78): title + close (X) and a Close button.
+               GT10.45 (owner 2026-07-13): two-pane — subsystem list (left) + its settings (right). -->
           <q-dialog v-model="settingsDialogOpen">
             <q-card class="audio-page__settings-dialog">
               <q-card-section class="row items-center q-py-sm">
@@ -72,9 +82,25 @@
                 <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.close')" />
               </q-card-section>
               <q-separator />
-              <q-card-section class="audio-page__settings-dialog-body">
-                <GnauralSettingsTab />
-              </q-card-section>
+              <div class="audio-page__settings-dialog-body row no-wrap">
+                <q-list class="audio-page__settings-nav">
+                  <q-item
+                    v-for="sub in settingsSubsystems"
+                    :key="sub.id"
+                    clickable
+                    :active="settingsSubsystem === sub.id"
+                    active-class="audio-page__settings-nav--active"
+                    @click="settingsSubsystem = sub.id"
+                  >
+                    <q-item-section avatar><q-icon :name="sub.icon" /></q-item-section>
+                    <q-item-section>{{ t(sub.labelKey) }}</q-item-section>
+                  </q-item>
+                </q-list>
+                <q-separator vertical />
+                <div class="audio-page__settings-content">
+                  <GnauralSettingsTab v-if="settingsSubsystem === 'cache'" />
+                </div>
+              </div>
               <q-separator />
               <q-card-actions align="right">
                 <q-btn flat no-caps :label="t('audio.close')" v-close-popup />
@@ -868,7 +894,8 @@ let selectionChangeToken = 0
 // FB3.1/FB3.2 (file-browser): the classic File -> Open menu opens the universal dialog; a chosen file
 // (which lives outside presetsTree) is fed into the editor's open path via audio.selectExternalPath,
 // reusing the unsaved-changes guard + view switching from the tree-selection flow.
-const fileOpenDialogOpen = ref(false)
+// FB5.2 (FB-D19): the open/closed flag lives in the fs-browser store (persisted), so a docked or
+// floating panel that was open at shutdown reappears at its saved place on the next launch.
 const fileDialogInitialPath = computed<string | undefined>(() => {
   const root = audio.settings.presetsRoot
   return root !== '' ? root : undefined
@@ -885,7 +912,7 @@ const dockWrapClass = computed<string>(() =>
 )
 
 function openFileDialog(): void {
-  fileOpenDialogOpen.value = true
+  fsBrowser.open = true
 }
 
 async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Promise<void> {
@@ -1814,6 +1841,13 @@ function handleTracksTogglePlay(): void {
 }
 
 function handlePlayerKeyDown(event: KeyboardEvent): void {
+  // GT10.45 (owner 2026-07-13): Ctrl/Cmd+P opens the settings dialog (Edit menu) on ANY tab —
+  // handled before the tracks-tab early return, and preventDefault overrides the browser's Print.
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'p' || event.key === 'P')) {
+    event.preventDefault()
+    goToSettings()
+    return
+  }
   // GT2.4 (GT-D10): while the Треки tab is active, TracksPanel owns the player hotkeys
   // (its own window listener); skip entirely so the two handlers never double-act.
   if (activePlayerViewTab.value === 'tracks') {
@@ -1989,6 +2023,10 @@ function startPlayback() {
 // GT10.17 (owner req. 66): audio settings open right here (a dialog on the Audio tab) instead of
 // navigating to the general Settings page (the audio tab was removed from there).
 const settingsDialogOpen = ref(false)
+// GT10.45 (owner 2026-07-13): settings dialog is two-pane — a subsystem list on the left drives the
+// content on the right. Only "Cache" for now; the list is set up to grow.
+const settingsSubsystems = [{ id: 'cache' as const, icon: 'storage', labelKey: 'audio.settingsSubsystemCache' }]
+const settingsSubsystem = ref<'cache'>('cache')
 function goToSettings() {
   settingsDialogOpen.value = true
 }
@@ -2050,12 +2088,29 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   display: flex;
   flex-direction: column;
   max-height: 85vh;
-  max-width: 760px;
-  width: 90vw;
+  max-width: 820px;
+  width: 92vw;
 }
-/* GT10.29: only the body scrolls, so the header (X) and footer (Close) stay visible. */
+/* GT10.29/GT10.45: the body (two panes) scrolls; header (X) and footer (Close) stay visible. */
 .audio-page__settings-dialog-body {
+  min-height: 320px;
+  overflow: hidden;
+}
+.audio-page__settings-nav {
+  flex: 0 0 200px;
   overflow: auto;
+  padding: 4px 0;
+}
+.audio-page__settings-nav--active {
+  background: rgba(25, 118, 210, 0.12);
+  color: var(--q-primary);
+  font-weight: 600;
+}
+.audio-page__settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  padding: 4px 8px;
 }
 
 .audio-page {

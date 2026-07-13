@@ -7,7 +7,7 @@ import { defineStore } from 'pinia'
 import type { AudioFileKind, FsEntry, FsEntryKind, FsInfoResponse, FsRoot } from '@protocol'
 import { fsBrowserApi } from '../fs-browser-api'
 
-export type FsViewMode = 'table' | 'list' | 'icons'
+export type FsViewMode = 'table' | 'list' | 'icons' | 'tree'
 export type FsIconSize = 'sm' | 'md' | 'lg'
 export type FsSortKey = 'name' | 'ext' | 'size' | 'mtime'
 export type FsSortDir = 'asc' | 'desc'
@@ -61,6 +61,8 @@ const KEY_WIN_MODE = `${STORAGE_PREFIX}win-mode`
 const KEY_DOCK_SIZE = `${STORAGE_PREFIX}dock-size`
 const KEY_FLOAT = `${STORAGE_PREFIX}float`
 const KEY_COLS = `${STORAGE_PREFIX}cols`
+// FB5.2 (FB-D19): whether the dialog is open — persisted so a docked panel reappears on restart.
+const KEY_OPEN = `${STORAGE_PREFIX}open`
 
 const DEFAULT_FLOAT: FsFloatRect = { x: 140, y: 90, w: 900, h: 600 }
 const DEFAULT_DOCK_SIZE = 380
@@ -185,6 +187,10 @@ const buildMatcher = (pattern: string): ((name: string) => boolean) => {
   }
 }
 
+// FB5.1 (FB-D18): the tree view's q-tree :filter-method reuses the same regexp-then-substring
+// semantics as the flat list's quick filter.
+export const fsNameMatches = (name: string, pattern: string): boolean => buildMatcher(pattern)(name)
+
 export const useFsBrowserStore = defineStore('fs-browser', () => {
   const info = ref<FsInfoResponse | null>(null)
   const providerId = ref<string>(DEFAULT_PROVIDER)
@@ -199,7 +205,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const filterVisible = ref<boolean>(false)
 
   // Persisted preferences.
-  const viewMode = ref<FsViewMode>(readString(KEY_VIEW, ['table', 'list', 'icons'], 'table'))
+  const viewMode = ref<FsViewMode>(readString(KEY_VIEW, ['table', 'list', 'icons', 'tree'], 'table'))
   const iconSize = ref<FsIconSize>(readString(KEY_ICON, ['sm', 'md', 'lg'], 'md'))
   const sortKey = ref<FsSortKey>(readString(KEY_SORT_KEY, ['name', 'ext', 'size', 'mtime'], 'name'))
   const sortDir = ref<FsSortDir>(readString(KEY_SORT_DIR, ['asc', 'desc'], 'asc'))
@@ -212,6 +218,9 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const dockSize = ref<number>(readNumber(KEY_DOCK_SIZE, DEFAULT_DOCK_SIZE))
   const floatRect = ref<FsFloatRect>(readFloatRect())
   const tableColWidths = ref<FsTableColWidths>(readCols())
+  // FB5.2 (FB-D19): the open/closed flag is persisted so a docked (or floating) panel reappears at
+  // its saved place on the next program launch. AudioPage binds its v-model to this.
+  const open = ref<boolean>(readBool(KEY_OPEN, false))
 
   watch(viewMode, (v) => persist(KEY_VIEW, v))
   watch(iconSize, (v) => persist(KEY_ICON, v))
@@ -224,6 +233,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   watch(dockSize, (v) => persist(KEY_DOCK_SIZE, String(Math.round(v))))
   watch(floatRect, (v) => persist(KEY_FLOAT, JSON.stringify(v)), { deep: true })
   watch(tableColWidths, (v) => persist(KEY_COLS, JSON.stringify(v)), { deep: true })
+  watch(open, (v) => persist(KEY_OPEN, v ? '1' : '0'))
   // Re-list when hidden-file visibility flips (server-side filter).
   watch(showHidden, () => {
     if (currentPath.value !== null) {
@@ -345,6 +355,17 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
         loading.value = false
       }
     }
+  }
+
+  // FB5.1 (FB-D18): list a directory's entries WITHOUT touching currentPath — the tree view's
+  // lazy-load calls this to materialize a node's children. Errors surface as an empty child set.
+  async function listChildren(path: string): Promise<FsEntry[]> {
+    const base = baseUrl.value
+    if (base === null) {
+      return []
+    }
+    const result = await fsBrowserApi.listDir(base, providerId.value, path, { showHidden: showHidden.value })
+    return [...result.entries]
   }
 
   async function loadRoots(): Promise<void> {
@@ -480,6 +501,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     windowMode,
     dockSize,
     floatRect,
+    open,
     // getters
     available,
     baseUrl,
@@ -489,6 +511,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     // actions
     init,
     openDir,
+    listChildren,
     loadRoots,
     goUp,
     refresh,
