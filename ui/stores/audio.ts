@@ -533,23 +533,20 @@ export const useAudioStore = defineStore('audio', () => {
     return fileKind === 'flac' && (forceFallback || !browserSupportsFlacPlayback())
   }
 
-  async function decodeAudioBuffer(arrayBuffer: ArrayBuffer, setErrorOnFailure = true): Promise<AudioBuffer | null> {
+  // GT7.5/GT7.4 (owner 2026-07-13): the spectrogram + waveform are rendered from the BACKEND analysis
+  // now, so a client-side decode failure (e.g. a browser that can't decode FLAC via Web Audio) must
+  // NOT surface a "spectrogram" error — it only means the optional client-decoded buffer is absent.
+  // Fail silently; the display comes from the backend regardless. (The decoded buffer only still
+  // feeds the wave overlay + duration until GT7.3/GT7.4 finish the thin-client cleanup.)
+  async function decodeAudioBuffer(arrayBuffer: ArrayBuffer): Promise<AudioBuffer | null> {
     const context = getDecodeContext()
     if (context === null) {
-      if (setErrorOnFailure) {
-        spectrogramError.value = 'Web Audio API is not available in this browser, so spectrogram rendering is disabled.'
-      }
-
       return null
     }
 
     try {
       return await context.decodeAudioData(arrayBuffer.slice(0))
     } catch {
-      if (setErrorOnFailure) {
-        spectrogramError.value = 'Failed to decode the selected audio file for spectrogram rendering.'
-      }
-
       return null
     }
   }
@@ -564,7 +561,7 @@ export const useAudioStore = defineStore('audio', () => {
     const initialBlob = await audioApi.fetchAudioFileBlob(filePath, abortSignal, initialOptions)
     const initialArrayBuffer = await initialBlob.arrayBuffer()
     const canRetryWithWavFallback = fileKind === 'flac' && !needsInitialFallback && hasDecodeContextSupport()
-    let decodedBuffer = await decodeAudioBuffer(initialArrayBuffer, !canRetryWithWavFallback)
+    let decodedBuffer = await decodeAudioBuffer(initialArrayBuffer)
 
     if (!canRetryWithWavFallback || decodedBuffer !== null) {
       return {
@@ -572,8 +569,6 @@ export const useAudioStore = defineStore('audio', () => {
         decodedBuffer,
       }
     }
-
-    spectrogramError.value = null
 
     const fallbackBlob = await audioApi.fetchAudioFileBlob(filePath, abortSignal, { format: 'wav' })
     const fallbackArrayBuffer = await fallbackBlob.arrayBuffer()
