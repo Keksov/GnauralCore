@@ -384,11 +384,26 @@ const onTreeNodeDblClick = (node: FsTreeNode): void => {
   }
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms))
+// Path helpers — Windows is case-insensitive and uses \; ignore trailing separators. Comparisons
+// use the ACTUAL provider node paths (not a reconstructed crumb path), so drive-letter casing /
+// separator quirks can't break the match.
+const stripTrail = (p: string): string => p.replace(/[\\/]+$/, '')
+const pathIsWindows = (p: string): boolean => /^[A-Za-z]:[\\/]/.test(p)
+const samePath = (a: string, b: string, win: boolean): boolean => {
+  const na = stripTrail(a)
+  const nb = stripTrail(b)
+  return win ? na.toLowerCase() === nb.toLowerCase() : na === nb
+}
+// Does directory `dir` contain (or equal) `child`?
+const dirContains = (dir: string, child: string, win: boolean): boolean => {
+  const d = win ? stripTrail(dir).toLowerCase() : stripTrail(dir)
+  const c = win ? stripTrail(child).toLowerCase() : stripTrail(child)
+  return c === d || c.startsWith(`${d}\\`) || c.startsWith(`${d}/`)
+}
 
-// FB5.1 fix: reveal a directory in the tree (favorite / root click in tree mode, where a flat
-// store.openDir has no visible effect). Expand each ancestor via q-tree's native setExpanded so it
-// lazy-loads + renders, waiting for each level to materialize before descending; select the target.
+// FB5.1 fix: reveal a directory in the tree (favorite / Location click in tree mode, where a flat
+// store.openDir has no visible effect). Deterministic: descend the node tree following whichever
+// node CONTAINS the target, loading + injecting children as we go, then expand the chain + select.
 const revealPath = async (path: string): Promise<void> => {
   if (store.viewMode !== 'tree') {
     await store.openDir(path)
@@ -397,42 +412,62 @@ const revealPath = async (path: string): Promise<void> => {
   if (treeNodes.value.length === 0) {
     resetTree()
   }
-  await nextTick()
-  const tree = treeRef.value
-  if (tree === null) {
-    return
-  }
-  const crumbs = store.pathCrumbs(path)
-  for (let i = 0; i < crumbs.length; i += 1) {
-    const key = crumbs[i]?.path
-    if (key === undefined) {
+  const win = pathIsWindows(path)
+  const expanded: string[] = [...treeExpanded.value]
+  let level: FsTreeNode[] = treeNodes.value
+  let target: FsTreeNode | undefined
+
+  for (let guard = 0; guard < 64; guard += 1) {
+    const exact = level.find((n) => samePath(n.path, path, win))
+    if (exact !== undefined) {
+      target = exact
+      if (exact.isDir) {
+        if (exact.children === undefined) {
+          exact.children = await loadChildrenNodes(exact.path)
+          exact.lazy = false
+        }
+        if (!expanded.includes(exact.path)) {
+          expanded.push(exact.path)
+        }
+      }
       break
     }
-    // Wait for this node to appear (its parent finished lazy-loading), then expand it.
-    // getNodeByKey returns undefined (not null) for a missing key — guard both (== null).
-    let node = tree.getNodeByKey(key) as FsTreeNode | null | undefined
-    for (let tries = 0; node == null && tries < 80; tries += 1) {
-      await sleep(25)
-      node = tree.getNodeByKey(key) as FsTreeNode | null | undefined
+    const container = level.find((n) => n.isDir && dirContains(n.path, path, win))
+    if (container === undefined) {
+      break
     }
-    if (node == null) {
-      return
+    target = container
+    if (container.children === undefined) {
+      container.children = await loadChildrenNodes(container.path)
+      container.lazy = false
     }
-    if (node.isDir) {
-      tree.setExpanded(key, true)
+    if (!expanded.includes(container.path)) {
+      expanded.push(container.path)
     }
-    if (i === crumbs.length - 1) {
-      emit('select', node.entry)
-      // Scroll the revealed node into view — a deep branch can expand off-screen otherwise.
-      await nextTick()
-      treeWrapRef.value?.querySelector('.q-tree__node--selected')?.scrollIntoView({ block: 'nearest' })
-    }
+    level = container.children ?? []
+  }
+
+  // Apply the expansion + force q-tree to re-render the mutated node tree.
+  treeNodes.value = treeNodes.value.slice()
+  treeExpanded.value = [...new Set(expanded)]
+  if (target !== undefined) {
+    emit('select', target.entry)
+    // Scroll the revealed node into view — a deep branch can expand off-screen otherwise.
+    await nextTick()
+    treeWrapRef.value?.querySelector('.q-tree__node--selected')?.scrollIntoView({ block: 'nearest' })
   }
 }
 
-// In tree mode, any flat navigation (a favorite or a Location click calls store.openDir, which sets
-// currentPath) is mirrored into the tree by revealing that folder. This keeps the tree in sync
-// without a fragile cross-component ref, using the local (proven) q-tree instance.
+// Explicit reveal request (favorite / Location click in tree mode) — the store's nonce guarantees
+// this fires even for a repeat path. This is the primary, reliable trigger.
+watch(() => store.revealSignal, (sig) => {
+  if (sig !== null && store.viewMode === 'tree') {
+    void revealPath(sig.path)
+  }
+})
+
+// Also mirror any flat navigation that changes currentPath (e.g. programmatic openDir) into the
+// tree, so the two stay in sync.
 watch(() => store.currentPath, (path) => {
   if (store.viewMode === 'tree' && path !== null) {
     void revealPath(path)

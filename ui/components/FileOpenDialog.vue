@@ -204,10 +204,14 @@ const selectedPath = ref<string | null>(null)
 // store.visibleEntries — remember the emitted entry directly (flat views still fall back to lookup).
 const selectedEntryRef = ref<FsEntry | null>(null)
 
-// FB5.1 fix: navigating to a folder is a plain store.openDir; in tree mode FsEntryList watches
-// currentPath and reveals that folder in the tree itself (no fragile cross-component ref).
+// FB5.1 fix: in tree mode a folder click must reveal that branch in the tree — request it via the
+// store (FsEntryList watches revealSignal). In the flat views it's a normal openDir.
 const navigateToDir = (path: string): void => {
-  void store.openDir(path)
+  if (store.viewMode === 'tree') {
+    store.requestReveal(path)
+  } else {
+    void store.openDir(path)
+  }
 }
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')

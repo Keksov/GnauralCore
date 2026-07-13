@@ -203,6 +203,10 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   const filterText = ref<string>('')
   // FB4-refine 3: the filter is hidden until summoned by the funnel icon / Ctrl-S (session state).
   const filterVisible = ref<boolean>(false)
+  // FB5.1: an explicit "reveal this folder in the tree" request. The nonce makes the object change
+  // on every call so the tree's watcher fires even when the same path is requested twice.
+  const revealSignal = ref<{ readonly path: string; readonly nonce: number } | null>(null)
+  let revealNonce = 0
 
   // Persisted preferences.
   const viewMode = ref<FsViewMode>(readString(KEY_VIEW, ['table', 'list', 'icons', 'tree'], 'table'))
@@ -370,6 +374,13 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     return [...result.entries]
   }
 
+  // FB5.1: ask the tree view (FsEntryList) to reveal + select a folder. Used by favorites/roots in
+  // tree mode, where a flat openDir has no visible effect. The nonce forces a fresh signal object.
+  const requestReveal = (path: string): void => {
+    revealNonce += 1
+    revealSignal.value = { path, nonce: revealNonce }
+  }
+
   async function loadRoots(): Promise<void> {
     const base = baseUrl.value
     if (base === null) {
@@ -492,6 +503,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     error,
     filterText,
     filterVisible,
+    revealSignal,
     tableColWidths,
     viewMode,
     iconSize,
@@ -515,6 +527,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     init,
     openDir,
     listChildren,
+    requestReveal,
     loadRoots,
     goUp,
     refresh,
