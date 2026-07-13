@@ -447,6 +447,10 @@
     "colName": "Имя",
     "colExt": "Тип",
     "colSize": "Размер",
-    "colDate": "Изменён"
+    "colDate": "Изменён",
+    "viewTable": "Таблица",
+    "viewList": "Список",
+    "viewIcons": "Иконки",
+    "viewTree": "Дерево"
   }
 }

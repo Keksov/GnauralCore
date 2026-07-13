@@ -447,6 +447,10 @@
     "colName": "Name",
     "colExt": "Ext",
     "colSize": "Size",
-    "colDate": "Modified"
+    "colDate": "Modified",
+    "viewTable": "Table",
+    "viewList": "List",
+    "viewIcons": "Icons",
+    "viewTree": "Tree"
   }
 }

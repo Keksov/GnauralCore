@@ -5,10 +5,15 @@
   <div class="fs-entry-list" tabindex="0" @keydown="onKeydown">
     <!-- Sticky top toolbar (FB4-refine 2): stays pinned; only the listing scrolls. -->
     <div class="fs-entry-list__toolbar row items-center q-gutter-xs">
-      <q-btn flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()" />
-      <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="store.refresh()" />
+      <!-- "Up" only makes sense in the flat dir listing; the tree navigates by expand/collapse. -->
+      <q-btn v-if="!isTree" flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()">
+        <q-tooltip>{{ t('fsBrowser.up') }}</q-tooltip>
+      </q-btn>
+      <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="onRefresh">
+        <q-tooltip>{{ t('fsBrowser.refresh') }}</q-tooltip>
+      </q-btn>
 
-      <div v-if="!isColumn" class="fs-entry-list__breadcrumbs row items-center no-wrap col">
+      <div v-if="!isColumn && !isTree" class="fs-entry-list__breadcrumbs row items-center no-wrap col">
         <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
           <q-icon v-if="index > 0" name="chevron_right" size="16px" class="fs-entry-list__crumb-sep" />
           <q-btn flat dense no-caps size="sm" :label="crumb.label" class="fs-entry-list__crumb" @click="store.openDir(crumb.path)" />
@@ -23,7 +28,12 @@
         toggle-color="primary"
         :options="viewOptions"
         @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
-      />
+      >
+        <template #view-table><q-icon name="table_chart" /><q-tooltip>{{ t('fsBrowser.viewTable') }}</q-tooltip></template>
+        <template #view-list><q-icon name="view_list" /><q-tooltip>{{ t('fsBrowser.viewList') }}</q-tooltip></template>
+        <template #view-icons><q-icon name="grid_view" /><q-tooltip>{{ t('fsBrowser.viewIcons') }}</q-tooltip></template>
+        <template #view-tree><q-icon name="account_tree" /><q-tooltip>{{ t('fsBrowser.viewTree') }}</q-tooltip></template>
+      </q-btn-toggle>
       <q-btn-toggle
         v-if="store.viewMode === 'icons'"
         :model-value="store.iconSize"
@@ -54,7 +64,7 @@
 
     <!-- FB4-refine: in the narrow vertical (left/right dock) layout, breadcrumbs get their own row
          right under the button toolbar, so the buttons row is not crowded. -->
-    <div v-if="isColumn" class="fs-entry-list__crumbbar row items-center no-wrap">
+    <div v-if="isColumn && !isTree" class="fs-entry-list__crumbbar row items-center no-wrap">
       <template v-for="(crumb, index) in store.breadcrumbs" :key="crumb.path">
         <q-icon v-if="index > 0" name="chevron_right" size="16px" class="fs-entry-list__crumb-sep" />
         <q-btn flat dense no-caps size="sm" :label="crumb.label" class="fs-entry-list__crumb" @click="store.openDir(crumb.path)" />
@@ -70,6 +80,7 @@
         <div v-if="treeNodes.length === 0" class="fs-entry-list__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
         <q-tree
           v-else
+          ref="treeRef"
           :nodes="treeNodes"
           node-key="path"
           label-key="name"
@@ -201,7 +212,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { QInput, QVirtualScroll } from 'quasar'
+import type { QInput, QTree, QVirtualScroll } from 'quasar'
 import type { FsEntry, FsRoot } from '@protocol'
 import { audioFileKindForExt, fsNameMatches, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
 
@@ -224,13 +235,24 @@ const filterInput = ref<QInput | null>(null)
 const entries = computed<readonly FsEntry[]>(() => store.visibleEntries)
 // Narrow vertical layout (left/right dock): breadcrumbs move to their own row under the buttons.
 const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
+const isTree = computed<boolean>(() => store.viewMode === 'tree')
 
-const viewOptions = computed(() => [
-  { value: 'table', icon: 'table_chart' },
-  { value: 'list', icon: 'view_list' },
-  { value: 'icons', icon: 'grid_view' },
-  { value: 'tree', icon: 'account_tree' },
-])
+// Icon-only view toggle; each option renders via a named slot so it can carry a tooltip.
+const viewOptions = [
+  { value: 'table', slot: 'view-table' },
+  { value: 'list', slot: 'view-list' },
+  { value: 'icons', slot: 'view-icons' },
+  { value: 'tree', slot: 'view-tree' },
+]
+
+// In tree mode Refresh rebuilds the tree from roots; in the flat views it re-lists the current dir.
+const onRefresh = (): void => {
+  if (store.viewMode === 'tree') {
+    resetTree()
+  } else {
+    void store.refresh()
+  }
+}
 const iconSizeOptions = [
   { value: 'sm', label: 'S' },
   { value: 'md', label: 'M' },
@@ -292,6 +314,7 @@ interface TreeLazyDetails {
 
 const treeNodes = ref<FsTreeNode[]>([])
 const treeExpanded = ref<string[]>([])
+const treeRef = ref<QTree | null>(null)
 
 const rootEntry = (root: FsRoot): FsEntry => ({
   name: root.label, path: root.path, isDir: true, isSymlink: false, size: 0, mtimeMs: 0, ext: '', kind: 'dir',
@@ -339,9 +362,29 @@ const onTreeLazyLoad = async (details: TreeLazyDetails): Promise<void> => {
   }
 }
 
-// FB5.1 fix: reveal a directory in the tree — expand each ancestor (lazy-loading children as
-// needed), expand the target folder to show its contents, and select it. This is what a favorite
-// or a root click drives in tree mode, where a flat store.openDir() has no visible effect.
+const treeFilterMethod = (node: FsTreeNode, filter: string): boolean => fsNameMatches(node.name, filter)
+
+// A single click on a folder opens (expands) / closes it — q-tree's own setExpanded drives the
+// lazy load + render reliably; files just get selected.
+const onTreeNodeClick = (node: FsTreeNode): void => {
+  emit('select', node.entry)
+  const tree = treeRef.value
+  if (node.isDir && tree !== null) {
+    tree.setExpanded(node.path, !tree.isExpanded(node.path))
+  }
+}
+
+const onTreeNodeDblClick = (node: FsTreeNode): void => {
+  if (!node.isDir) {
+    emit('activate', node.entry)
+  }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+// FB5.1 fix: reveal a directory in the tree (favorite / root click in tree mode, where a flat
+// store.openDir has no visible effect). Expand each ancestor via q-tree's native setExpanded so it
+// lazy-loads + renders, waiting for each level to materialize before descending; select the target.
 const revealPath = async (path: string): Promise<void> => {
   if (store.viewMode !== 'tree') {
     await store.openDir(path)
@@ -350,57 +393,36 @@ const revealPath = async (path: string): Promise<void> => {
   if (treeNodes.value.length === 0) {
     resetTree()
   }
-  const crumbs = store.pathCrumbs(path)
-  if (crumbs.length === 0) {
+  await nextTick()
+  const tree = treeRef.value
+  if (tree === null) {
     return
   }
-  let level: FsTreeNode[] = treeNodes.value
-  const expanded = [...treeExpanded.value]
-  let target: FsTreeNode | undefined
-  for (const crumb of crumbs) {
-    const node = level.find((n) => n.path === crumb.path)
-    if (node === undefined) {
+  const crumbs = store.pathCrumbs(path)
+  for (let i = 0; i < crumbs.length; i += 1) {
+    const key = crumbs[i]?.path
+    if (key === undefined) {
       break
     }
-    target = node
-    if (!node.isDir) {
-      break
+    // Wait for this node to appear (its parent finished lazy-loading), then expand it.
+    let node = tree.getNodeByKey(key) as FsTreeNode | null
+    for (let tries = 0; node === null && tries < 80; tries += 1) {
+      await sleep(25)
+      node = tree.getNodeByKey(key) as FsTreeNode | null
     }
-    let children = node.children
-    if (children === undefined) {
-      children = await loadChildrenNodes(node.path)
-      node.children = children
-      node.lazy = false
+    if (node === null) {
+      return
     }
-    if (!expanded.includes(node.path)) {
-      expanded.push(node.path)
+    if (node.isDir) {
+      tree.setExpanded(key, true)
     }
-    level = children
-  }
-  treeExpanded.value = expanded
-  if (target !== undefined) {
-    emit('select', target.entry)
+    if (i === crumbs.length - 1) {
+      emit('select', node.entry)
+    }
   }
 }
 
 defineExpose({ revealPath })
-
-const treeFilterMethod = (node: FsTreeNode, filter: string): boolean => fsNameMatches(node.name, filter)
-
-const onTreeNodeClick = (node: FsTreeNode): void => {
-  emit('select', node.entry)
-}
-
-const onTreeNodeDblClick = (node: FsTreeNode): void => {
-  if (!node.isDir) {
-    emit('activate', node.entry)
-    return
-  }
-  // Double-clicking a folder toggles it (the caret also expands + lazy-loads).
-  treeExpanded.value = treeExpanded.value.includes(node.path)
-    ? treeExpanded.value.filter((path) => path !== node.path)
-    : [...treeExpanded.value, node.path]
-}
 
 // (Re)build the tree when tree mode is entered, when roots load, or when a filter that changes the
 // visible children (hidden/type) flips. Immediate so an already-'tree' mode builds on mount.
