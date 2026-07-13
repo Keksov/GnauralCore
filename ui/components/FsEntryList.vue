@@ -43,16 +43,18 @@
         :options="iconSizeOptions"
         @update:model-value="(v: FsIconSize) => (store.iconSize = v)"
       />
-      <q-btn-dropdown flat dense no-caps :label="store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll')">
-        <q-list dense>
-          <q-item clickable v-close-popup @click="store.typeFilter = 'supported'">
-            <q-item-section>{{ t('fsBrowser.typeSupported') }}</q-item-section>
-          </q-item>
-          <q-item clickable v-close-popup @click="store.typeFilter = 'all'">
-            <q-item-section>{{ t('fsBrowser.typeAll') }}</q-item-section>
-          </q-item>
-        </q-list>
-      </q-btn-dropdown>
+      <!-- Audio toggle: pressed -> only supported audio files; released -> all files. -->
+      <q-btn
+        flat
+        dense
+        round
+        :color="store.typeFilter === 'supported' ? 'primary' : undefined"
+        icon="audiotrack"
+        :aria-label="t('fsBrowser.typeSupported')"
+        @click="store.typeFilter = store.typeFilter === 'supported' ? 'all' : 'supported'"
+      >
+        <q-tooltip>{{ store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll') }}</q-tooltip>
+      </q-btn>
       <q-btn flat dense round :color="store.showHidden ? 'primary' : undefined" icon="visibility" :aria-label="t('fsBrowser.showHidden')" @click="store.showHidden = !store.showHidden">
         <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
       </q-btn>
@@ -405,12 +407,13 @@ const revealPath = async (path: string): Promise<void> => {
       break
     }
     // Wait for this node to appear (its parent finished lazy-loading), then expand it.
-    let node = tree.getNodeByKey(key) as FsTreeNode | null
-    for (let tries = 0; node === null && tries < 80; tries += 1) {
+    // getNodeByKey returns undefined (not null) for a missing key — guard both (== null).
+    let node = tree.getNodeByKey(key) as FsTreeNode | null | undefined
+    for (let tries = 0; node == null && tries < 80; tries += 1) {
       await sleep(25)
-      node = tree.getNodeByKey(key) as FsTreeNode | null
+      node = tree.getNodeByKey(key) as FsTreeNode | null | undefined
     }
-    if (node === null) {
+    if (node == null) {
       return
     }
     if (node.isDir) {
@@ -422,7 +425,14 @@ const revealPath = async (path: string): Promise<void> => {
   }
 }
 
-defineExpose({ revealPath })
+// In tree mode, any flat navigation (a favorite or a Location click calls store.openDir, which sets
+// currentPath) is mirrored into the tree by revealing that folder. This keeps the tree in sync
+// without a fragile cross-component ref, using the local (proven) q-tree instance.
+watch(() => store.currentPath, (path) => {
+  if (store.viewMode === 'tree' && path !== null) {
+    void revealPath(path)
+  }
+})
 
 // (Re)build the tree when tree mode is entered, when roots load, or when a filter that changes the
 // visible children (hidden/type) flips. Immediate so an already-'tree' mode builds on mount.

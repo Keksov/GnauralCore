@@ -61,7 +61,6 @@
           class="file-open-dialog__acc file-open-dialog__acc--grow"
         >
           <FsEntryList
-            ref="fsEntryListRef"
             :selected-path="selectedPath"
             @select="select"
             @activate="activate"
@@ -150,7 +149,6 @@
         <q-separator vertical />
 
         <FsEntryList
-          ref="fsEntryListRef"
           :selected-path="selectedPath"
           @select="select"
           @activate="activate"
@@ -202,19 +200,10 @@ const selectedPath = ref<string | null>(null)
 // store.visibleEntries — remember the emitted entry directly (flat views still fall back to lookup).
 const selectedEntryRef = ref<FsEntry | null>(null)
 
-// FB5.1 fix: navigating to a folder must reveal it IN the tree when tree mode is active (a flat
-// store.openDir has no visible effect there); FsEntryList owns the tree state and exposes revealPath.
-interface FsEntryListExposed {
-  revealPath: (path: string) => Promise<void>
-}
-const fsEntryListRef = ref<FsEntryListExposed | null>(null)
-
+// FB5.1 fix: navigating to a folder is a plain store.openDir; in tree mode FsEntryList watches
+// currentPath and reveals that folder in the tree itself (no fragile cross-component ref).
 const navigateToDir = (path: string): void => {
-  if (fsEntryListRef.value !== null) {
-    void fsEntryListRef.value.revealPath(path)
-  } else {
-    void store.openDir(path)
-  }
+  void store.openDir(path)
 }
 
 const isFloating = computed<boolean>(() => store.windowMode === 'floating')
