@@ -1686,6 +1686,21 @@ async function openMetaAnalysis(path: string | null): Promise<void> {
     // WS/analysis error -> no spectrogram (backend is the only source now)
   }
 }
+// GT7.4-R2 + owner 2026-07-13: a Save or a voice mute edits the CURRENT .gnaural in place — the
+// schedule reloads but the path is unchanged, so the backend wave/spectrum (render cache is
+// mtime-keyed) would stay stale. Bump the reload key + re-open the meta analysis on same-path
+// schedule changes to force a fresh render (muted voices drop out of the mix). A file switch changes
+// the path and is handled by the displayFilePath watch + each view's own filePath watch, so guard on
+// the path to avoid a redundant double render on open.
+let lastSchedulePath: string | null = audio.displayFilePath
+watch(() => audio.gnauralSchedule, () => {
+  const path = audio.displayFilePath
+  if (path !== null && path === lastSchedulePath) {
+    spectrogramReloadKey.value += 1
+    void openMetaAnalysis(path)
+  }
+  lastSchedulePath = path
+})
 // Backend analysis is available -> render the stack.
 const hasSpectrogramData = computed(() => backendAnalysis.value !== null)
 // SF9.2: independent per-track heights; length is kept in sync with the track count
@@ -2476,15 +2491,10 @@ async function saveGtrackEdits(): Promise<void> {
       content: patched,
       expectedModifiedAtMs: doc.modifiedAtMs,
     })
-    // Rebuilds the model from the freshly-dumped file (dirty/undo reset to the saved baseline).
+    // Rebuilds the model from the freshly-dumped file (dirty/undo reset to the saved baseline). The
+    // same-path schedule change triggers the reload-key/meta re-open watch above (GT7.4-R2), so the
+    // backend wave/spectrum re-render to the just-saved edit — no explicit bump needed here.
     await audio.loadGnauralSchedule(filePath, true)
-    if (response.changed) {
-      // GT7.4-R2 (owner 2026-07-13): the .gnaural was rewritten (same path, new mtime). Re-open the
-      // backend spectrogram/waveform analyses so they render the edit (the server render cache is
-      // mtime-keyed). Replaces the old client-decode refresh (ensureGnauralSpectrogram).
-      spectrogramReloadKey.value += 1
-      void openMetaAnalysis(filePath)
-    }
     $q.notify({
       type: 'positive',
       message: response.changed ? t('audio.editorSaved') : t('audio.editorNoChanges'),
