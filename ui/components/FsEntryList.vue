@@ -78,7 +78,7 @@
     <div class="fs-entry-list__content">
       <!-- Tree view (FB5.1, FB-D18): hierarchical + lazy-loaded, independent of the flat dir listing.
            Roots -> lazy dirs -> type-filtered children; the quick filter drives q-tree's own :filter. -->
-      <div v-if="store.viewMode === 'tree'" class="fs-entry-list__tree">
+      <div v-if="store.viewMode === 'tree'" ref="treeWrapRef" class="fs-entry-list__tree">
         <div v-if="treeNodes.length === 0" class="fs-entry-list__center text-grey-6">{{ t('fsBrowser.empty') }}</div>
         <q-tree
           v-else
@@ -317,6 +317,7 @@ interface TreeLazyDetails {
 const treeNodes = ref<FsTreeNode[]>([])
 const treeExpanded = ref<string[]>([])
 const treeRef = ref<QTree | null>(null)
+const treeWrapRef = ref<HTMLElement | null>(null)
 
 const rootEntry = (root: FsRoot): FsEntry => ({
   name: root.label, path: root.path, isDir: true, isSymlink: false, size: 0, mtimeMs: 0, ext: '', kind: 'dir',
@@ -421,6 +422,9 @@ const revealPath = async (path: string): Promise<void> => {
     }
     if (i === crumbs.length - 1) {
       emit('select', node.entry)
+      // Scroll the revealed node into view — a deep branch can expand off-screen otherwise.
+      await nextTick()
+      treeWrapRef.value?.querySelector('.q-tree__node--selected')?.scrollIntoView({ block: 'nearest' })
     }
   }
 }
@@ -435,12 +439,16 @@ watch(() => store.currentPath, (path) => {
 })
 
 // (Re)build the tree when tree mode is entered, when roots load, or when a filter that changes the
-// visible children (hidden/type) flips. Immediate so an already-'tree' mode builds on mount.
+// visible children (hidden/type) flips. Immediate so an already-'tree' mode builds on mount. On
+// entering tree mode we also reveal the CURRENT folder (owner req.) — not just the collapsed roots.
 watch(
   [() => store.viewMode, () => store.roots, () => store.showHidden, () => store.typeFilter],
   ([mode]) => {
     if (mode === 'tree') {
       resetTree()
+      if (store.currentPath !== null) {
+        void revealPath(store.currentPath)
+      }
     }
   },
   { immediate: true },
