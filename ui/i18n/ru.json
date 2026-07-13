@@ -100,6 +100,7 @@
     "gtrackModeLabel": "Режим отображения",
     "gtrackVoices": "Голоса на этой дорожке",
     "gtrackRemoveLane": "Удалить дорожку",
+    "gtrackLaneRemoved": "Дорожка удалена",
     "gtrackNoVoices": "нет голосов",
     "gtrackMode_base": "Базовая частота",
     "gtrackMode_beat": "Частота биений",

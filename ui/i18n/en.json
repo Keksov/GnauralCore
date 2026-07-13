@@ -100,6 +100,7 @@
     "gtrackModeLabel": "Display mode",
     "gtrackVoices": "Voices in this lane",
     "gtrackRemoveLane": "Remove lane",
+    "gtrackLaneRemoved": "Lane removed",
     "gtrackNoVoices": "no voices",
     "gtrackMode_base": "Base freq",
     "gtrackMode_beat": "Beat freq",

@@ -221,7 +221,7 @@
                 @seek="handleSeek"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
-                @remove-lane="gtracks.removeLane(lane.id)"
+                @remove-lane="onRemoveLane(lane.id)"
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
                 @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
                 @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
@@ -1105,6 +1105,18 @@ function onAddLane(): void {
   newLaneTimer = setTimeout(() => { newLaneId.value = null; newLaneTimer = null }, 1800)
   void nextTick(() => {
     document.querySelector(`[data-gtrack-lane-wrap="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+// GT10.44 (owner 2026-07-13): the trash icon fully removes the lane (no confirm) but offers an
+// immediate Undo via the notification, restoring it at its previous position.
+function onRemoveLane(id: number): void {
+  const removed = gtracks.removeLane(id)
+  if (removed === null) return
+  $q.notify({
+    type: 'info',
+    message: t('audio.gtrackLaneRemoved'),
+    timeout: 6000,
+    actions: [{ label: t('audio.gtrackUndo'), color: 'white', handler: () => gtracks.restoreLane(removed.lane, removed.index) }],
   })
 }
 function handleSeek(aSec: number): void {

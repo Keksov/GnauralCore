@@ -375,8 +375,23 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persist()
     return id
   }
-  function removeLane(id: number): void {
+  // GT10.44 (owner 2026-07-13): fully REMOVE the lane (not hide it) and return a snapshot so the
+  // caller can offer an Undo that restores it at the same position.
+  function removeLane(id: number): { lane: GTrackLane; index: number } | null {
+    const index = lanes.value.findIndex((l) => l.id === id)
+    if (index < 0) return null
+    const lane = lanes.value[index]!
     lanes.value = lanes.value.filter((l) => l.id !== id)
+    persist()
+    return { lane, index }
+  }
+  /** GT10.44: restore a removed lane at its previous index (Undo of removeLane). */
+  function restoreLane(lane: GTrackLane, index: number): void {
+    if (lanes.value.some((l) => l.id === lane.id)) return // already back
+    const next = lanes.value.slice()
+    next.splice(Math.min(Math.max(index, 0), next.length), 0, lane)
+    lanes.value = next
+    nextLaneId = Math.max(nextLaneId, lane.id + 1)
     persist()
   }
   function setLaneMode(id: number, mode: GTrackMode): void {
@@ -1014,6 +1029,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     hiddenLanes,
     addLane,
     removeLane,
+    restoreLane,
     setLaneMode,
     setLaneSolo,
     setLaneSoloInline,
