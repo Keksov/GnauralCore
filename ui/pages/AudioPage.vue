@@ -342,6 +342,7 @@
                       :can-seek="canSeek"
                       @seek="handleSeek"
                       @toggle-play="handleTracksTogglePlay"
+                      @patch-voice-state="handleScheduleVoiceStatePatch"
                     >
                       <template #toolbar>
                         <gnaural-transport-controls

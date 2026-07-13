@@ -724,6 +724,16 @@
                     :aria-label="t('audio.trackShow')"
                     @click="gtracks.setVoiceVisible(v.id, !gtracks.isVoiceVisible(v.id))"
                   />
+                  <!-- BK8a: per-voice playback mute (persisted voice_mute), migrated from ScheduleView. -->
+                  <q-btn
+                    dense flat round size="sm"
+                    :icon="isVoiceMuted(v.id) ? 'volume_off' : 'volume_up'"
+                    :color="isVoiceMuted(v.id) ? 'grey-7' : undefined"
+                    :aria-label="isVoiceMuted(v.id) ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute')"
+                    @click="onToggleVoiceMuted(v.id)"
+                  >
+                    <q-tooltip>{{ isVoiceMuted(v.id) ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
+                  </q-btn>
                 </div>
               </q-item-section>
             </q-item>
@@ -1090,6 +1100,8 @@ const emit = defineEmits<{
   (event: 'seek', sec: number): void
   /** Space hotkey — AudioPage owns the transport, so toggling play is delegated up. */
   (event: 'toggle-play'): void
+  /** BK8a: per-voice playback mute (persisted voice_mute). AudioPage owns the schedule patch+reload. */
+  (event: 'patch-voice-state', patch: { voiceId: number; muted?: boolean; hidden?: boolean; color?: string }): void
 }>()
 
 // Aliases keep the moved template byte-identical to the frozen original.
@@ -2481,6 +2493,23 @@ async function saveGtrackEdits(): Promise<void> {
   } finally {
     savingEdits.value = false
   }
+}
+
+// BK8a (owner 2026-07-13): per-voice playback mute, migrated from the removed "Воспроизведение"
+// tab's GnauralScheduleView. The muted flag is persisted in the .gnaural (voice_mute); AudioPage owns
+// the server patch + reload via patch-voice-state. Mute state is read from the dump — the editor
+// model does not carry it (editableToSchedule drops mute/hidden).
+function isVoiceMuted(aVoiceId: number): boolean {
+  return audio.gnauralSchedule?.voices.find((v) => v.id === aVoiceId)?.muted ?? false
+}
+async function onToggleVoiceMuted(aVoiceId: number): Promise<void> {
+  // A voice-state patch reloads the schedule, which rebuilds the editor model -> unsaved curve edits
+  // would be lost. Persist them first (lossless); abort the mute if the save did not clear dirty.
+  if (gtracks.dirty.value) {
+    await saveGtrackEdits()
+    if (gtracks.dirty.value) return
+  }
+  emit('patch-voice-state', { voiceId: aVoiceId, muted: !isVoiceMuted(aVoiceId) })
 }
 
 function handleTracksKeyDown(event: KeyboardEvent): void {
