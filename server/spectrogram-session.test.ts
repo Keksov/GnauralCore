@@ -200,6 +200,7 @@ describe("SpectrogramSession contract (U1.3)", () => {
 
   test("GT4.3: soloVoiceIds is passed to acquire and keys distinct warm analyses", async () => {
     const acquired: Array<readonly number[] | undefined> = []
+    let releaseCount = 0
     const mockManager = {
       send: async (aCmd: Record<string, unknown>) => {
         if (aCmd.cmd === "open-analysis") {
@@ -216,7 +217,7 @@ describe("SpectrogramSession contract (U1.3)", () => {
     const mockSource = {
       acquire: async (_aPath: string, _aKind: string, aSolo?: readonly number[]) => {
         acquired.push(aSolo)
-        return { wavPath: "/fake.wav", release: async () => undefined }
+        return { wavPath: "/fake.wav", mtimeMs: 1, release: async () => { releaseCount += 1 } }
       },
       dispose: async () => undefined,
     }
@@ -234,8 +235,60 @@ describe("SpectrogramSession contract (U1.3)", () => {
       expect(a2.type).toBe("spectrogram:opened")
       if (a.type !== "spectrogram:opened" || b.type !== "spectrogram:opened" || a2.type !== "spectrogram:opened") return
       expect(a.analysis.analysisId).not.toBe(b.analysis.analysisId) // distinct solo set -> distinct analysis
-      expect(a2.analysis.analysisId).toBe(a.analysis.analysisId) // same solo set -> warm reuse
-      expect(acquired).toEqual([[1], [2]]) // acquire got each solo set; a2 reused warm (no 3rd acquire)
+      expect(a2.analysis.analysisId).toBe(a.analysis.analysisId) // same solo set + mtime -> warm reuse
+      // GT7.4-R2: every open now acquires first (to read the source mtime for the warm-cache key). The
+      // warm hit (a2) releases its extra acquisition, so a live render is still held once per analysis.
+      expect(acquired).toEqual([[1], [2], [1]])
+      expect(releaseCount).toBe(1)
+    } finally {
+      await session.dispose()
+    }
+  })
+
+  test("GT7.4-R2: an edited+saved file (changed mtime) misses the warm cache and re-opens", async () => {
+    // The client re-opens the same path/params after Ctrl+S. Before R2 this returned the stale warm
+    // analysis (mtime absent from the key); now the changed mtime forces a fresh open + re-render.
+    let mtimeMs = 100
+    const acquiredMtimes: number[] = []
+    const mockManager = {
+      send: async (aCmd: Record<string, unknown>) => {
+        if (aCmd.cmd === "open-analysis") {
+          return {
+            ok: true, sampleRate: 44100, windowSize: 2048, hopSize: 512, fftLength: 2048,
+            zeroPaddingFactor: 1, binCount: 4, frameCount: 8, durationS: 1,
+            data: "magnitude", fscale: "log", scale: "log", startHz: 0, stopHz: 22050, mode: "combined",
+          }
+        }
+        return { ok: true }
+      },
+      shutdown: async () => undefined,
+    }
+    const mockSource = {
+      acquire: async () => {
+        acquiredMtimes.push(mtimeMs)
+        return { wavPath: `/fake-${mtimeMs}.wav`, mtimeMs, release: async () => undefined }
+      },
+      dispose: async () => undefined,
+    }
+    const session = new SpectrogramSession({
+      resolveSource: async () => ({ filePath: "/x.gnaural", fileKind: "gnaural" as const }),
+      workerManager: mockManager as unknown as SpectrogramWorkerManager,
+      audioSource: mockSource as unknown as SpectrogramAudioSource,
+    })
+    try {
+      const open = { type: "spectrogram:open" as const, window: 2048, hop: 512 }
+      const first = await session.handle({ ...open, requestId: "1" })
+      // Re-open with the SAME mtime -> warm reuse (no new analysis).
+      const same = await session.handle({ ...open, requestId: "2" })
+      // Simulate a save: the file's mtime changes on disk.
+      mtimeMs = 200
+      const afterSave = await session.handle({ ...open, requestId: "3" })
+      if (first.type !== "spectrogram:opened" || same.type !== "spectrogram:opened" || afterSave.type !== "spectrogram:opened") {
+        throw new Error("expected all opens to succeed")
+      }
+      expect(same.analysis.analysisId).toBe(first.analysis.analysisId) // unchanged file -> warm reuse
+      expect(afterSave.analysis.analysisId).not.toBe(first.analysis.analysisId) // changed mtime -> fresh open
+      expect(acquiredMtimes).toEqual([100, 100, 200])
     } finally {
       await session.dispose()
     }

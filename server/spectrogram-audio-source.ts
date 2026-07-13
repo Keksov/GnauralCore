@@ -41,6 +41,12 @@ export interface SpectrogramWavHandle {
   readonly fileKind: AudioFileKind
   /** True when wavPath is a temp render (vs a pass-through source WAV). */
   readonly rendered: boolean
+  /**
+   * Source-file mtime (ms) this handle was resolved for. Part of the render cache key, and
+   * surfaced so callers (the session's warm-analysis LRU) can invalidate on edit — for a
+   * pass-through wav/flac the wavPath is stable across edits, so mtime is the only signal.
+   */
+  readonly mtimeMs: number
   /** Release this acquisition; deletes the temp render when the last holder releases. */
   release(): Promise<void>
 }
@@ -162,6 +168,7 @@ export class SpectrogramAudioSource {
       wavPath: acquired.wavPath,
       fileKind: aFileKind,
       rendered: acquired.tempDir !== null,
+      mtimeMs,
       release,
     }
   }

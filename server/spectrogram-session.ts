@@ -317,8 +317,12 @@ export class SpectrogramSession {
     aFileKind: string,
     aParams: SpectrogramAnalysisParams,
     aSoloVoiceIds: readonly number[],
+    aMtimeMs: number,
   ): string {
-    return `${aFilePath} ${aFileKind} solo=${aSoloVoiceIds.join(",")} ${JSON.stringify(aParams)}`
+    // GT7.4-R2 (owner 2026-07-13): mtime is part of the key so an edited-then-saved file (same
+    // path + params) MISSES the warm cache and re-renders. Without it, close+open after a save
+    // returned the stale warm analysis and the spectrogram never refreshed.
+    return `${aFilePath} ${aFileKind} solo=${aSoloVoiceIds.join(",")} mtime=${aMtimeMs} ${JSON.stringify(aParams)}`
   }
 
   private findByKey(aKey: string): CachedAnalysis | undefined {
@@ -366,18 +370,24 @@ export class SpectrogramSession {
     // GT4.3: a solo voice set (gnaural only) selects a muted-others render; it's part of the cache
     // key so a solo analysis is distinct from the full mix and from other solo sets.
     const solo = this.normalizeSolo(aMessage.soloVoiceIds)
-    const key = this.cacheKey(source.filePath, source.fileKind, params, solo)
 
-    // SF7.3: reuse a warm analysis for the same file+params -> skip re-decode/re-open.
+    // GT7.4-R2: acquire the source FIRST (render is mtime-keyed + refcounted; cheap when the file is
+    // unchanged) so the warm-cache key can include the mtime. A file edited+saved in place (same path
+    // + params) then MISSES the warm cache and re-renders instead of returning the stale analysis.
+    const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind, solo)
+    const key = this.cacheKey(source.filePath, source.fileKind, params, solo, wavHandle.mtimeMs)
+
+    // SF7.3: reuse a warm analysis for the same file+params(+mtime) -> skip the worker re-open. Release
+    // the extra acquisition we just took; the warm analysis already holds its own source ref.
     const cached = this.findByKey(key)
     if (cached !== undefined) {
       cached.lastUse = ++this.useSeq
+      await wavHandle.release().catch(() => undefined)
       return { type: "spectrogram:opened", requestId: aMessage.requestId, analysis: cached.info }
     }
 
-    // Concurrent analyses allowed (e.g. stereo L/R). Each open acquires its own
-    // source handle so per-analysis close/release is independent.
-    const wavHandle = await this.audioSource.acquire(source.filePath, source.fileKind, solo)
+    // Concurrent analyses allowed (e.g. stereo L/R). Each open holds its own source
+    // handle so per-analysis close/release is independent.
     const analysisId = randomUUID()
     try {
       const response = this.requireOk(
@@ -437,7 +447,7 @@ export class SpectrogramSession {
       const info = toAnalysisInfo(analysisId, response)
       this.analyses.set(analysisId, {
         analysisId,
-        key: this.cacheKey(existing.filePath, existing.fileKind, params, existing.soloVoiceIds),
+        key: this.cacheKey(existing.filePath, existing.fileKind, params, existing.soloVoiceIds, existing.wavHandle.mtimeMs),
         filePath: existing.filePath,
         fileKind: existing.fileKind,
         wavHandle: existing.wavHandle,
