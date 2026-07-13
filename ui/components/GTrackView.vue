@@ -188,6 +188,9 @@ interface Props {
   /** owner 2026-07-13: whether the lane's voice(s) are included in the OVERALL wave/spectrum. Drives
    *  the graph-inclusion button under the eye (independent of hide + mute). */
   inMix?: boolean
+  /** owner 2026-07-14: shade the binaural beat band (base ± beat/2) around the base curve, like the
+   *  Schedule tab. Only has an effect in 'base' mode. Controlled by a per-lane setting. */
+  showBeatBand?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -202,6 +205,7 @@ const props = withDefaults(defineProps<Props>(), {
   inlineUnderlay: false,
   muted: false,
   inMix: true,
+  showBeatBand: false,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -309,7 +313,7 @@ const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 // GT10.34-followup: the freq axes gain headroom so a vertex can be dragged past the current data
 // range (otherwise the max/min point sits on the edge and clamps to itself). Active in point-edit
 // mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
-const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value))
+const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand))
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const view = computed<TimeWindow>({
@@ -400,6 +404,25 @@ function draw(): void {
     const pts = voice.points
     if (pts.length === 0) return
     const color = colorForVoice(voice, vi)
+    // owner 2026-07-14: shade the binaural beat band (base ± beat/2) under the base curve — the two
+    // carrier frequencies the ears actually hear — mirroring the Schedule tab. 'base' mode only.
+    if (props.mode === 'base' && props.showBeatBand) {
+      ctx.beginPath()
+      for (let i = 0; i < pts.length; i += 1) {
+        const x = timeToX(pts[i]!.timeSec)
+        const y = valueToY(pts[i]!.baseFreq + pts[i]!.beatFreqHalf)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      for (let i = pts.length - 1; i >= 0; i -= 1) {
+        ctx.lineTo(timeToX(pts[i]!.timeSec), valueToY(pts[i]!.baseFreq - pts[i]!.beatFreqHalf))
+      }
+      ctx.closePath()
+      ctx.fillStyle = color
+      ctx.globalAlpha = 0.18
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
     // GT2.8: Volume lanes draw classic-editor style FILLED envelopes under each voice's curve.
     if (props.mode === 'volume') {
       ctx.beginPath()

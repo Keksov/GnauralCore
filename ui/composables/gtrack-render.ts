@@ -130,7 +130,7 @@ export function ctrlStepValue(current: number, field: string, direction: 1 | -1)
   return next
 }
 
-export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false): GTrackAxis {
+export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false, beatBand = false): GTrackAxis {
   if (mode === 'volume') {
     return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
   }
@@ -146,6 +146,14 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, edi
       if (mode === 'base' && v <= 0) continue
       if (v < lo) lo = v
       if (v > hi) hi = v
+      // owner 2026-07-14: when the beat band is shown, widen the base axis to fit base ± beat/2 so the
+      // band is fully visible (not clipped) — matching the Schedule tab's frequency range.
+      if (mode === 'base' && beatBand) {
+        const upper = p.baseFreq + p.beatFreqHalf
+        const lower = p.baseFreq - p.beatFreqHalf
+        if (upper > hi) hi = upper
+        if (lower > 0 && lower < lo) lo = lower
+      }
     }
   }
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) {

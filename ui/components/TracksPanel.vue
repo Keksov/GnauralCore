@@ -221,6 +221,7 @@
                 :accent-color="laneAccentColor(lane)"
                 :muted="laneMuted(lane)"
                 :in-mix="laneInMix(lane)"
+                :show-beat-band="lane.beatBand"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
                 @open-settings="gtrackSettingsId = lane.id"
@@ -467,6 +468,15 @@
                 toggle-color="primary"
                 :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
                 @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
+              />
+              <!-- owner 2026-07-14: beat-band shading (base ± beat/2), like the Schedule tab. Base mode only. -->
+              <q-toggle
+                v-if="gtrackSettingsLane.mode === 'base'"
+                class="q-mt-sm"
+                :model-value="gtrackSettingsLane.beatBand"
+                dense
+                :label="t('audio.gtrackBeatBand')"
+                @update:model-value="(v: boolean) => gtracks.setLaneBeatBand(gtrackSettingsLane!.id, v)"
               />
             </q-card-section>
             <q-separator />
