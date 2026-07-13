@@ -218,6 +218,7 @@ import { useI18n } from 'vue-i18n'
 import type { QInput, QTree, QVirtualScroll } from 'quasar'
 import type { FsEntry, FsRoot } from '@protocol'
 import { audioFileKindForExt, fsNameMatches, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
+import { useFileOpenPanelState } from '../stores/file-open-panel'
 
 const props = defineProps<{
   readonly selectedPath: string | null
@@ -230,6 +231,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const store = useFsBrowserStore()
+// PW1.2: the window model moved out of the store into the universal panel state (@panel).
+const panel = useFileOpenPanelState()
 
 const tableScroll = ref<QVirtualScroll | null>(null)
 const listScroll = ref<QVirtualScroll | null>(null)
@@ -237,7 +240,7 @@ const filterInput = ref<QInput | null>(null)
 
 const entries = computed<readonly FsEntry[]>(() => store.visibleEntries)
 // Narrow vertical layout (left/right dock): breadcrumbs move to their own row under the buttons.
-const isColumn = computed<boolean>(() => store.windowMode === 'left' || store.windowMode === 'right')
+const isColumn = computed<boolean>(() => panel.mode === 'left' || panel.mode === 'right')
 const isTree = computed<boolean>(() => store.viewMode === 'tree')
 
 // Icon-only view toggle; each option renders via a named slot so it can carry a tooltip.

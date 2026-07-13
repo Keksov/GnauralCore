@@ -70,8 +70,7 @@
     <div class="audio-page__dock-wrap" :class="dockWrapClass">
       <Teleport to="body" :disabled="!fsFloating">
         <FileOpenDialog
-          v-if="fsBrowser.open"
-          v-model="fsBrowser.open"
+          v-if="filePanel.open"
           :initial-path="fileDialogInitialPath"
           @open="handleExternalFileOpen"
         />
@@ -423,7 +422,7 @@ import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { useAudioStore } from '../stores/audio'
-import { useFsBrowserStore } from '../stores/fs-browser'
+import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -595,16 +594,17 @@ const fileDialogInitialPath = computed<string | undefined>(() => {
 
 // FB4.3 (FB-D13): the open dialog is a dockable panel. When floating it teleports to <body>; when
 // docked it is a flex sibling of the page inner, and the form reflows around it.
-const fsBrowser = useFsBrowserStore()
-const fsFloating = computed<boolean>(() => fsBrowser.windowMode === 'floating')
+// PW1.2: the window model lives in the universal panel state (@panel), not the fs-browser store.
+const filePanel = useFileOpenPanelState()
+const fsFloating = computed<boolean>(() => filePanel.mode === 'floating')
 const dockWrapClass = computed<string>(() =>
-  fsBrowser.windowMode === 'top' || fsBrowser.windowMode === 'bottom'
+  filePanel.mode === 'top' || filePanel.mode === 'bottom'
     ? 'audio-page__dock-wrap--col'
     : 'audio-page__dock-wrap--row',
 )
 
 function openFileDialog(): void {
-  fsBrowser.open = true
+  filePanel.open = true
 }
 
 async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Promise<void> {

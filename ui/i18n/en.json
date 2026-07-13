@@ -421,13 +421,7 @@
   },
   "fsBrowser": {
     "title": "Open file",
-    "dockMenu": "Window position",
     "sectionFiles": "File list",
-    "dockFloat": "Floating window",
-    "dockLeft": "Dock left",
-    "dockRight": "Dock right",
-    "dockTop": "Dock top",
-    "dockBottom": "Dock bottom",
     "open": "Open",
     "cancel": "Cancel",
     "up": "Up one level",
