@@ -27,6 +27,44 @@
       </q-btn-dropdown>
     </div>
 
+    <!-- GT10.29/GT10.45 (owner 2026-07-13): settings dialog at PAGE level so the Edit menu / Ctrl+P
+         can open it regardless of which panels are shown (it used to live inside the Presets sidebar,
+         which is v-if="filesPanelOpen" — so it wouldn't open with that panel closed). Two-pane:
+         subsystem list (left) + the selected subsystem's settings (right). -->
+    <q-dialog v-model="settingsDialogOpen">
+      <q-card class="audio-page__settings-dialog">
+        <q-card-section class="row items-center q-py-sm">
+          <div class="text-h6">{{ t('audio.openSettings') }}</div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.close')" />
+        </q-card-section>
+        <q-separator />
+        <div class="audio-page__settings-dialog-body row no-wrap">
+          <q-list class="audio-page__settings-nav">
+            <q-item
+              v-for="sub in settingsSubsystems"
+              :key="sub.id"
+              clickable
+              :active="settingsSubsystem === sub.id"
+              active-class="audio-page__settings-nav--active"
+              @click="settingsSubsystem = sub.id"
+            >
+              <q-item-section avatar><q-icon :name="sub.icon" /></q-item-section>
+              <q-item-section>{{ t(sub.labelKey) }}</q-item-section>
+            </q-item>
+          </q-list>
+          <q-separator vertical />
+          <div class="audio-page__settings-content">
+            <GnauralSettingsTab v-if="settingsSubsystem === 'cache'" />
+          </div>
+        </div>
+        <q-separator />
+        <q-card-actions align="right">
+          <q-btn flat no-caps :label="t('audio.close')" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- FB4.3 (FB-D13): docked panel + editor reflow. Floating -> teleported to <body> (fixed
          overlay, no ancestor clipping); docked -> a flex sibling of the inner form. -->
     <div class="audio-page__dock-wrap" :class="dockWrapClass">
@@ -72,43 +110,6 @@
           <q-card-actions align="between">
             <q-btn flat color="primary" icon="refresh" :label="t('audio.refresh')" :loading="audio.presetsLoading" @click="refreshPresets" />
           </q-card-actions>
-
-          <!-- GT10.17 (owner req. 66): audio settings live on the Audio tab now. -->
-          <!-- GT10.29 (owner req. 78): title + close (X) and a Close button.
-               GT10.45 (owner 2026-07-13): two-pane — subsystem list (left) + its settings (right). -->
-          <q-dialog v-model="settingsDialogOpen">
-            <q-card class="audio-page__settings-dialog">
-              <q-card-section class="row items-center q-py-sm">
-                <div class="text-h6">{{ t('audio.openSettings') }}</div>
-                <q-space />
-                <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.close')" />
-              </q-card-section>
-              <q-separator />
-              <div class="audio-page__settings-dialog-body row no-wrap">
-                <q-list class="audio-page__settings-nav">
-                  <q-item
-                    v-for="sub in settingsSubsystems"
-                    :key="sub.id"
-                    clickable
-                    :active="settingsSubsystem === sub.id"
-                    active-class="audio-page__settings-nav--active"
-                    @click="settingsSubsystem = sub.id"
-                  >
-                    <q-item-section avatar><q-icon :name="sub.icon" /></q-item-section>
-                    <q-item-section>{{ t(sub.labelKey) }}</q-item-section>
-                  </q-item>
-                </q-list>
-                <q-separator vertical />
-                <div class="audio-page__settings-content">
-                  <GnauralSettingsTab v-if="settingsSubsystem === 'cache'" />
-                </div>
-              </div>
-              <q-separator />
-              <q-card-actions align="right">
-                <q-btn flat no-caps :label="t('audio.close')" v-close-popup />
-              </q-card-actions>
-            </q-card>
-          </q-dialog>
 
           <q-separator />
 
