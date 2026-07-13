@@ -240,9 +240,8 @@
                     class="audio-page__player-view-tabs"
                   >
                     <q-tab name="main" :icon="playerViewMainTabIcon" :label="playerViewMainTabLabel" />
-                    <q-tab name="spectrogram" icon="graphic_eq" :label="t('audio.spectrogramTab')" />
-                    <!-- GT2.4 (GT-D10): the "Треки" tab hosts ALL new track-stack functionality;
-                         the Playback + Spectrogram tabs above stay frozen for debugging. -->
+                    <!-- GT7.5 (owner 2026-07-13): the Спектрограмма tab was removed (its view lives
+                         in Треки). GT2.4: the "Треки" tab hosts ALL new track-stack functionality. -->
                     <q-tab name="tracks" icon="stacked_line_chart" :label="t('audio.tracksTab')" />
                   </q-tabs>
                 </div>
@@ -334,318 +333,6 @@
                     </div>
                   </q-tab-panel>
 
-                  <q-tab-panel name="spectrogram" class="audio-page__panel audio-page__player-view-panel q-pa-none">
-                    <div class="audio-page__output-section audio-page__output-section--spectrogram">
-                      <div class="audio-page__player-toolbar">
-                        <gnaural-transport-controls
-                          class="audio-page__player-controls"
-                          :start-stop-icon="startStopButtonIcon"
-                          :start-stop-label="startStopButtonLabel"
-                          :start-stop-color="startStopButtonColor"
-                          :start-stop-flat="startStopButtonFlat"
-                          :start-stop-disabled="startStopDisabled"
-                          :pause-resume-icon="pauseResumeButtonIcon"
-                          :pause-resume-label="pauseResumeButtonLabel"
-                          :pause-resume-disabled="pauseResumeDisabled"
-                          :show-export="canExportCurrentFile"
-                          :export-disabled="exportingFormat !== null"
-                          :export-loading="exportingFormat !== null"
-                          @start-stop="handleStartStop"
-                          @pause-resume="handlePauseResume"
-                          @export="downloadSelectedAudio"
-                        />
-                      </div>
-
-                      <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
-                        {{ audio.spectrogramError }}
-                      </q-banner>
-                      <div v-else-if="audio.spectrogramBuffer === null && !audio.spectrogramLoading" class="audio-page__empty text-grey-7">
-                        {{ noSpectrogramLabel }}
-                      </div>
-                      <div v-else-if="audio.spectrogramBuffer !== null" class="row no-wrap items-start" style="gap: 16px;">
-                        <div class="col column" style="min-width: 0;">
-                          <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
-                          <div class="audio-page__spectrogram-header">
-                            <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
-                            <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
-                            <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
-                            <q-space />
-                            <!-- SF28.5: hidden-tracks dropdown, just left of the view-mode dropdown. -->
-                            <q-btn-dropdown
-                              v-if="hiddenTrackList.length > 0"
-                              dense flat no-caps size="sm"
-                              icon="visibility_off"
-                              :label="`${t('audio.hiddenTracks')} (${hiddenTrackList.length})`"
-                              :aria-label="t('audio.hiddenTracks')"
-                            >
-                              <q-list dense style="min-width: 190px">
-                                <q-item
-                                  v-for="h in hiddenTrackList"
-                                  :key="h.key"
-                                  clickable
-                                  v-close-popup
-                                  @click="showTrack(h.kind, h.channel)"
-                                >
-                                  <q-item-section avatar style="min-width: 26px">
-                                    <q-icon name="visibility" size="18px" />
-                                  </q-item-section>
-                                  <q-item-section>{{ h.label }}</q-item-section>
-                                  <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
-                                </q-item>
-                              </q-list>
-                            </q-btn-dropdown>
-                            <!-- SF23.3: Audacity-style view-mode dropdown (waveform / spectrogram / both / overlay). -->
-                            <q-btn-dropdown dense flat no-caps size="sm" icon="layers" :label="viewModeLabel" :aria-label="t('audio.viewMode')">
-                              <q-list dense style="min-width: 190px">
-                                <q-item
-                                  v-for="m in AUDIO_VIEW_MODES"
-                                  :key="m"
-                                  clickable
-                                  v-close-popup
-                                  :active="m === viewMode"
-                                  @click="viewMode = m"
-                                >
-                                  <q-item-section avatar style="min-width: 26px">
-                                    <q-icon v-if="m === viewMode" name="check" size="18px" />
-                                  </q-item-section>
-                                  <q-item-section>{{ t(`audio.viewMode_${m}`) }}</q-item-section>
-                                </q-item>
-                              </q-list>
-                            </q-btn-dropdown>
-                            <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
-                            <q-btn
-                              dense flat round size="sm"
-                              icon="tune"
-                              :color="spectrogramSettingsOpen ? 'primary' : undefined"
-                              :aria-label="t('audio.spectrogramSettingsTitle')"
-                              aria-controls="spectrogram-settings-panel"
-                              :aria-expanded="spectrogramSettingsOpen"
-                              @click="toggleSpectrogramSettings"
-                            />
-                          </div>
-                          <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
-                               SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-                          <div v-if="showWaveform" class="audio-page__waveform-stack">
-                            <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
-                              <waveform-view
-                                :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
-                                :file-path="audio.displayFilePath"
-                                :analysis="spectrogramAnalysisForChannel(wtrack.channel)"
-                                :channel="wtrack.channel"
-                                :label="wtrack.label"
-                                :scale="wfScale(wtrack.channel)"
-                                :color="wfColor(wtrack.channel)"
-                                :playhead-sec="displayedPositionSec"
-                                :seekable="canSeek"
-                                :show-time-axis-top="wIndex === 0"
-                                :show-time-axis-bottom="wIndex === waveformTracks.length - 1 && !showSpectrogram"
-                                :height="waveformTrackHeights[wIndex]"
-                                data-track-kind="waveform"
-                                :data-track-channel="wtrack.channel"
-                                :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'waveform' && trackDrag?.channel === wtrack.channel }"
-                                @seek="handleSeek"
-                                @open-settings="openWaveformSettings(wtrack.channel)"
-                                @hide="hideTrack('waveform', wtrack.channel)"
-                                @reorder-grip="onTrackGripDown('waveform', wtrack.channel, $event)"
-                              />
-                              <div
-                                v-if="wIndex < waveformTracks.length - 1"
-                                class="audio-page__spectrogram-divider"
-                                role="separator"
-                                aria-orientation="horizontal"
-                                :aria-label="t('audio.spectrogramResizeHandle')"
-                                @pointerdown="onWaveformDividerPointerDown($event, wIndex)"
-                                @pointermove="onWaveformDividerPointerMove"
-                                @pointerup="onWaveformDividerPointerUp"
-                                @pointercancel="onWaveformDividerPointerUp"
-                              />
-                            </template>
-                            <div
-                              class="audio-page__spectrogram-bottom-handle"
-                              role="separator"
-                              aria-orientation="horizontal"
-                              :aria-label="t('audio.spectrogramResizeHandle')"
-                              @pointerdown="onWaveformBottomPointerDown"
-                              @pointermove="onWaveformBottomPointerMove"
-                              @pointerup="onWaveformBottomPointerUp"
-                              @pointercancel="onWaveformBottomPointerUp"
-                            />
-                          </div>
-                          <div v-if="showSpectrogram" class="audio-page__spectrogram-stack">
-                          <template v-for="(track, index) in spectrogramTracks" :key="track.key">
-                            <spectrogram-view
-                              :ref="(el) => setPrimarySpectrogramRef(el, index)"
-                              :file-path="audio.displayFilePath"
-                              :analysis="track.analysis"
-                              :render="spectrogramStore.renderOptions"
-                              :window-override="spectrogramWindowOverride"
-                              :waveform-overlay="waveformOverlay"
-                              :waveform-buffer="audio.spectrogramBuffer"
-                              :waveform-scale="wfScale(track.channel)"
-                              :waveform-color="wfColor(track.channel)"
-                              :waveform-opacity="wfOpacity(track.channel)"
-                              :waveform-channel="track.channel"
-                              :playhead-sec="displayedPositionSec"
-                              :seekable="canSeek"
-                              :label="track.label"
-                              :primary="track.primary"
-                              :show-time-axis-top="index === 0 && !showWaveform"
-                              :show-time-axis-bottom="index === spectrogramTracks.length - 1"
-                              :height="spectrogramTrackHeights[index]"
-                              data-track-kind="spectrogram"
-                              :data-track-channel="track.channel"
-                              :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'spectrogram' && trackDrag?.channel === track.channel }"
-                              @seek="handleSeek"
-                              @open-settings="openWaveformSettings(track.channel)"
-                              @hide="hideTrack('spectrogram', track.channel)"
-                              @reorder-grip="onTrackGripDown('spectrogram', track.channel, $event)"
-                            />
-                            <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
-                            <div
-                              v-if="index < spectrogramTracks.length - 1"
-                              class="audio-page__spectrogram-divider"
-                              role="separator"
-                              aria-orientation="horizontal"
-                              :aria-label="t('audio.spectrogramResizeHandle')"
-                              @pointerdown="onSpectrogramDividerPointerDown($event, index)"
-                              @pointermove="onSpectrogramDividerPointerMove"
-                              @pointerup="onSpectrogramDividerPointerUp"
-                              @pointercancel="onSpectrogramDividerPointerUp"
-                            />
-                          </template>
-                            <!-- SF9.3: bottom handle resizes ALL tracks uniformly (SF-D20) -->
-                            <div
-                              class="audio-page__spectrogram-bottom-handle"
-                              role="separator"
-                              aria-orientation="horizontal"
-                              :aria-label="t('audio.spectrogramResizeHandle')"
-                              @pointerdown="onSpectrogramBottomPointerDown"
-                              @pointermove="onSpectrogramBottomPointerMove"
-                              @pointerup="onSpectrogramBottomPointerUp"
-                              @pointercancel="onSpectrogramBottomPointerUp"
-                            />
-                          </div>
-                          <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
-                               B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
-                          <div v-if="showSpectrogram" class="audio-page__minimap-wrap">
-                            <spectrogram-minimap
-                              :duration-sec="spectrogramDuration"
-                              :file-path="audio.displayFilePath"
-                              :analysis="spectrogramTracks[0]?.analysis"
-                              :render="spectrogramStore.renderOptions"
-                              :mode="minimapMode"
-                              :waveform-color="wfColor(0)"
-                              v-model:view="spectrogramView"
-                            />
-                            <!-- SF26: gear opens the minimap settings dialog. -->
-                            <q-btn
-                              dense flat round size="xs"
-                              icon="settings"
-                              class="audio-page__minimap-gear"
-                              :aria-label="t('audio.minimapMode')"
-                              @click="minimapSettingsOpen = true"
-                            >
-                              <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
-                            </q-btn>
-                          </div>
-
-                          <!-- SF26: minimap settings dialog (thumbnail content). -->
-                          <q-dialog v-model="minimapSettingsOpen">
-                            <q-card class="audio-page__minimap-dialog">
-                              <q-card-section class="row items-center q-pb-sm">
-                                <div class="text-subtitle1">{{ t('audio.minimapMode') }}</div>
-                                <q-space />
-                                <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
-                              </q-card-section>
-                              <q-separator />
-                              <q-list>
-                                <q-item
-                                  v-for="m in MINIMAP_MODES"
-                                  :key="m"
-                                  clickable
-                                  v-close-popup
-                                  :active="m === minimapMode"
-                                  active-class="text-primary"
-                                  @click="minimapMode = m"
-                                >
-                                  <q-item-section avatar style="min-width: 30px">
-                                    <q-icon v-if="m === minimapMode" name="check" size="20px" />
-                                  </q-item-section>
-                                  <q-item-section>{{ t(`audio.minimapMode_${m}`) }}</q-item-section>
-                                </q-item>
-                              </q-list>
-                            </q-card>
-                          </q-dialog>
-
-                          <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
-                          <q-dialog v-model="waveformSettingsOpen">
-                            <q-card class="audio-page__minimap-dialog">
-                              <q-card-section class="row items-center q-pb-sm">
-                                <div class="text-subtitle1">
-                                  {{ t('audio.waveformStyle') }}<span v-if="wfDlgLabel"> — {{ wfDlgLabel }}</span>
-                                </div>
-                                <q-space />
-                                <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
-                              </q-card-section>
-                              <q-separator />
-                              <q-card-section class="q-gutter-md">
-                                <div class="row items-center justify-between no-wrap">
-                                  <span class="text-body2">{{ t('audio.waveformColor') }}</span>
-                                  <input type="color" v-model="wfDlgColor" class="audio-page__wf-color" />
-                                </div>
-                                <div class="row items-center justify-between no-wrap">
-                                  <span class="text-body2">{{ t('audio.waveformScale') }}</span>
-                                  <q-btn-toggle
-                                    v-model="wfDlgScale"
-                                    dense unelevated no-caps
-                                    toggle-color="primary"
-                                    :options="[{ label: 'lin', value: 'linear' }, { label: 'dB', value: 'db' }]"
-                                  />
-                                </div>
-                                <div v-if="viewMode === 'overlay'">
-                                  <div class="text-body2 q-mb-xs">{{ t('audio.waveformOpacity') }}: {{ Math.round(wfDlgOpacity * 100) }}%</div>
-                                  <q-slider v-model="wfDlgOpacity" :min="0.1" :max="1" :step="0.05" dense />
-                                </div>
-                              </q-card-section>
-                            </q-card>
-                          </q-dialog>
-                        </div>
-                      </div>
-
-                      <!-- SF3.1 (SF-D4/D5): settings panel as a toggleable overlay "Параметры" -->
-                      <transition name="spectrogram-settings-backdrop">
-                        <div
-                          v-if="spectrogramSettingsOpen"
-                          class="audio-page__spectrogram-settings-backdrop"
-                          aria-hidden="true"
-                          @click="closeSpectrogramSettings"
-                        />
-                      </transition>
-                      <transition name="spectrogram-settings-panel">
-                        <aside
-                          v-if="spectrogramSettingsOpen"
-                          id="spectrogram-settings-panel"
-                          class="audio-page__spectrogram-settings-panel"
-                          role="dialog"
-                          aria-modal="false"
-                          :aria-label="t('audio.spectrogramSettingsTitle')"
-                        >
-                          <div class="audio-page__spectrogram-settings-header">
-                            <div class="audio-page__spectrogram-settings-title">{{ t('audio.spectrogramSettingsTitle') }}</div>
-                            <q-btn
-                              flat round dense
-                              icon="close"
-                              :aria-label="t('audio.spectrogramSettingsClose')"
-                              @click="closeSpectrogramSettings"
-                            />
-                          </div>
-                          <div class="audio-page__spectrogram-settings-body">
-                            <spectrogram-settings-panel />
-                          </div>
-                        </aside>
-                      </transition>
-                    </div>
-                  </q-tab-panel>
 
                   <!-- GT2.4 (GT-D10): the "Треки" tab — the whole new track stack lives in
                        TracksPanel.vue (its own zoom/selection state + storage keys). Transport
@@ -861,7 +548,9 @@ const spectrogramShared = {
   freqView: ref<{ lo: number; hi: number } | null>(null),
 }
 provide('spectrogramShared', spectrogramShared)
-const activePlayerViewTab = ref<'main' | 'spectrogram' | 'tracks'>('main')
+// GT7.5 (owner 2026-07-13): the Спектрограмма sub-tab was removed — its visualization lives in the
+// Треки tab now.
+const activePlayerViewTab = ref<'main' | 'tracks'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
 const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
@@ -939,7 +628,7 @@ async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Pr
   if (isLocalAudioFileKind(fileKind)) {
     activeContentTab.value = 'player'
     if (activePlayerViewTab.value !== 'tracks') {
-      activePlayerViewTab.value = 'spectrogram'
+      activePlayerViewTab.value = 'tracks' // GT7.5: Спектрограмма removed — Треки shows the spectrum
     }
     void audio.ensureLocalAudioReady(path, fileKind)
   }
@@ -1020,7 +709,7 @@ function closeFilesPanel(): void {
 // leaving the stale "start playback" message with nothing happening.
 // GT2.4: the Треки tab shows the same stack, so it needs the same preparation.
 function ensureSpectrogramPrepared(): void {
-  if (activePlayerViewTab.value !== 'spectrogram' && activePlayerViewTab.value !== 'tracks') {
+  if (activePlayerViewTab.value !== 'tracks') {
     return
   }
 
@@ -1782,9 +1471,10 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   // to the player's spectrogram view and decode the file without waiting for playback.
   if (path !== null && isLocalAudioFileKind(nextFileKind)) {
     activeContentTab.value = 'player'
-    // GT2.4: if the user is on the Треки tab, stay there (it shows the same stack).
+    // GT2.4/GT7.5: if the user is on the Треки tab, stay there (it shows the same stack); otherwise
+    // land on Треки (the Спектрограмма tab was removed).
     if (activePlayerViewTab.value !== 'tracks') {
-      activePlayerViewTab.value = 'spectrogram'
+      activePlayerViewTab.value = 'tracks'
     }
     if (!shouldAutoPlay) {
       void audio.ensureLocalAudioReady(path, nextFileKind)
@@ -1869,7 +1559,6 @@ function handlePlayerKeyDown(event: KeyboardEvent): void {
   // SF21: when the spectrogram (track editor) view is active, route navigation keys to it
   // even if the canvas isn't focused — the window is treated as the track editor's.
   if (
-    activePlayerViewTab.value === 'spectrogram' &&
     trackEditorNav.value !== null &&
     SPECTROGRAM_NAV_KEYS.has(event.key)
   ) {
@@ -2070,7 +1759,7 @@ watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
     return
   }
 
-  activePlayerViewTab.value = isLocalAudioFileKind(displayMode) ? 'spectrogram' : 'main'
+  activePlayerViewTab.value = isLocalAudioFileKind(displayMode) ? 'tracks' : 'main'
 })
 
 // SF8.3: build the spectrum only on an explicit user action -- switching to the
