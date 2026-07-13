@@ -3,7 +3,13 @@
        PanelWindow chrome (@panel, extracted from the FB4.x implementation) and the FileOpenPanel
        content. AudioPage still teleports it to <body> when floating and hosts it as a flex child
        when docked; it renders only while the panel state is open (v-if on the host side). -->
-  <PanelWindow :state="panel" :title="t('fsBrowser.title')" icon="folder_open" @keydown="onKeydown">
+  <PanelWindow
+    :state="panel"
+    :title="t('fsBrowser.title')"
+    icon="folder_open"
+    @keydown="onKeydown"
+    @panel-event="onBridgedEvent"
+  >
     <FileOpenPanel
       :column="isColumn"
       :initial-path="initialPath"
@@ -38,10 +44,22 @@ const panel = useFileOpenPanelState()
 const isColumn = computed<boolean>(() => panel.mode === 'left' || panel.mode === 'right')
 
 // Req: keep a DOCKED panel open after opening a file; only the floating window auto-closes.
+// A detached panel behaves like a docked one — it stays open.
 const onOpen = (path: string, fileKind: AudioFileKind): void => {
   emit('open', path, fileKind)
   if (panel.mode === 'floating') {
     panel.open = false
+  }
+}
+
+// PW3.2 (PW-D5): a file picked in the DETACHED child window arrives over the bridge and takes
+// the exact same path as an in-window pick.
+const onBridgedEvent = (name: string, payload: readonly unknown[]): void => {
+  if (name === 'open') {
+    const [path, fileKind] = payload
+    if (typeof path === 'string' && typeof fileKind === 'string') {
+      onOpen(path, fileKind as AudioFileKind)
+    }
   }
 }
 
