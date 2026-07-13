@@ -8,6 +8,7 @@
     "configureRootHint": "Configure the presets root on the Settings page first.",
     "refresh": "Refresh",
     "openSettings": "Settings",
+    "close": "Close",
     "noPresets": "No presets found.",
     "sessionTitle": "Audio Session",
     "sessionSubtitle": "Gnaural transport is live for .gnaural files, and .wav/.flac playback runs locally in the browser.",

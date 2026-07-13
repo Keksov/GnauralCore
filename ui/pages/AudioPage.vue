@@ -63,10 +63,23 @@
           </q-card-actions>
 
           <!-- GT10.17 (owner req. 66): audio settings live on the Audio tab now. -->
+          <!-- GT10.29 (owner req. 78): settings dialog with a title + close (X) and a Close button. -->
           <q-dialog v-model="settingsDialogOpen">
-            <div class="audio-page__settings-dialog">
-              <GnauralSettingsTab />
-            </div>
+            <q-card class="audio-page__settings-dialog">
+              <q-card-section class="row items-center q-py-sm">
+                <div class="text-h6">{{ t('audio.openSettings') }}</div>
+                <q-space />
+                <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.close')" />
+              </q-card-section>
+              <q-separator />
+              <q-card-section class="audio-page__settings-dialog-body">
+                <GnauralSettingsTab />
+              </q-card-section>
+              <q-separator />
+              <q-card-actions align="right">
+                <q-btn flat no-caps :label="t('audio.close')" v-close-popup />
+              </q-card-actions>
+            </q-card>
           </q-dialog>
 
           <q-separator />
@@ -2034,10 +2047,15 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 <style scoped>
 /* GT10.17: the audio-settings dialog wrapper (hosts the settings card). */
 .audio-page__settings-dialog {
+  display: flex;
+  flex-direction: column;
   max-height: 85vh;
   max-width: 760px;
-  overflow: auto;
   width: 90vw;
+}
+/* GT10.29: only the body scrolls, so the header (X) and footer (Close) stay visible. */
+.audio-page__settings-dialog-body {
+  overflow: auto;
 }
 
 .audio-page {
