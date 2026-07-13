@@ -9,6 +9,8 @@
     "refresh": "Refresh",
     "openSettings": "Settings",
     "close": "Close",
+    "editMenu": "Edit",
+    "settingsSubsystemCache": "Cache",
     "noPresets": "No presets found.",
     "sessionTitle": "Audio Session",
     "sessionSubtitle": "Gnaural transport is live for .gnaural files, and .wav/.flac playback runs locally in the browser.",

@@ -9,6 +9,8 @@
     "refresh": "Обновить",
     "openSettings": "Настройки",
     "close": "Закрыть",
+    "editMenu": "Правка",
+    "settingsSubsystemCache": "Кеш",
     "noPresets": "Пресеты не найдены.",
     "sessionTitle": "Аудио-сессия",
     "sessionSubtitle": "Транспорт Gnaural уже работает для файлов .gnaural, а .wav/.flac воспроизводятся локально в браузере.",
