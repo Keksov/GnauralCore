@@ -56,6 +56,16 @@
       >
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
+      <!-- owner 2026-07-13: include/exclude this voice from the OVERALL wave/spectrum (under the eye). -->
+      <q-btn
+        dense flat round size="xs"
+        icon="graphic_eq"
+        :color="inMix ? undefined : 'grey-7'"
+        :aria-label="inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude')"
+        @click.stop="emit('toggle-in-mix')"
+      >
+        <q-tooltip>{{ inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</q-tooltip>
+      </q-btn>
       <!-- GT10.44 (owner 2026-07-12): remove this lane, under the hide/eye icon. -->
       <q-btn
         dense flat round size="xs"
@@ -175,6 +185,9 @@ interface Props {
   /** BK8a (owner 2026-07-13): the lane's aggregate playback-mute state (all its voices muted) — drives
    *  the lane mute button mirrored above the eye. */
   muted?: boolean
+  /** owner 2026-07-13: whether the lane's voice(s) are included in the OVERALL wave/spectrum. Drives
+   *  the graph-inclusion button under the eye (independent of hide + mute). */
+  inMix?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -188,6 +201,7 @@ const props = withDefaults(defineProps<Props>(), {
   accentColor: null,
   inlineUnderlay: false,
   muted: false,
+  inMix: true,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -195,6 +209,8 @@ const emit = defineEmits<{
   (event: 'hide'): void
   /** BK8a: toggle playback mute for this lane's voice(s) (mirror of the voices-panel mute). */
   (event: 'toggle-mute'): void
+  /** owner 2026-07-13: toggle whether this lane's voice(s) feed the overall wave/spectrum. */
+  (event: 'toggle-in-mix'): void
   /** GT10.44: remove this lane (trash icon under the hide/eye icon). */
   (event: 'remove-lane'): void
   (event: 'reorder-grip', ev: PointerEvent): void

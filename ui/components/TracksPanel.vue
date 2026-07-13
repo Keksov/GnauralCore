@@ -220,11 +220,13 @@
                 :multi-selected="gtracks.multiSelection.value"
                 :accent-color="laneAccentColor(lane)"
                 :muted="laneMuted(lane)"
+                :in-mix="laneInMix(lane)"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
                 @toggle-mute="onToggleLaneMuted(lane)"
+                @toggle-in-mix="onToggleLaneInMix(lane)"
                 @remove-lane="onRemoveLane(lane.id)"
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
                 @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
@@ -288,12 +290,13 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <div v-if="showWaveform && hasSpectrogramData" class="audio-page__waveform-stack">
+        <div v-if="showWaveform && hasSpectrogramData && gtracks.hasMixVoices.value" class="audio-page__waveform-stack">
           <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
             <waveform-view
               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
               :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
+              :solo-voice-ids="gtracks.mixVoiceIds.value"
               :analysis="spectrogramAnalysisForChannel(wtrack.channel)"
               :channel="wtrack.channel"
               :label="wtrack.label"
@@ -335,12 +338,17 @@
             @pointercancel="onWaveformBottomPointerUp"
           />
         </div>
-        <div v-if="showSpectrogram && hasSpectrogramData" class="audio-page__spectrogram-stack">
+        <!-- owner 2026-07-13: all voices excluded from the overall mix -> nothing to render. -->
+        <div v-if="hasSpectrogramData && !gtracks.hasMixVoices.value" class="audio-page__empty text-grey-7">
+          {{ t('audio.gtrackMixAllExcluded') }}
+        </div>
+        <div v-if="showSpectrogram && hasSpectrogramData && gtracks.hasMixVoices.value" class="audio-page__spectrogram-stack">
         <template v-for="(track, index) in spectrogramTracks" :key="track.key">
           <spectrogram-view
             :ref="(el) => setPrimarySpectrogramRef(el, index)"
             :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
+            :solo-voice-ids="gtracks.mixVoiceIds.value"
             :analysis="track.analysis"
             :render="spectrogramStore.renderOptions"
             :window-override="spectrogramWindowOverride"
@@ -735,6 +743,16 @@
                     @click="onToggleVoiceMuted(v.id)"
                   >
                     <q-tooltip>{{ isVoiceMuted(v.id) ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
+                  </q-btn>
+                  <!-- owner 2026-07-13: include/exclude this voice from the OVERALL wave/spectrum. -->
+                  <q-btn
+                    dense flat round size="sm"
+                    icon="graphic_eq"
+                    :color="gtracks.isVoiceInMix(v.id) ? undefined : 'grey-7'"
+                    :aria-label="gtracks.isVoiceInMix(v.id) ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude')"
+                    @click="gtracks.setVoiceInMix(v.id, !gtracks.isVoiceInMix(v.id))"
+                  >
+                    <q-tooltip>{{ gtracks.isVoiceInMix(v.id) ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</q-tooltip>
                   </q-btn>
                 </div>
               </q-item-section>
@@ -2540,6 +2558,17 @@ async function onToggleLaneMuted(aLane: { voices: readonly { id: number }[] }): 
     if (gtracks.dirty.value) return
   }
   emit('patch-voice-state-batch', aLane.voices.map((v) => ({ voiceId: v.id, muted: nextMuted })))
+}
+
+// owner 2026-07-13: overall-mix inclusion, mirrored on the lane (button under the eye). Purely a
+// client display filter (no schedule patch/reload) — the overall wave/spectrum re-render because their
+// soloVoiceIds (mixVoiceIds) change. A lane is "in mix" only when ALL its voices are.
+function laneInMix(aLane: { voices: readonly { id: number }[] }): boolean {
+  return aLane.voices.length === 0 || aLane.voices.every((v) => gtracks.isVoiceInMix(v.id))
+}
+function onToggleLaneInMix(aLane: { voices: readonly { id: number }[] }): void {
+  const next = !laneInMix(aLane)
+  for (const v of aLane.voices) gtracks.setVoiceInMix(v.id, next)
 }
 
 function handleTracksKeyDown(event: KeyboardEvent): void {

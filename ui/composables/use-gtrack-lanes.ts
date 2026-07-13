@@ -94,6 +94,7 @@ const STORAGE_KEY = 'mindwave-gtrack-lanes'
 // full independent SpectrogramSettings here (each spectrogram independent, owner req. 36).
 const STORAGE_SPECTRUM_KEY = 'mindwave-gtrack-lane-spectrum'
 const STORAGE_HEIGHT_KEY = 'mindwave-gtrack-lane-height'
+const STORAGE_MIX_KEY = 'mindwave-gtrack-mix-excluded'
 const LANE_HEIGHT_DEFAULT = 120
 const LANE_HEIGHT_MIN = 60
 const LANE_HEIGHT_MAX = 600
@@ -253,6 +254,55 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persistSpectrum()
   }
 
+  // owner 2026-07-13: per-voice inclusion in the OVERALL (combined) wave/spectrum — independent of the
+  // eye (curve-lane display) and mute (audio). Persisted per file like the lane config, so a same-file
+  // reload (Save / mute) keeps it while a file switch loads the new file's set.
+  const excludedFromMix = ref<Set<number>>(new Set())
+  function loadAllMix(): Record<string, number[]> {
+    try {
+      const raw = localStorage.getItem(STORAGE_MIX_KEY)
+      const parsed = raw === null ? null : (JSON.parse(raw) as unknown)
+      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, number[]>) : {}
+    } catch {
+      return {}
+    }
+  }
+  function restoreMix(): void {
+    const key = filePath.value
+    const stored = key === null ? undefined : loadAllMix()[key]
+    excludedFromMix.value = new Set(Array.isArray(stored) ? stored : [])
+  }
+  function persistMix(): void {
+    const key = filePath.value
+    if (key === null) return
+    try {
+      const all = loadAllMix()
+      all[key] = [...excludedFromMix.value]
+      localStorage.setItem(STORAGE_MIX_KEY, JSON.stringify(all))
+    } catch {
+      // ignore
+    }
+  }
+  function isVoiceInMix(voiceId: number): boolean {
+    return !excludedFromMix.value.has(voiceId)
+  }
+  function setVoiceInMix(voiceId: number, inMix: boolean): void {
+    const next = new Set(excludedFromMix.value)
+    if (inMix) next.delete(voiceId)
+    else next.add(voiceId)
+    excludedFromMix.value = next
+    persistMix()
+  }
+  // Voice ids feeding the overall wave/spectrum. Empty = full mix (no solo) when NOTHING is excluded;
+  // otherwise the explicit included subset. `hasMixVoices` gates the graph when EVERYTHING is excluded
+  // (an empty solo set would otherwise be interpreted as "full mix" by the views).
+  const mixVoiceIds = computed<readonly number[]>(() => {
+    const all = voices.value.map((v) => v.id)
+    const included = all.filter((id) => !excludedFromMix.value.has(id))
+    return included.length === all.length ? [] : included
+  })
+  const hasMixVoices = computed<boolean>(() => voices.value.some((v) => !excludedFromMix.value.has(v.id)))
+
   // GT-D13 (owner 2026-07-09): default = ONE VOICE -> ONE LANE (like the classic schedule editor's
   // per-voice tracks). A tonal voice starts on Base freq; noise/audiofile on Volume (no base
   // frequency, but a meaningful volume envelope). Users can then merge voices into one lane or
@@ -328,6 +378,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     syncSchedule()
     refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
     restoreSpectrum() // GT8.1: per-lane spectrum overrides are per file
+    restoreMix() // owner 2026-07-13: per-voice overall-mix exclusions are per file
     if (model.value === null) {
       lanes.value = []
       return
@@ -1012,6 +1063,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     voiceMode,
     setVoiceVisible,
     setVoiceMode,
+    isVoiceInMix,
+    setVoiceInMix,
+    mixVoiceIds,
+    hasMixVoices,
     mergeAllIntoOneLane,
     spreadPerVoiceLanes,
     showAllModesPerVoice,

@@ -499,6 +499,9 @@ watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.scale, () => { void fetchColumns(); scheduleDraw() })
 watch(() => props.color, () => scheduleDraw())
 watch(() => props.channel, () => { void openForFile(props.filePath) })
+// owner 2026-07-13: the overall waveform is scoped to the in-mix voice set (soloVoiceIds); re-open when
+// it changes so including/excluding a voice redraws. (The solo sub-lanes pass a static set — no-op.)
+watch(() => (props.soloVoiceIds ?? []).join(','), () => { void openForFile(props.filePath) })
 watch(() => props.playheadSec, () => scheduleDraw())
 watch(() => props.filePath, (v) => { void openForFile(v) })
 // GT4.1/GT4.3: changing the solo voice set switches the source render -> re-open on the same path.
