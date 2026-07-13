@@ -103,6 +103,8 @@ interface Props {
   /** GT4.1/GT4.3 (GT-D17): for a .gnaural source, analyze a SOLO render of just these voice ids
       (all others muted). Omitted/empty = the full mix. Changing it re-opens the analysis. */
   soloVoiceIds?: readonly number[]
+  /** GT7.4-R2 (owner 2026-07-13): bump to force a fresh re-open for the SAME file (after a Save). */
+  reloadKey?: number
 }
 const props = withDefaults(defineProps<Props>(), {
   channel: 0,
@@ -501,6 +503,8 @@ watch(() => props.playheadSec, () => scheduleDraw())
 watch(() => props.filePath, (v) => { void openForFile(v) })
 // GT4.1/GT4.3: changing the solo voice set switches the source render -> re-open on the same path.
 watch(() => (props.soloVoiceIds ?? []).join(','), () => { void openForFile(props.filePath) })
+// GT7.4-R2 (owner 2026-07-13): a Save rewrote the file (same path) -> re-open for the fresh render.
+watch(() => props.reloadKey, () => { void openForFile(props.filePath) })
 // SF24.1 fix: track the spectrogram track's params so we keep reusing its (reconfigured) analysis.
 watch(() => props.analysis, () => { void openForFile(props.filePath) }, { deep: true })
 

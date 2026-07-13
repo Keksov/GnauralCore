@@ -52,6 +52,8 @@ interface Props {
   mode?: 'spectrogram' | 'waveform' | 'overlay'
   /** Waveform colour for the waveform/overlay modes. */
   waveformColor?: string
+  /** GT7.4-R2 (owner 2026-07-13): bump to force a fresh re-open for the SAME file (after a Save). */
+  reloadKey?: number
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ (event: 'update:view', view: TimeWindow): void }>()
@@ -260,6 +262,10 @@ async function openForPath(aFilePath: string | null | undefined): Promise<void> 
 
 watch(() => props.filePath, (value) => {
   void openForPath(value)
+})
+// GT7.4-R2 (owner 2026-07-13): a Save rewrote the file (same path) -> re-open for the fresh render.
+watch(() => props.reloadKey, () => {
+  void openForPath(props.filePath)
 })
 
 // The minimap REUSES the primary track's analysis (same analysisId via the server's

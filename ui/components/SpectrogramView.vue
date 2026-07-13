@@ -179,9 +179,8 @@ interface Props {
   /** SF17.4: per-tile FFT window override for high-zoom sharpening (0 = analysis window).
       Fetches sharper tiles for the visible window only — no whole-track reconfigure. */
   windowOverride?: number
-  /** SF22.3: overlay the waveform (of `waveformBuffer` channel `waveformChannel`) on the plot. */
+  /** SF22.3/GT7.3: overlay the waveform (from the backend peaks of this track's channel) on the plot. */
   waveformOverlay?: boolean
-  waveformBuffer?: AudioBuffer | null
   waveformScale?: WaveformScale
   waveformChannel?: number
   /** SF23.2: overlay colour + opacity. */
@@ -206,6 +205,9 @@ interface Props {
   soloVoiceIds?: readonly number[]
   /** GT10.3 (owner req. 46): always show the settings gear (used by gtrack solo sub-lanes). */
   showSettingsGear?: boolean
+  /** GT7.4-R2 (owner 2026-07-13): bump to force a fresh re-open of the analysis for the SAME file
+      (e.g. after a gtrack Save rewrites the .gnaural — the server re-renders on the new mtime). */
+  reloadKey?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -934,6 +936,11 @@ async function reconfigureAnalysis(): Promise<void> {
 
 watch(() => props.filePath, (value) => {
   void openForPath(value)
+})
+// GT7.4-R2 (owner 2026-07-13): a Save rewrote the file (same path) -> re-open so the server renders
+// the fresh mtime and the spectrogram reflects the edit.
+watch(() => props.reloadKey, () => {
+  void openForPath(props.filePath)
 })
 
 // GT4.3: changing the solo voice set switches the source render -> re-open on the same path.

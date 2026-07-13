@@ -178,6 +178,7 @@
                 class="tracks-panel__gtrack-underlay"
                 :style="{ opacity: lane.soloWaveOpacity }"
                 :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
@@ -190,6 +191,7 @@
                 v-else-if="laneInlineKind(lane) === 'spectrum'"
                 class="tracks-panel__gtrack-underlay"
                 :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :render="laneSpectrogramRender(lane.id)"
@@ -239,6 +241,7 @@
             <div v-if="laneWaveSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <waveform-view
                 :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
@@ -254,6 +257,7 @@
             <div v-if="laneSpectrumSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <spectrogram-view
                 :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :render="laneSpectrogramRender(lane.id)"
@@ -287,6 +291,7 @@
             <waveform-view
               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
               :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
               :analysis="spectrogramAnalysisForChannel(wtrack.channel)"
               :channel="wtrack.channel"
               :label="wtrack.label"
@@ -333,6 +338,7 @@
           <spectrogram-view
             :ref="(el) => setPrimarySpectrogramRef(el, index)"
             :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
             :analysis="track.analysis"
             :render="spectrogramStore.renderOptions"
             :window-override="spectrogramWindowOverride"
@@ -387,6 +393,7 @@
           <spectrogram-minimap
             :duration-sec="spectrogramDuration"
             :file-path="audio.displayFilePath"
+                :reload-key="spectrogramReloadKey"
             :analysis="spectrogramTracks[0]?.analysis"
             :render="spectrogramStore.renderOptions"
             :mode="minimapMode"
@@ -1651,6 +1658,9 @@ function voiceDotColor(v: GTrackVoice, index: number): string {
 // the BACKEND analysis — the client WAV decode is gone (GT7.3 moved the wave overlay to getPeaks).
 const metaSpec = useSpectrogram({ refetchDebounceMs: 400 })
 const backendAnalysis = computed(() => metaSpec.analysis.value)
+// GT7.4-R2 (owner 2026-07-13): bumped after a Save to force the spectrogram/waveform tracks to
+// re-open (fresh render) so they reflect the just-saved edit.
+const spectrogramReloadKey = ref(0)
 async function openMetaAnalysis(path: string | null): Promise<void> {
   await metaSpec.close()
   if (path === null || path === '') return
@@ -2453,7 +2463,11 @@ async function saveGtrackEdits(): Promise<void> {
     // Rebuilds the model from the freshly-dumped file (dirty/undo reset to the saved baseline).
     await audio.loadGnauralSchedule(filePath, true)
     if (response.changed) {
-      await audio.ensureGnauralSpectrogram(filePath, true)
+      // GT7.4-R2 (owner 2026-07-13): the .gnaural was rewritten (same path, new mtime). Re-open the
+      // backend spectrogram/waveform analyses so they render the edit (the server render cache is
+      // mtime-keyed). Replaces the old client-decode refresh (ensureGnauralSpectrogram).
+      spectrogramReloadKey.value += 1
+      void openMetaAnalysis(filePath)
     }
     $q.notify({
       type: 'positive',
