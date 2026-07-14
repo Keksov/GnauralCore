@@ -183,6 +183,25 @@
               >
                 <q-tooltip>{{ lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
               </q-btn>
+              <!-- GT11.8/GT11.11: hidden solo sub-graphs of this track -> eye toggle -> restore. -->
+              <q-btn
+                v-if="laneHiddenGraphs(lane).length > 0"
+                dense flat round size="xs"
+                class="tracks-panel__gtrack-header-eye"
+                icon="visibility_off"
+                :aria-label="t('audio.hiddenTracks')"
+              >
+                <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+                <q-menu>
+                  <q-list dense style="min-width: 160px">
+                    <q-item v-for="h in laneHiddenGraphs(lane)" :key="h.key" clickable v-close-popup @click="h.restore()">
+                      <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
+                      <q-item-section>{{ h.label }}</q-item-section>
+                      <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                    </q-item>
+                  </q-list>
+                </q-menu>
+              </q-btn>
               <span
                 class="tracks-panel__gtrack-header-title"
                 :style="laneTitleStyle(lane)"
@@ -266,7 +285,7 @@
               />
             </div>
             <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
-            <div v-if="laneWaveSublane(lane) && !lane.folded" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+            <div v-if="laneWaveSublane(lane) && !lane.folded && !lane.soloWaveHidden" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <waveform-view
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
@@ -280,9 +299,10 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @open-settings="gtrackSettingsId = lane.id"
+                @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'wave', true)"
               />
             </div>
-            <div v-if="laneSpectrumSublane(lane) && !lane.folded" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+            <div v-if="laneSpectrumSublane(lane) && !lane.folded && !lane.soloSpectrumHidden" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <spectrogram-view
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
@@ -298,6 +318,7 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @open-settings="gtrackSettingsId = lane.id"
+                @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', true)"
               />
             </div>
           </template>
@@ -2224,6 +2245,18 @@ const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
 // GT11.11 (owner 2026-07-14): hidden-graph lists per OVERALL group, for the header-bar eye toggles.
 const hiddenWaveList = computed<HiddenTrackEntry[]>(() => hiddenChannelEntries('waveform'))
 const hiddenSpectrumList = computed<HiddenTrackEntry[]>(() => hiddenChannelEntries('spectrogram'))
+// GT11.8: a gtrack lane's currently-hidden solo sub-graphs (wave/spectrum), for its header eye.
+// "Hidden" = the sub-graph is configured to show (soloMode) but its per-lane hidden flag is set.
+function laneHiddenGraphs(lane: LaneSoloShape & { id: number; soloWaveHidden: boolean; soloSpectrumHidden: boolean }): HiddenTrackEntry[] {
+  const out: HiddenTrackEntry[] = []
+  if (lane.soloWaveHidden && laneWaveSublane(lane)) {
+    out.push({ key: `lane:${lane.id}:wave`, label: t('audio.gtrackSoloWave'), restore: () => gtracks.setLaneSoloGraphHidden(lane.id, 'wave', false) })
+  }
+  if (lane.soloSpectrumHidden && laneSpectrumSublane(lane)) {
+    out.push({ key: `lane:${lane.id}:spectrum`, label: t('audio.gtrackSoloSpectrum'), restore: () => gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', false) })
+  }
+  return out
+}
 
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')

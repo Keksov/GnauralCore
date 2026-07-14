@@ -37,6 +37,11 @@ export interface GTrackLane {
   /** GT11.5 (owner 2026-07-14): collapse this track's graphs (curve + solo wave/spectrum sub-lanes)
    *  down to just its header bar. Persisted per file. */
   folded?: boolean
+  /** GT11.8 (owner 2026-07-14): individually hide the solo wave/spectrum SUB-graphs (their own eye
+   *  button); restored from the track header eye (GT11.11). Distinct from soloMode (which sub-graphs
+   *  the lane HAS) and from folded (collapses the whole track). */
+  soloWaveHidden?: boolean
+  soloSpectrumHidden?: boolean
 }
 
 /** GT3.1: a vertex reference within a lane. */
@@ -83,6 +88,8 @@ export interface ResolvedGTrackLane {
   readonly soloWaveOpacity: number
   readonly beatBand: boolean
   readonly folded: boolean
+  readonly soloWaveHidden: boolean
+  readonly soloSpectrumHidden: boolean
 }
 
 interface StoredLane {
@@ -96,6 +103,8 @@ interface StoredLane {
   soloWaveOpacity?: number
   beatBand?: boolean
   folded?: boolean
+  soloWaveHidden?: boolean
+  soloSpectrumHidden?: boolean
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
@@ -194,6 +203,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloWaveOpacity: lane.soloWaveOpacity ?? 0.6,
       beatBand: lane.beatBand ?? false,
       folded: lane.folded ?? false,
+      soloWaveHidden: lane.soloWaveHidden ?? false,
+      soloSpectrumHidden: lane.soloSpectrumHidden ?? false,
     }
   }
 
@@ -203,7 +214,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (key === null) return
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false }))
+      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
@@ -361,6 +372,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
           beatBand: s.beatBand === true,
           folded: s.folded === true,
+          soloWaveHidden: s.soloWaveHidden === true,
+          soloSpectrumHidden: s.soloSpectrumHidden === true,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }
@@ -481,6 +494,12 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // GT11.5 (owner 2026-07-14): fold/unfold a track (its curve + solo sub-lanes) from the header bar.
   function toggleLaneFolded(id: number): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, folded: !(l.folded ?? false) } : l))
+    persist()
+  }
+  // GT11.8 (owner 2026-07-14): hide/show a lane's solo wave/spectrum SUB-graph (persisted per file).
+  function setLaneSoloGraphHidden(id: number, which: 'wave' | 'spectrum', hidden: boolean): void {
+    const key = which === 'wave' ? 'soloWaveHidden' : 'soloSpectrumHidden'
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, [key]: hidden } : l))
     persist()
   }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
@@ -1114,6 +1133,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneSoloInline,
     setLaneBeatBand,
     toggleLaneFolded,
+    setLaneSoloGraphHidden,
     setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,
