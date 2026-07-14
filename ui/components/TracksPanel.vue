@@ -213,7 +213,7 @@
               class="tracks-panel__gtrack-inline"
               :class="{ 'tracks-panel__gtrack-inline--new': lane.id === newLaneId }"
               :data-gtrack-lane-wrap="lane.id"
-              :style="{ height: `${gtracks.laneHeight.value}px` }"
+              :style="{ height: `${lane.curveHeight}px` }"
             >
               <waveform-view
                 v-if="laneInlineKind(lane) === 'wave'"
@@ -225,7 +225,7 @@
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
                 :seekable="false"
-                :height="gtracks.laneHeight.value"
+                :height="lane.curveHeight"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
@@ -239,7 +239,7 @@
                 :render="laneSpectrogramRender(lane.id)"
                 :seekable="false"
                 :primary="false"
-                :height="gtracks.laneHeight.value"
+                :height="lane.curveHeight"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
@@ -251,7 +251,7 @@
                 :mode="lane.mode"
                 :duration-sec="gtracks.durationSec.value"
                 :label="''"
-                :height="gtracks.laneHeight.value"
+                :height="lane.curveHeight"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="true"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex"
@@ -284,6 +284,18 @@
                 @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
               />
             </div>
+            <!-- GT11.7 (owner 2026-07-14): each gtrack graph has its OWN resize handle + height. -->
+            <div
+              v-if="!lane.folded"
+              class="audio-page__spectrogram-bottom-handle"
+              role="separator"
+              aria-orientation="horizontal"
+              :aria-label="t('audio.spectrogramResizeHandle')"
+              @pointerdown="onGraphResizeDown(lane.id, 'curve', lane.curveHeight, $event)"
+              @pointermove="onGraphResizeMove"
+              @pointerup="onGraphResizeUp"
+              @pointercancel="onGraphResizeUp"
+            />
             <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
             <div v-if="laneWaveSublane(lane) && !lane.folded && !lane.soloWaveHidden" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <waveform-view
@@ -295,13 +307,24 @@
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="false"
                 :label="''"
-                :height="Math.round(gtracks.laneHeight.value * 0.7)"
+                :height="lane.soloWaveHeight"
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'wave', true)"
               />
             </div>
+            <div
+              v-if="laneWaveSublane(lane) && !lane.folded && !lane.soloWaveHidden"
+              class="audio-page__spectrogram-bottom-handle"
+              role="separator"
+              aria-orientation="horizontal"
+              :aria-label="t('audio.spectrogramResizeHandle')"
+              @pointerdown="onGraphResizeDown(lane.id, 'wave', lane.soloWaveHeight, $event)"
+              @pointermove="onGraphResizeMove"
+              @pointerup="onGraphResizeUp"
+              @pointercancel="onGraphResizeUp"
+            />
             <div v-if="laneSpectrumSublane(lane) && !lane.folded && !lane.soloSpectrumHidden" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <spectrogram-view
                 :file-path="audio.displayFilePath"
@@ -314,24 +337,25 @@
                 :primary="false"
                 :show-settings-gear="true"
                 :label="''"
-                :height="Math.round(gtracks.laneHeight.value * 0.9)"
+                :height="lane.soloSpectrumHeight"
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', true)"
               />
             </div>
+            <div
+              v-if="laneSpectrumSublane(lane) && !lane.folded && !lane.soloSpectrumHidden"
+              class="audio-page__spectrogram-bottom-handle"
+              role="separator"
+              aria-orientation="horizontal"
+              :aria-label="t('audio.spectrogramResizeHandle')"
+              @pointerdown="onGraphResizeDown(lane.id, 'spectrum', lane.soloSpectrumHeight, $event)"
+              @pointermove="onGraphResizeMove"
+              @pointerup="onGraphResizeUp"
+              @pointercancel="onGraphResizeUp"
+            />
           </template>
-          <div
-            class="audio-page__spectrogram-bottom-handle"
-            role="separator"
-            aria-orientation="horizontal"
-            :aria-label="t('audio.spectrogramResizeHandle')"
-            @pointerdown="onGtrackBottomPointerDown"
-            @pointermove="onGtrackBottomPointerMove"
-            @pointerup="onGtrackBottomPointerUp"
-            @pointercancel="onGtrackBottomPointerUp"
-          />
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
@@ -2195,21 +2219,24 @@ function onGtrackGripDown(laneId: number, ev: PointerEvent): void {
   window.addEventListener('pointercancel', onGtrackGripUp)
 }
 
-// Uniform gtrack lane height with a single bottom handle (like the spectrogram bottom handle).
-let gtrackBottomStartY = 0
-let gtrackBottomStartH = 0
-function onGtrackBottomPointerDown(ev: PointerEvent): void {
-  gtrackBottomStartY = ev.clientY
-  gtrackBottomStartH = gtracks.laneHeight.value
+// GT11.7 (owner 2026-07-14): per-graph resize — each gtrack graph (curve / solo wave / solo
+// spectrum) has its OWN handle that resizes just that graph's height (clamped + persisted per file).
+let graphResizeStartY = 0
+let graphResizeStartH = 0
+let graphResizeTarget: { laneId: number; which: 'curve' | 'wave' | 'spectrum' } | null = null
+function onGraphResizeDown(laneId: number, which: 'curve' | 'wave' | 'spectrum', startH: number, ev: PointerEvent): void {
+  graphResizeStartY = ev.clientY
+  graphResizeStartH = startH
+  graphResizeTarget = { laneId, which }
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   ev.preventDefault()
 }
-function onGtrackBottomPointerMove(ev: PointerEvent): void {
-  if (gtrackBottomStartY === 0) return
-  gtracks.setLaneHeight(gtrackBottomStartH + (ev.clientY - gtrackBottomStartY))
+function onGraphResizeMove(ev: PointerEvent): void {
+  if (graphResizeTarget === null) return
+  gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, graphResizeStartH + (ev.clientY - graphResizeStartY))
 }
-function onGtrackBottomPointerUp(): void {
-  gtrackBottomStartY = 0
+function onGraphResizeUp(): void {
+  graphResizeTarget = null
 }
 // The restore list carries a restore callback so waveform/spectrogram channels (SF-D66) and gtrack
 // lanes (GT2.2) share one "hidden tracks" dropdown. Channels are listed only when their KIND is

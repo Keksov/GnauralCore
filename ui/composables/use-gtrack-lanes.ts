@@ -42,6 +42,12 @@ export interface GTrackLane {
    *  the lane HAS) and from folded (collapses the whole track). */
   soloWaveHidden?: boolean
   soloSpectrumHidden?: boolean
+  /** GT11.7 (owner 2026-07-14): per-graph heights (px). Each gtrack graph — the curve and its solo
+   *  wave/spectrum sub-lanes — resizes independently (own handle); persisted per file. Unset = the
+   *  derived default (curve = global lane height; wave 0.7x; spectrum 0.9x). */
+  curveHeight?: number
+  soloWaveHeight?: number
+  soloSpectrumHeight?: number
 }
 
 /** GT3.1: a vertex reference within a lane. */
@@ -90,6 +96,9 @@ export interface ResolvedGTrackLane {
   readonly folded: boolean
   readonly soloWaveHidden: boolean
   readonly soloSpectrumHidden: boolean
+  readonly curveHeight: number
+  readonly soloWaveHeight: number
+  readonly soloSpectrumHeight: number
 }
 
 interface StoredLane {
@@ -105,6 +114,9 @@ interface StoredLane {
   folded?: boolean
   soloWaveHidden?: boolean
   soloSpectrumHidden?: boolean
+  curveHeight?: number
+  soloWaveHeight?: number
+  soloSpectrumHeight?: number
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
@@ -205,6 +217,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       folded: lane.folded ?? false,
       soloWaveHidden: lane.soloWaveHidden ?? false,
       soloSpectrumHidden: lane.soloSpectrumHidden ?? false,
+      curveHeight: clampHeight(lane.curveHeight ?? laneHeight.value),
+      soloWaveHeight: clampHeight(lane.soloWaveHeight ?? Math.round(laneHeight.value * 0.7)),
+      soloSpectrumHeight: clampHeight(lane.soloSpectrumHeight ?? Math.round(laneHeight.value * 0.9)),
     }
   }
 
@@ -214,7 +229,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (key === null) return
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false }))
+      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
@@ -374,6 +389,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           folded: s.folded === true,
           soloWaveHidden: s.soloWaveHidden === true,
           soloSpectrumHidden: s.soloSpectrumHidden === true,
+          curveHeight: typeof s.curveHeight === 'number' ? s.curveHeight : undefined,
+          soloWaveHeight: typeof s.soloWaveHeight === 'number' ? s.soloWaveHeight : undefined,
+          soloSpectrumHeight: typeof s.soloSpectrumHeight === 'number' ? s.soloSpectrumHeight : undefined,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }
@@ -500,6 +518,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function setLaneSoloGraphHidden(id: number, which: 'wave' | 'spectrum', hidden: boolean): void {
     const key = which === 'wave' ? 'soloWaveHidden' : 'soloSpectrumHidden'
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, [key]: hidden } : l))
+    persist()
+  }
+  // GT11.7 (owner 2026-07-14): resize a single gtrack graph (curve / solo wave / solo spectrum),
+  // clamped, persisted per file.
+  function setLaneGraphHeight(id: number, which: 'curve' | 'wave' | 'spectrum', h: number): void {
+    const key = which === 'curve' ? 'curveHeight' : which === 'wave' ? 'soloWaveHeight' : 'soloSpectrumHeight'
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, [key]: clampHeight(h) } : l))
     persist()
   }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
@@ -1134,6 +1159,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneBeatBand,
     toggleLaneFolded,
     setLaneSoloGraphHidden,
+    setLaneGraphHeight,
     setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,
