@@ -2224,16 +2224,22 @@ function onGtrackGripDown(laneId: number, ev: PointerEvent): void {
 let graphResizeStartY = 0
 let graphResizeStartH = 0
 let graphResizeTarget: { laneId: number; which: 'curve' | 'wave' | 'spectrum' } | null = null
+// GT11.7 refinement (owner 2026-07-14): holding Ctrl (⌘) when the drag STARTS resizes every graph of
+// the dragged lane's voice(s) together, not just this one graph.
+let graphResizeSync = false
 function onGraphResizeDown(laneId: number, which: 'curve' | 'wave' | 'spectrum', startH: number, ev: PointerEvent): void {
   graphResizeStartY = ev.clientY
   graphResizeStartH = startH
   graphResizeTarget = { laneId, which }
+  graphResizeSync = ev.ctrlKey || ev.metaKey
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   ev.preventDefault()
 }
 function onGraphResizeMove(ev: PointerEvent): void {
   if (graphResizeTarget === null) return
-  gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, graphResizeStartH + (ev.clientY - graphResizeStartY))
+  const h = graphResizeStartH + (ev.clientY - graphResizeStartY)
+  if (graphResizeSync) gtracks.setVoiceGraphsHeight(graphResizeTarget.laneId, h)
+  else gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, h)
 }
 function onGraphResizeUp(): void {
   graphResizeTarget = null

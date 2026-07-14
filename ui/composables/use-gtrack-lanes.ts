@@ -527,6 +527,20 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, [key]: clampHeight(h) } : l))
     persist()
   }
+  // GT11.7 refinement (owner 2026-07-14): Ctrl-resize — set the SAME height on EVERY graph (curve +
+  // solo wave/spectrum) of every lane that shares a voice with `id`, so a voice's graphs resize as one.
+  function setVoiceGraphsHeight(id: number, h: number): void {
+    const src = lanes.value.find((l) => l.id === id)
+    if (src === undefined) return
+    const voiceSet = new Set(src.voiceIds)
+    const clamped = clampHeight(h)
+    lanes.value = lanes.value.map((l) =>
+      l.voiceIds.some((v) => voiceSet.has(v))
+        ? { ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped }
+        : l,
+    )
+    persist()
+  }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
   function setLaneSoloWaveStyle(id: number, color: string, opacity: number): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloWaveColor: color, soloWaveOpacity: opacity } : l))
@@ -1160,6 +1174,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     toggleLaneFolded,
     setLaneSoloGraphHidden,
     setLaneGraphHeight,
+    setVoiceGraphsHeight,
     setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,
