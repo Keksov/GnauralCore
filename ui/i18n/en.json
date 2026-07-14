@@ -13,7 +13,7 @@
     "noPresets": "No presets found.",
     "sessionTitle": "Audio Session",
     "sessionSubtitle": "Gnaural transport is live for .gnaural files, and .wav/.flac playback runs locally in the browser.",
-    "selectedFile": "Selected file",
+    "currentFile": "Current file",
     "fileType": "File type",
     "transportState": "Transport state",
     "position": "Position",

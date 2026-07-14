@@ -17,7 +17,7 @@
       <!-- MR5.1 (owner req. 9): the «Выбранный файл» control, moved here from the tabs-bar meta-strip
            to the right of «Меню». Behavior identical (label + recent-files quick-pick). -->
       <div class="audio-page__menubar-file row items-center no-wrap q-ml-sm">
-        <span class="text-caption text-grey-7 q-mr-xs">{{ t('audio.selectedFile') }}</span>
+        <span class="text-caption text-grey-7 q-mr-sm">{{ t('audio.currentFile') }}</span>
         <q-btn-dropdown
           dense flat no-caps
           class="audio-page__file-dropdown"
@@ -1994,6 +1994,12 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   min-width: 0;
   max-width: min(48vw, 560px);
   overflow: hidden;
+}
+
+/* MR5.1: neutralize the old stacked-cell nudge (-8px) so the label and the file name keep the
+   q-mr-sm gap between them instead of touching. */
+.audio-page__menubar-file .audio-page__file-dropdown {
+  margin-left: 0;
 }
 
 /* FB4.3 (FB-D13): wraps the docked file panel + the form inner; reflows around the dock side. */

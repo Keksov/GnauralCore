@@ -13,7 +13,7 @@
     "noPresets": "Пресеты не найдены.",
     "sessionTitle": "Аудио-сессия",
     "sessionSubtitle": "Транспорт Gnaural уже работает для файлов .gnaural, а .wav/.flac воспроизводятся локально в браузере.",
-    "selectedFile": "Выбранный файл",
+    "currentFile": "Текущий файл",
     "fileType": "Тип файла",
     "transportState": "Состояние транспорта",
     "position": "Позиция",
