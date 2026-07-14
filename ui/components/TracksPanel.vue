@@ -361,7 +361,7 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <template v-if="showWaveform && hasSpectrogramData && overallMixActive">
+        <template v-if="showWaveform && hasSpectrogramData && overallMixActive && !overallWaveHidden">
           <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL waveform stack. -->
           <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
             <span class="tracks-panel__gtrack-header-stripe" :style="{ background: wfColor(0) }" />
@@ -370,7 +370,7 @@
               class="tracks-panel__gtrack-fold"
               :icon="overallWaveFolded ? 'chevron_right' : 'expand_more'"
               :aria-label="overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
-              @click="toggleOverallWaveFolded"
+              @click="onOverallFoldClick('wave', $event)"
             >
               <q-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
             </q-btn>
@@ -448,7 +448,7 @@
         <div v-if="hasSpectrogramData && !overallMixActive" class="audio-page__empty text-grey-7">
           {{ t('audio.gtrackMixAllExcluded') }}
         </div>
-        <template v-if="showSpectrogram && hasSpectrogramData && overallMixActive">
+        <template v-if="showSpectrogram && hasSpectrogramData && overallMixActive && !overallSpectrumHidden">
           <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL spectrogram stack. -->
           <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
             <span class="tracks-panel__gtrack-header-stripe" :style="{ background: '#64748b' }" />
@@ -457,7 +457,7 @@
               class="tracks-panel__gtrack-fold"
               :icon="overallSpectrumFolded ? 'chevron_right' : 'expand_more'"
               :aria-label="overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
-              @click="toggleOverallSpectrumFolded"
+              @click="onOverallFoldClick('spectrum', $event)"
             >
               <q-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
             </q-btn>
@@ -2151,6 +2151,14 @@ function hiddenChannelEntries(kind: TrackKind): HiddenTrackEntry[] {
 }
 const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
   const out: HiddenTrackEntry[] = []
+  // PW5.8: fully-hidden overall wave/spectrum (Ctrl-click on the fold header, or the list eye) restore
+  // here, exactly like hidden gtrack lanes.
+  if (overallGraphs.waveHidden.value) {
+    out.push({ key: 'overall:wave', label: t('audio.tracksOverallWave'), restore: () => overallGraphs.setWaveHidden(false) })
+  }
+  if (overallGraphs.spectrumHidden.value) {
+    out.push({ key: 'overall:spectrum', label: t('audio.tracksOverallSpectrum'), restore: () => overallGraphs.setSpectrumHidden(false) })
+  }
   // Channels are listed only when their KIND is shown by the view-mode preset (restoring under a
   // preset-hidden kind wouldn't surface it).
   if (showWaveform.value) out.push(...hiddenChannelEntries('waveform'))
@@ -2197,8 +2205,20 @@ const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
 const overallGraphs = useOverallGraphs()
 const overallWaveFolded = overallGraphs.waveFolded
 const overallSpectrumFolded = overallGraphs.spectrumFolded
-const toggleOverallWaveFolded = overallGraphs.toggleWaveFolded
-const toggleOverallSpectrumFolded = overallGraphs.toggleSpectrumFolded
+const overallWaveHidden = overallGraphs.waveHidden
+const overallSpectrumHidden = overallGraphs.spectrumHidden
+// PW5.8: plain click on the overall fold header folds; Ctrl/Cmd-click fully HIDES the graph (incl. its
+// header bar), restorable from the hidden-tracks dropdown — analogous to the gtrack lane hide.
+function onOverallFoldClick(which: 'wave' | 'spectrum', ev: Event): void {
+  const me = ev as MouseEvent
+  if (me.ctrlKey || me.metaKey) {
+    if (which === 'wave') overallGraphs.setWaveHidden(true)
+    else overallGraphs.setSpectrumHidden(true)
+    return
+  }
+  if (which === 'wave') overallGraphs.toggleWaveFolded()
+  else overallGraphs.toggleSpectrumFolded()
+}
 watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
   try {
     localStorage.setItem(

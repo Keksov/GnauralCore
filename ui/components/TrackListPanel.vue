@@ -45,10 +45,10 @@
         <q-item-section side>
           <q-btn
             dense flat round size="sm"
-            :icon="overallGraphs.waveFolded.value ? 'visibility_off' : 'visibility'"
-            :color="overallGraphs.waveFolded.value ? 'grey-7' : undefined"
+            :icon="overallGraphs.waveHidden.value ? 'visibility_off' : 'visibility'"
+            :color="overallGraphs.waveHidden.value ? 'grey-7' : undefined"
             :aria-label="t('audio.trackShow')"
-            @click="overallGraphs.toggleWaveFolded()"
+            @click="overallGraphs.setWaveHidden(!overallGraphs.waveHidden.value)"
           >
             <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
           </q-btn>
@@ -60,10 +60,10 @@
         <q-item-section side>
           <q-btn
             dense flat round size="sm"
-            :icon="overallGraphs.spectrumFolded.value ? 'visibility_off' : 'visibility'"
-            :color="overallGraphs.spectrumFolded.value ? 'grey-7' : undefined"
+            :icon="overallGraphs.spectrumHidden.value ? 'visibility_off' : 'visibility'"
+            :color="overallGraphs.spectrumHidden.value ? 'grey-7' : undefined"
             :aria-label="t('audio.trackShow')"
-            @click="overallGraphs.toggleSpectrumFolded()"
+            @click="overallGraphs.setSpectrumHidden(!overallGraphs.spectrumHidden.value)"
           >
             <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
           </q-btn>
