@@ -166,8 +166,31 @@
              — the lanes never rendered because of exactly this. -->
         <div v-if="showGtracks" class="audio-page__gtrack-stack">
           <template v-for="(lane, gIndex) in gtracks.visibleLanes.value" :key="lane.id">
+            <!-- GT11.5 (owner 2026-07-14): per-track header bar — track-colour stripe on the left,
+                 a Fold/Unfold toggle, and the wave name(s). Folding collapses this track's graphs
+                 (curve + solo wave/spectrum sub-lanes) to just this bar. -->
+            <div class="tracks-panel__gtrack-header" :data-gtrack-header="lane.id">
+              <span
+                class="tracks-panel__gtrack-header-stripe"
+                :style="{ background: laneHeaderColor(lane) }"
+              />
+              <q-btn
+                dense flat round size="xs"
+                class="tracks-panel__gtrack-fold"
+                :icon="lane.folded ? 'chevron_right' : 'expand_more'"
+                :aria-label="lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
+                @click="gtracks.toggleLaneFolded(lane.id)"
+              >
+                <q-tooltip>{{ lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+              </q-btn>
+              <span
+                class="tracks-panel__gtrack-header-title"
+                :style="laneTitleStyle(lane)"
+              >{{ gtrackLaneLabel(lane) }}</span>
+            </div>
             <!-- GT4.2 (GT-D17): a curve lane sits over an optional inline solo-audio underlay -->
             <div
+              v-show="!lane.folded"
               class="tracks-panel__gtrack-inline"
               :class="{ 'tracks-panel__gtrack-inline--new': lane.id === newLaneId }"
               :data-gtrack-lane-wrap="lane.id"
@@ -184,7 +207,7 @@
                 :color="lane.soloWaveColor"
                 :seekable="false"
                 :height="gtracks.laneHeight.value"
-                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
               <spectrogram-view
@@ -198,7 +221,7 @@
                 :seekable="false"
                 :primary="false"
                 :height="gtracks.laneHeight.value"
-                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
               <GTrackView
@@ -208,11 +231,11 @@
                 :voices="lane.voices"
                 :mode="lane.mode"
                 :duration-sec="gtracks.durationSec.value"
-                :label="gtrackLaneLabel(lane)"
+                :label="''"
                 :height="gtracks.laneHeight.value"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="true"
-                :show-time-axis-top="gIndex === 0"
+                :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
                 :point-mode="gtracks.isLanePointMode(lane.id)"
                 :selection="gtracks.selectionForLane(lane.id)"
@@ -243,7 +266,7 @@
               />
             </div>
             <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
-            <div v-if="laneWaveSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+            <div v-if="laneWaveSublane(lane) && !lane.folded" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <waveform-view
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
@@ -259,7 +282,7 @@
                 @open-settings="gtrackSettingsId = lane.id"
               />
             </div>
-            <div v-if="laneSpectrumSublane(lane)" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
+            <div v-if="laneSpectrumSublane(lane) && !lane.folded" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <spectrogram-view
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
@@ -1993,6 +2016,19 @@ function laneAccentColor(lane: { voices: readonly { id: number }[] }): string | 
   return v === undefined ? null : voiceDotColor(v, vi)
 }
 
+// GT11.5 (owner 2026-07-14): colour of the per-track header stripe. Single-voice lanes reuse the
+// accent (voice) colour; a combined (multi-voice) lane gets a neutral stripe (colour is ambiguous).
+function laneHeaderColor(lane: { voices: readonly { id: number }[] }): string {
+  return laneAccentColor(lane) ?? '#64748b'
+}
+// GT11.5: tint the header title with the voice colour for single-voice lanes only (combined = default).
+function laneTitleStyle(lane: { voices: readonly { id: number }[] }): { color: string } | undefined {
+  const c = laneAccentColor(lane)
+  return c === null ? undefined : { color: c }
+}
+// GT11.5: the top time-axis rides the first UNFOLDED lane (folding the first lane hides its curve).
+const firstUnfoldedGIndex = computed(() => gtracks.visibleLanes.value.findIndex((l) => !l.folded))
+
 // GT10.2 (owner req. 44): the solo sub-lanes carry the lane's voice accent stripe too.
 function sublaneAccentStyle(lane: { voices: readonly { id: number }[] }): Record<string, string> {
   const c = laneAccentColor(lane)
@@ -2833,6 +2869,37 @@ onBeforeUnmount(() => {
 
 /* GT4.2 (GT-D17): inline solo underlay — the solo wave/spectrum sits BEHIND the curve lane, which
    punches a transparent hole in its plot so the underlay shows through under the curves. */
+/* GT11.5 (owner 2026-07-14): per-track header bar above each lane's graphs
+   (track-colour stripe + Fold/Unfold + wave name). */
+.tracks-panel__gtrack-header {
+  align-items: center;
+  background: rgba(148, 163, 184, 0.08);
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+.tracks-panel__gtrack-header-stripe {
+  align-self: stretch;
+  flex: 0 0 4px;
+  width: 4px;
+}
+.tracks-panel__gtrack-fold {
+  flex: 0 0 auto;
+}
+.tracks-panel__gtrack-header-title {
+  flex: 1 1 auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tracks-panel__gtrack-inline {
   position: relative;
   width: 100%;

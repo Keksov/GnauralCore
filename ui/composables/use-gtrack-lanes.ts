@@ -34,6 +34,9 @@ export interface GTrackLane {
   /** owner 2026-07-14: on a Base-freq lane, shade the binaural beat band (base ± beat/2), like the
    *  Schedule tab. Only rendered in 'base' mode. */
   beatBand?: boolean
+  /** GT11.5 (owner 2026-07-14): collapse this track's graphs (curve + solo wave/spectrum sub-lanes)
+   *  down to just its header bar. Persisted per file. */
+  folded?: boolean
 }
 
 /** GT3.1: a vertex reference within a lane. */
@@ -79,6 +82,7 @@ export interface ResolvedGTrackLane {
   readonly soloWaveColor: string
   readonly soloWaveOpacity: number
   readonly beatBand: boolean
+  readonly folded: boolean
 }
 
 interface StoredLane {
@@ -91,6 +95,7 @@ interface StoredLane {
   soloWaveColor?: string
   soloWaveOpacity?: number
   beatBand?: boolean
+  folded?: boolean
 }
 
 const STORAGE_KEY = 'mindwave-gtrack-lanes'
@@ -188,6 +193,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloWaveColor: lane.soloWaveColor ?? '#f59e0b',
       soloWaveOpacity: lane.soloWaveOpacity ?? 0.6,
       beatBand: lane.beatBand ?? false,
+      folded: lane.folded ?? false,
     }
   }
 
@@ -197,7 +203,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (key === null) return
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false }))
+      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
@@ -354,6 +360,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           soloWaveColor: typeof s.soloWaveColor === 'string' ? s.soloWaveColor : undefined,
           soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
           beatBand: s.beatBand === true,
+          folded: s.folded === true,
         }))
         nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
       }
@@ -469,6 +476,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // owner 2026-07-14: toggle the beat-band shading on a Base-freq lane (per-lane, persisted).
   function setLaneBeatBand(id: number, beatBand: boolean): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, beatBand } : l))
+    persist()
+  }
+  // GT11.5 (owner 2026-07-14): fold/unfold a track (its curve + solo sub-lanes) from the header bar.
+  function toggleLaneFolded(id: number): void {
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, folded: !(l.folded ?? false) } : l))
     persist()
   }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
@@ -1101,6 +1113,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneSolo,
     setLaneSoloInline,
     setLaneBeatBand,
+    toggleLaneFolded,
     setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,

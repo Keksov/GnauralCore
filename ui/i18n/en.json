@@ -170,6 +170,8 @@
     "gtrackMixInclude": "Add to overall wave/spectrum",
     "gtrackMixAllExcluded": "All voices are excluded from the overall wave/spectrum",
     "gtrackBeatBand": "Beat band (base ± beat/2)",
+    "gtrackFold": "Collapse track graphs",
+    "gtrackUnfold": "Expand track graphs",
     "scheduleTrackColor": "Color",
     "scheduleTrackPatchFailed": "Failed to update the track state.",
     "scheduleCanvasLabel": "Interactive Gnaural schedule view",

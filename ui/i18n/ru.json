@@ -170,6 +170,8 @@
     "gtrackMixInclude": "Добавить в общий спектр/волну",
     "gtrackMixAllExcluded": "Все голоса исключены из общего спектра/волны",
     "gtrackBeatBand": "Полоса бита (база ± бит/2)",
+    "gtrackFold": "Свернуть графики трека",
+    "gtrackUnfold": "Развернуть графики трека",
     "scheduleTrackColor": "Цвет",
     "scheduleTrackPatchFailed": "Не удалось обновить состояние дорожки.",
     "scheduleCanvasLabel": "Интерактивное расписание Gnaural",
