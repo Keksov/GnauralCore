@@ -126,6 +126,8 @@
     "statusPosition": "Позиция",
     "statusDuration": "Длительность",
     "statusTimeFormat": "Формат времени",
+    "statusStepUp": "Увеличить поле под курсором",
+    "statusStepDown": "Уменьшить поле под курсором",
     "timeFormat_sec": "сек.",
     "timeFormat_sec_ms": "сек. + миллисек.",
     "timeFormat_hms": "чч:мм:сс",

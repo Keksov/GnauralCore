@@ -126,6 +126,8 @@
     "statusPosition": "Position",
     "statusDuration": "Duration",
     "statusTimeFormat": "Time format",
+    "statusStepUp": "Increase the field at the cursor",
+    "statusStepDown": "Decrease the field at the cursor",
     "timeFormat_sec": "sec.",
     "timeFormat_sec_ms": "sec. + millis.",
     "timeFormat_hms": "hh:mm:ss",

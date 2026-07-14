@@ -18,13 +18,10 @@
     >
       {{ audio.gnauralScheduleError }}
     </q-banner>
-    <!-- SB2.1 (status-bar plan, req 1): the tracks stack scrolls INSIDE this region; the status bar
-         below it stays pinned (always visible). Root is overflow:hidden; this div is the scroller. -->
-    <div class="tracks-panel__scroll">
-    <div v-if="showGtracks || hasSpectrogramData" class="row no-wrap items-start" style="gap: 16px;">
-      <div class="col column" style="min-width: 0;">
-        <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
-        <div class="audio-page__spectrogram-header">
+    <!-- SF10.1: common header above the whole stack; all buttons here (once).
+         SB2.6 (feedback #1): the header lives ABOVE the scroll region as its own flex row, so the
+         tracks scrollbar runs only alongside the lanes and never past the header (no longer sticky). -->
+    <div v-if="showGtracks || hasSpectrogramData" class="audio-page__spectrogram-header">
           <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
           <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
           <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
@@ -161,7 +158,13 @@
           >
             <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
           </q-btn>
-        </div>
+    </div>
+
+    <!-- SB2.1 (status-bar plan, req 1): the tracks stack scrolls INSIDE this region; the status bar
+         below it stays pinned (always visible). Root is overflow:hidden; this div is the scroller. -->
+    <div class="tracks-panel__scroll">
+    <div v-if="showGtracks || hasSpectrogramData" class="row no-wrap items-start" style="gap: 16px;">
+      <div class="col column" style="min-width: 0;">
         <!-- GT2.2: gtrack editor lanes (schedule curves) above the waveform + spectrum.
              NOTE: MUST be PascalCase. Kebab <gtrack-view> resolves to "GtrackView" (lowercase t)
              and silently fails against the GTrackView import (kebab of GTrackView is g-track-view)
@@ -2982,17 +2985,14 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-/* GT10.13 (owner req. 62): the header sticks while the lane stack scrolls under it.
-   SB2.1: the sticky ancestor is now .tracks-panel__scroll (no padding of its own), so the header
-   sticks flush at top:0 (the old top:-16px compensated the root's padding, which is now outside
-   the scroller). */
+/* GT10.13 (owner req. 62): the header stays above the lane stack while it scrolls.
+   SB2.6 (feedback #1): the header is now a real flex row ABOVE .tracks-panel__scroll (not sticky
+   inside it), so the tracks scrollbar runs only alongside the lanes, not past the header. */
 .audio-page__output-section--spectrogram .audio-page__spectrogram-header {
   background: #0f172a;
+  flex: 0 0 auto;
   padding-bottom: 4px;
   padding-top: 4px;
-  position: sticky;
-  top: 0;
-  z-index: 40;
 }
 
 /* GT9.2: lint diagnostic messages wrap instead of truncating. */

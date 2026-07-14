@@ -5,8 +5,9 @@
   <div class="track-status-bar">
     <slot name="minimap" />
     <div class="track-status-bar__fields">
-      <!-- (a) current cursor position — editable (req 2a). -->
-      <label class="track-status-bar__field">
+      <!-- (a) current cursor position — editable (req 2a). The step arrows + format gear sit INSIDE
+           the field frame (feedback #2/#3): the arrows change whichever segment the caret is in. -->
+      <label ref="labelEl" class="track-status-bar__field">
         <span class="track-status-bar__label">{{ t('audio.statusPosition') }}</span>
         <q-input
           dense outlined
@@ -16,39 +17,59 @@
           @update:model-value="(v) => (buf = String(v ?? ''))"
           @focus="onFocus"
           @blur="onBlur"
+          @click="trackCaret"
+          @keyup="trackCaret"
           @keyup.enter="onEnter"
           @keyup.esc="onCancel"
-        />
-      </label>
-
-      <!-- (b) format picker — a gear listing the formats; the current one is checked (req 2b). -->
-      <q-btn
-        dense flat round size="sm"
-        icon="settings"
-        class="track-status-bar__gear"
-        :aria-label="t('audio.statusTimeFormat')"
-      >
-        <q-tooltip>{{ t('audio.statusTimeFormat') }}</q-tooltip>
-        <q-menu>
-          <q-list dense style="min-width: 200px">
-            <q-item-label header class="q-py-xs">{{ t('audio.statusTimeFormat') }}</q-item-label>
-            <q-item
-              v-for="f in TIME_FORMATS"
-              :key="f"
-              clickable
-              v-close-popup
-              :active="f === format"
-              active-class="text-primary"
-              @click="emit('update:format', f)"
+          @keydown.up.prevent="step(1)"
+          @keydown.down.prevent="step(-1)"
+        >
+          <template #append>
+            <!-- (3) segment step arrows — change the field the caret is in. -->
+            <div class="track-status-bar__spin">
+              <q-btn
+                dense flat size="xs" icon="keyboard_arrow_up"
+                :aria-label="t('audio.statusStepUp')"
+                @mousedown.prevent="step(1)"
+              />
+              <q-btn
+                dense flat size="xs" icon="keyboard_arrow_down"
+                :aria-label="t('audio.statusStepDown')"
+                @mousedown.prevent="step(-1)"
+              />
+            </div>
+            <!-- (2) format picker gear — moved inside the field frame. -->
+            <q-btn
+              dense flat round size="sm"
+              icon="settings"
+              class="track-status-bar__gear"
+              :aria-label="t('audio.statusTimeFormat')"
+              @mousedown.prevent
             >
-              <q-item-section avatar style="min-width: 28px">
-                <q-icon v-if="f === format" name="check" size="18px" />
-              </q-item-section>
-              <q-item-section>{{ t(`audio.timeFormat_${f}`) }}</q-item-section>
-            </q-item>
-          </q-list>
-        </q-menu>
-      </q-btn>
+              <q-tooltip>{{ t('audio.statusTimeFormat') }}</q-tooltip>
+              <q-menu>
+                <q-list dense style="min-width: 200px">
+                  <q-item-label header class="q-py-xs">{{ t('audio.statusTimeFormat') }}</q-item-label>
+                  <q-item
+                    v-for="f in TIME_FORMATS"
+                    :key="f"
+                    clickable
+                    v-close-popup
+                    :active="f === format"
+                    active-class="text-primary"
+                    @click="emit('update:format', f)"
+                  >
+                    <q-item-section avatar style="min-width: 28px">
+                      <q-icon v-if="f === format" name="check" size="18px" />
+                    </q-item-section>
+                    <q-item-section>{{ t(`audio.timeFormat_${f}`) }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+          </template>
+        </q-input>
+      </label>
 
       <!-- (c) duration — read-only (req 2c). -->
       <div class="track-status-bar__field">
@@ -60,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed, nextTick, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -123,6 +144,76 @@ function onCancel(event: KeyboardEvent): void {
   buf.value = formatTime(props.positionSec, props.format)
   ;(event.target as HTMLElement | null)?.blur()
 }
+
+// --- (feedback #3) segment step arrows -------------------------------------------------------
+// The step arrows (and Up/Down keys) change whichever field the text caret sits in. Each format's
+// display groups map, left to right, to these units (seconds). The caret's group index = the number
+// of separators (':' / '.') before it, clamped to the group count.
+const FORMAT_UNITS: Record<TimeFormat, number[]> = {
+  sec: [1],
+  sec_ms: [1, 0.001],
+  hms: [3600, 60, 1],
+  dhms: [86400, 3600, 60, 1],
+  hms_cs: [3600, 60, 1, 0.01],
+  hms_ms: [3600, 60, 1, 0.001],
+}
+
+const labelEl = ref<HTMLLabelElement | null>(null)
+const caretPos = ref(0)
+function getInput(): HTMLInputElement | null {
+  return labelEl.value?.querySelector('input') ?? null
+}
+function trackCaret(event: Event): void {
+  const el = event.target as HTMLInputElement | null
+  if (el === null || typeof el.selectionStart !== 'number') return
+  caretPos.value = el.selectionStart
+}
+
+function groupIndexAt(text: string, caret: number): number {
+  let idx = 0
+  for (let i = 0; i < caret && i < text.length; i++) {
+    if (text[i] === ':' || text[i] === '.') idx++
+  }
+  return idx
+}
+/** Char ranges [start,end) of each digit group (split on ':' and '.'). */
+function groupRanges(text: string): [number, number][] {
+  const ranges: [number, number][] = []
+  let start = 0
+  for (let i = 0; i <= text.length; i++) {
+    if (i === text.length || text[i] === ':' || text[i] === '.') {
+      ranges.push([start, i])
+      start = i + 1
+    }
+  }
+  return ranges
+}
+
+function step(dir: 1 | -1): void {
+  const text = buf.value
+  const units = FORMAT_UNITS[props.format]
+  const gi = Math.min(groupIndexAt(text, caretPos.value), units.length - 1)
+  const unit = units[gi]
+
+  const parsed = parseTime(text, props.format)
+  const base = Number.isFinite(parsed) ? parsed : props.positionSec
+  const next = clampSec(base + dir * unit, props.durationSec)
+
+  editing.value = true // hold the field so the live-position watcher doesn't overwrite our edit
+  emit('update:positionSec', next)
+  buf.value = formatTime(next, props.format)
+
+  // Re-select the same group so repeated clicks/keys keep stepping the same field.
+  void nextTick(() => {
+    const el = getInput()
+    if (el === null) return
+    const range = groupRanges(buf.value)[gi]
+    if (range === undefined) return
+    el.focus()
+    el.setSelectionRange(range[0], range[1])
+    caretPos.value = range[0]
+  })
+}
 </script>
 
 <style scoped>
@@ -156,13 +247,33 @@ function onCancel(event: KeyboardEvent): void {
 }
 
 .track-status-bar__input {
-  width: 150px;
+  width: 210px;
 }
 
 /* the input is compact — the status bar is a thin strip, not a form. */
 .track-status-bar__input :deep(.q-field__control) {
-  height: 28px;
-  min-height: 28px;
+  height: 30px;
+  min-height: 30px;
+}
+/* keep the in-frame arrows + gear tight against the right edge of the field. */
+.track-status-bar__input :deep(.q-field__append) {
+  gap: 2px;
+  height: 30px;
+  padding-left: 2px;
+}
+
+/* (feedback #3) two stacked step arrows inside the field frame. */
+.track-status-bar__spin {
+  display: flex;
+  flex-direction: column;
+}
+.track-status-bar__spin :deep(.q-btn) {
+  line-height: 1;
+  min-height: 13px;
+  padding: 0;
+}
+.track-status-bar__spin :deep(.q-icon) {
+  font-size: 16px;
 }
 
 .track-status-bar__duration {
