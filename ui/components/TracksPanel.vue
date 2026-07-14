@@ -2776,11 +2776,15 @@ onBeforeUnmount(() => {
 }
 
 /* SB2.1 (req 1): the root no longer scrolls — the inner .tracks-panel__scroll does, so the status
-   bar below it can stay pinned. flex/min-height let the root fill the tab panel and bound the scroller. */
+   bar below it can stay pinned. flex/min-height let the root fill the tab panel and bound the scroller.
+   SB2.3 (owner req. 4, SB-D7): left/right gap to the editor border trimmed to 2px (top/bottom stay
+   16px so the sticky-header offset and the rest are unaffected). */
 .audio-page__output-section--spectrogram {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  padding-left: 2px;
+  padding-right: 2px;
   position: relative;
 }
 
