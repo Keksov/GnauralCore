@@ -10,6 +10,7 @@
         'gtrack-view__canvas--point': pointMode && pointTool === 'select' && hoverPoint !== null,
         'gtrack-view__canvas--add': pointMode && pointTool === 'add',
         'gtrack-view__canvas--delete': pointMode && pointTool === 'delete',
+        'gtrack-view__canvas--beat-edge': pointMode && pointTool === 'select' && hoverEdge !== null,
       }"
       @wheel.prevent="onWheel"
       @click="onClick"
@@ -157,6 +158,13 @@ export interface GTrackPointRef {
   readonly pointIndex: number
 }
 
+/** GT11.4: a beat-band edge reference — a point plus which edge (base+beat/2 or base-beat/2). */
+interface BeatEdgeRef {
+  readonly voiceId: number
+  readonly pointIndex: number
+  readonly edge: 'upper' | 'lower'
+}
+
 interface Props {
   voices: readonly GTrackVoice[]
   mode: GTrackMode
@@ -222,6 +230,8 @@ const emit = defineEmits<{
   (event: 'select-point', point: GTrackPointRef | null): void
   (event: 'drag-start', point: GTrackPointRef): void
   (event: 'drag-move', payload: { point: GTrackPointRef; timeSec: number; value: number }): void
+  /** GT11.4: drag a beat-band edge (base ± beat/2) on the Base graph — sets the point's beatFreqHalf. */
+  (event: 'drag-beat-move', payload: { point: GTrackPointRef; beatFreqHalf: number }): void
   (event: 'drag-end'): void
   /** GT3.3: double-click on a vertex — open the point parameters dialog. */
   (event: 'edit-point', point: GTrackPointRef): void
@@ -246,6 +256,8 @@ const { t } = useI18n()
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 // GT3.1: the vertex under the cursor (null = none). GT3.17: tracked regardless of point mode.
 const hoverPoint = ref<GTrackPointRef | null>(null)
+// GT11.4: the beat-band edge (base ± beat/2 at a point) under the cursor, or null. Vertex hover wins.
+const hoverEdge = ref<BeatEdgeRef | null>(null)
 // GT3.13/3.17: cursor VIEWPORT position (clientX/Y) for the hover tooltip; null while not hovering /
 // while dragging. Viewport coords because the tooltip is teleported to <body> + position:fixed.
 const hoverPos = ref<{ x: number; y: number } | null>(null)
@@ -422,6 +434,30 @@ function draw(): void {
       ctx.globalAlpha = 0.18
       ctx.fill()
       ctx.globalAlpha = 1
+      // GT11.4: small draggable handles on each band edge (base ± beat/2); the hovered/dragged edge
+      // grows and gets a white ring, mirroring the vertex affordance. Locked (preparse) voices get none.
+      if (!voice.preparse) {
+        for (let i = 0; i < pts.length; i += 1) {
+          if (pts[i]!.beatFreqHalf <= 0) continue
+          const hx = timeToX(pts[i]!.timeSec)
+          for (const edge of ['upper', 'lower'] as const) {
+            const val = edge === 'upper' ? pts[i]!.baseFreq + pts[i]!.beatFreqHalf : pts[i]!.baseFreq - pts[i]!.beatFreqHalf
+            const active = (hoverEdge.value?.voiceId === voice.id && hoverEdge.value?.pointIndex === i && hoverEdge.value?.edge === edge)
+              || (beatDragRef?.voiceId === voice.id && beatDragRef?.pointIndex === i)
+            ctx.beginPath()
+            ctx.arc(hx, valueToY(val), active ? 3.5 : 2, 0, Math.PI * 2)
+            ctx.fillStyle = color
+            ctx.globalAlpha = active ? 1 : 0.65
+            ctx.fill()
+            ctx.globalAlpha = 1
+            if (active) {
+              ctx.strokeStyle = '#ffffff'
+              ctx.lineWidth = 1.5
+              ctx.stroke()
+            }
+          }
+        }
+      }
     }
     // GT2.8: Volume lanes draw classic-editor style FILLED envelopes under each voice's curve.
     if (props.mode === 'volume') {
@@ -624,6 +660,35 @@ function pointAtPixel(offsetX: number, offsetY: number): GTrackPointRef | null {
   return best
 }
 
+// GT11.4: find the beat-band edge (base ± beat/2 at a point) nearest a canvas pixel, within
+// HIT_RADIUS_PX. Only in Base mode with the band shown; skips locked (preparse) voices and points
+// with no band (beatFreqHalf <= 0, edges coincide with the base vertex).
+function beatEdgeAtPixel(offsetX: number, offsetY: number): BeatEdgeRef | null {
+  if (props.mode !== 'base' || !props.showBeatBand) return null
+  const rect = plotRect()
+  if (rect === null || !hasData.value) return null
+  const { plotX, plotY, plotW, plotH } = rect
+  const win = view.value
+  const ax = axis.value
+  let best: BeatEdgeRef | null = null
+  let bestDist = HIT_RADIUS_PX
+  for (const voice of props.voices) {
+    if (voice.preparse) continue
+    for (let i = 0; i < voice.points.length; i += 1) {
+      const p = voice.points[i]!
+      if (p.beatFreqHalf <= 0) continue
+      const x = plotX + timeToFraction(p.timeSec, win) * plotW
+      const yUp = valueUnitToY(plotY, plotH, valueToUnit(p.baseFreq + p.beatFreqHalf, ax))
+      const yLo = valueUnitToY(plotY, plotH, valueToUnit(p.baseFreq - p.beatFreqHalf, ax))
+      const dUp = Math.hypot(x - offsetX, yUp - offsetY)
+      if (dUp <= bestDist) { bestDist = dUp; best = { voiceId: voice.id, pointIndex: i, edge: 'upper' } }
+      const dLo = Math.hypot(x - offsetX, yLo - offsetY)
+      if (dLo <= bestDist) { bestDist = dLo; best = { voiceId: voice.id, pointIndex: i, edge: 'lower' } }
+    }
+  }
+  return best
+}
+
 // GT3.2: map a cursor pixel to (time, mode-value), clamped to the plot + axis range.
 function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number; value: number } | null {
   const rect = plotRect()
@@ -645,6 +710,11 @@ const DRAG_THRESHOLD_PX = 3
 // in NORMAL mode gets the same headroom as point-edit mode (drag a vertex past the data range).
 const dragging = ref(false)
 
+// GT11.4: separate drag state for a beat-band edge — the move sets beatFreqHalf, not the mode value.
+let beatDragRef: GTrackPointRef | null = null
+let beatDragStart: { x: number; y: number } | null = null
+let beatDragMoved = false
+
 function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
   emit('select-point', hit)
   dragging.value = true
@@ -656,6 +726,20 @@ function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
   emit('drag-start', hit)
 }
 
+// GT11.4: start dragging a beat-band edge. Reuses the drag-start/drag-end transaction (one undo
+// unit), but the move maps to beatFreqHalf (via drag-beat-move), not the mode value.
+function beginBeatEdgeDrag(aEvent: PointerEvent, edge: BeatEdgeRef): void {
+  const ref_: GTrackPointRef = { voiceId: edge.voiceId, pointIndex: edge.pointIndex }
+  emit('select-point', ref_)
+  dragging.value = true
+  beatDragRef = ref_
+  beatDragStart = { x: aEvent.offsetX, y: aEvent.offsetY }
+  beatDragMoved = false
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+  emit('drag-start', ref_)
+}
+
 function onPointerDown(aEvent: PointerEvent): void {
   if (!hasData.value || aEvent.button !== 0) return
   // GT10.10 (owner reqs 57-58): NORMAL mode + Ctrl — click a vertex to drag it, click a curve to
@@ -665,6 +749,12 @@ function onPointerDown(aEvent: PointerEvent): void {
       const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
       if (hit !== null) {
         beginVertexDrag(aEvent, hit)
+        return
+      }
+      // GT11.4: Ctrl-drag a beat-band edge to resize the beat (base ± beat/2), like Ctrl-drag a vertex.
+      const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
+      if (beatEdge !== null) {
+        beginBeatEdgeDrag(aEvent, beatEdge)
         return
       }
       const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
@@ -695,6 +785,12 @@ function onPointerDown(aEvent: PointerEvent): void {
   }
 
   if (hit === null) {
+    // GT11.4: a plain drag of a beat-band edge (in select mode) resizes the beat, before deselecting.
+    const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (beatEdge !== null) {
+      beginBeatEdgeDrag(aEvent, beatEdge)
+      return
+    }
     emit('select-point', null) // deselect on empty space
     return
   }
@@ -702,6 +798,23 @@ function onPointerDown(aEvent: PointerEvent): void {
 }
 
 function onPointerMove(aEvent: PointerEvent): void {
+  // GT11.4: an active beat-band-edge drag maps the cursor's frequency to beatFreqHalf = |cursor − base|
+  // (the band is symmetric in Hz, so either edge sets the same half-width; both edges move).
+  if (beatDragRef !== null) {
+    const ref_ = beatDragRef
+    if (!beatDragMoved && beatDragStart !== null) {
+      if (Math.hypot(aEvent.offsetX - beatDragStart.x, aEvent.offsetY - beatDragStart.y) < DRAG_THRESHOLD_PX) return
+      beatDragMoved = true
+    }
+    const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
+    const voice = props.voices.find((v) => v.id === ref_.voiceId)
+    const p = voice?.points[ref_.pointIndex]
+    if (tv !== null && p !== undefined) {
+      emit('drag-beat-move', { point: ref_, beatFreqHalf: Math.max(0, Math.abs(tv.value - p.baseFreq)) })
+    }
+    hoverPos.value = null
+    return
+  }
   if (dragRef !== null) {
     // GT10.10: ignore sub-threshold jitter so a plain click stays a click (opens the dialog).
     if (!dragMoved && dragStart !== null) {
@@ -727,9 +840,29 @@ function onPointerMove(aEvent: PointerEvent): void {
   } else {
     hoverPos.value = null
   }
+  // GT11.4: track the hovered beat-band edge (vertex hover wins) for the resize cursor + highlight.
+  const nextEdge = next === null ? beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY) : null
+  const prevEdge = hoverEdge.value
+  if (nextEdge?.voiceId !== prevEdge?.voiceId || nextEdge?.pointIndex !== prevEdge?.pointIndex || nextEdge?.edge !== prevEdge?.edge) {
+    hoverEdge.value = nextEdge
+    scheduleDraw()
+  }
 }
 
 function onPointerUp(aEvent: PointerEvent): void {
+  // GT11.4: finish a beat-band-edge drag (commit the transaction = one undo unit). A press-release
+  // with no movement opens the point dialog (Beat freq field), mirroring a vertex click.
+  if (beatDragRef !== null) {
+    const ref_ = beatDragRef
+    const moved = beatDragMoved
+    beatDragRef = null
+    beatDragStart = null
+    dragging.value = false
+    try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+    if (moved) emit('drag-end')
+    else { emit('drag-cancel'); emit('edit-point', ref_) }
+    return
+  }
   if (dragRef === null) return
   const ref_ = dragRef
   const clicked = !dragMoved
@@ -749,6 +882,7 @@ function onPointerUp(aEvent: PointerEvent): void {
 
 function onPointerLeave(): void {
   if (hoverPoint.value !== null) { hoverPoint.value = null; scheduleDraw() }
+  if (hoverEdge.value !== null) { hoverEdge.value = null; scheduleDraw() } // GT11.4
   hoverPos.value = null
 }
 
@@ -963,6 +1097,11 @@ onBeforeUnmount(() => {
 
 .gtrack-view__canvas--delete {
   cursor: no-drop;
+}
+
+/* GT11.4: over a draggable beat-band edge (base ± beat/2) in Base mode — vertical resize. */
+.gtrack-view__canvas--beat-edge {
+  cursor: ns-resize;
 }
 
 .gtrack-view__label-overlay {

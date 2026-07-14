@@ -281,6 +281,7 @@
                 @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
                 @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
                 @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
+                @drag-beat-move="(e: GTrackBeatDragMove) => gtracks.dragPointBeat(e.point, e.beatFreqHalf)"
                 @drag-end="gtracks.endPointDrag()"
                 @drag-cancel="gtracks.cancelPointDrag()"
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
@@ -1140,7 +1141,7 @@ import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
-import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
+import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackBeatDragMove, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, ctrlStepValue, type GTrackMode } from '../composables/gtrack-render'

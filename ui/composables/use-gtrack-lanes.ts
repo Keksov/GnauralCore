@@ -66,6 +66,11 @@ export interface GTrackDragMove {
   readonly timeSec: number
   readonly value: number
 }
+/** GT11.4: payload emitted by GTrackView while dragging a beat-band edge (base ± beat/2). */
+export interface GTrackBeatDragMove {
+  readonly point: GTrackPointRef
+  readonly beatFreqHalf: number
+}
 
 /** GT3.10 (GT-D16): point-drag behaviour — clamp within neighbours, or cross over them. */
 export type GTrackPointDragMode = 'clamp' | 'crossover'
@@ -964,6 +969,21 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
     syncSchedule()
   }
+  /**
+   * GT11.4: live-set the dragged beat-band edge's beatFreqHalf (half the binaural beat, i.e. the
+   * band's half-width on the Base graph). Runs inside the SAME transaction opened by beginPointDrag
+   * (one undo unit) and, because GTrackModel is the single source (GT-D16), the change syncs to the
+   * voice's other lanes (a Beat lane shows 2·beatFreqHalf) automatically. Time/index are untouched.
+   */
+  function dragPointBeat(ref_: GTrackPointRef, beatFreqHalf: number): void {
+    const m = model.value
+    if (m === null || !m.inTransaction) return
+    const voice = m.schedule.voices.find((v) => v.id === ref_.voiceId)
+    const p = voice?.points[ref_.pointIndex]
+    if (voice === undefined || p === undefined) return
+    m.setPointFields(ref_.voiceId, ref_.pointIndex, { beatFreqHalf: Math.max(0, beatFreqHalf) })
+    syncSchedule()
+  }
   function endPointDrag(): void {
     const m = model.value
     if (m === null || !m.inTransaction) return
@@ -1141,6 +1161,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     clearSelection,
     beginPointDrag,
     dragPoint,
+    dragPointBeat,
     endPointDrag,
     cancelPointDrag,
     undoEdit,
