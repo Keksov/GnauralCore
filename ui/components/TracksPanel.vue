@@ -314,7 +314,7 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <template v-if="showWaveform && hasSpectrogramData && gtracks.hasMixVoices.value">
+        <template v-if="showWaveform && hasSpectrogramData && overallMixActive">
           <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL waveform stack. -->
           <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
             <span class="tracks-panel__gtrack-header-stripe" :style="{ background: wfColor(0) }" />
@@ -379,10 +379,10 @@
           </div>
         </template>
         <!-- owner 2026-07-13: all voices excluded from the overall mix -> nothing to render. -->
-        <div v-if="hasSpectrogramData && !gtracks.hasMixVoices.value" class="audio-page__empty text-grey-7">
+        <div v-if="hasSpectrogramData && !overallMixActive" class="audio-page__empty text-grey-7">
           {{ t('audio.gtrackMixAllExcluded') }}
         </div>
-        <template v-if="showSpectrogram && hasSpectrogramData && gtracks.hasMixVoices.value">
+        <template v-if="showSpectrogram && hasSpectrogramData && overallMixActive">
           <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL spectrogram stack. -->
           <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
             <span class="tracks-panel__gtrack-header-stripe" :style="{ background: '#64748b' }" />
@@ -2183,6 +2183,11 @@ const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
+// GT11.2 fix (owner 2026-07-14): the mix-exclusion gate ("all voices excluded from the overall
+// wave/spectrum") only applies to GNAURAL schedules, which have voices. A plain audio file
+// (flac/wav/mp3/…) has NO voices, so hasMixVoices would be false and wrongly hide its wave+spectrum
+// (leaving only the minimap + the "all excluded" message). Non-gnaural files always render.
+const overallMixActive = computed(() => audio.displayMode !== 'gnaural' || gtracks.hasMixVoices.value)
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
 const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
 
