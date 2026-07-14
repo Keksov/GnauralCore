@@ -1101,6 +1101,7 @@ import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
 import { useTracksListPanelState } from '../stores/track-list-panel'
+import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
@@ -2165,36 +2166,15 @@ const overallMixActive = computed(() => audio.displayMode !== 'gnaural' || gtrac
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
 const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
 
-// GT11.10 (owner 2026-07-14): fold the OVERALL waveform / spectrogram stacks from a header bar, like
-// the per-track fold (GT11.5). Persisted globally, matching the other tracks-panel UI state (heights,
-// view mode) which are also per-tab, not per-file.
-const STORAGE_TRACKS_OVERALL_FOLDED = 'mindwave-tracks-overall-folded'
-const overallWaveFolded = ref(false)
-const overallSpectrumFolded = ref(false)
-try {
-  const raw = localStorage.getItem(STORAGE_TRACKS_OVERALL_FOLDED)
-  if (raw !== null) {
-    const parsed = JSON.parse(raw) as { wave?: boolean; spectrum?: boolean }
-    overallWaveFolded.value = parsed.wave === true
-    overallSpectrumFolded.value = parsed.spectrum === true
-  }
-} catch { /* ignore */ }
-function persistOverallFolded(): void {
-  try {
-    localStorage.setItem(
-      STORAGE_TRACKS_OVERALL_FOLDED,
-      JSON.stringify({ wave: overallWaveFolded.value, spectrum: overallSpectrumFolded.value }),
-    )
-  } catch { /* ignore */ }
-}
-function toggleOverallWaveFolded(): void {
-  overallWaveFolded.value = !overallWaveFolded.value
-  persistOverallFolded()
-}
-function toggleOverallSpectrumFolded(): void {
-  overallSpectrumFolded.value = !overallSpectrumFolded.value
-  persistOverallFolded()
-}
+// GT11.10 (owner 2026-07-14) / PW5.4: fold the OVERALL waveform / spectrogram stacks from a header bar
+// (like the per-track fold GT11.5). State moved into a shared singleton (useOverallGraphs) so the
+// AudioPage-hosted «Список треков» panel toggles the SAME source; still persisted globally to
+// 'mindwave-tracks-overall-folded'. The template refs/handlers below keep their names.
+const overallGraphs = useOverallGraphs()
+const overallWaveFolded = overallGraphs.waveFolded
+const overallSpectrumFolded = overallGraphs.spectrumFolded
+const toggleOverallWaveFolded = overallGraphs.toggleWaveFolded
+const toggleOverallSpectrumFolded = overallGraphs.toggleSpectrumFolded
 watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
   try {
     localStorage.setItem(

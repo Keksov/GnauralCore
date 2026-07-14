@@ -37,6 +37,39 @@
     <q-separator class="q-my-sm" />
     <!-- Per-voice rows: colour, name/type, graph type, visibility. -->
     <q-list dense>
+      <!-- PW5.4: the OVERALL tracks (waveform + spectrogram) as list rows — names only, the eye
+           collapses/expands the corresponding stack in the Треки tab (shared useOverallGraphs). -->
+      <q-item class="track-list-panel__voice-row">
+        <q-item-section avatar style="min-width: 22px"><q-icon name="waves" size="18px" color="grey-6" /></q-item-section>
+        <q-item-section><q-item-label>{{ t('audio.tracksOverallWave') }}</q-item-label></q-item-section>
+        <q-item-section side>
+          <q-btn
+            dense flat round size="sm"
+            :icon="overallGraphs.waveFolded.value ? 'visibility_off' : 'visibility'"
+            :color="overallGraphs.waveFolded.value ? 'grey-7' : undefined"
+            :aria-label="t('audio.trackShow')"
+            @click="overallGraphs.toggleWaveFolded()"
+          >
+            <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+          </q-btn>
+        </q-item-section>
+      </q-item>
+      <q-item class="track-list-panel__voice-row">
+        <q-item-section avatar style="min-width: 22px"><q-icon name="gradient" size="18px" color="grey-6" /></q-item-section>
+        <q-item-section><q-item-label>{{ t('audio.tracksOverallSpectrum') }}</q-item-label></q-item-section>
+        <q-item-section side>
+          <q-btn
+            dense flat round size="sm"
+            :icon="overallGraphs.spectrumFolded.value ? 'visibility_off' : 'visibility'"
+            :color="overallGraphs.spectrumFolded.value ? 'grey-7' : undefined"
+            :aria-label="t('audio.trackShow')"
+            @click="overallGraphs.toggleSpectrumFolded()"
+          >
+            <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+          </q-btn>
+        </q-item-section>
+      </q-item>
+      <q-separator v-if="gtracks.voices.value.length > 0" spaced />
       <q-item v-for="(v, vi) in gtracks.voices.value" :key="v.id" class="track-list-panel__voice-row">
         <q-item-section avatar style="min-width: 22px">
           <span class="track-list-panel__voice-dot" :style="{ background: voiceDotColor(v, vi) }" />
@@ -121,6 +154,7 @@ import { useQuasar } from 'quasar'
 import { useSharedGtrackLanes, type GTrackPointDragMode } from '../composables/use-gtrack-lanes'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import { voiceDotColor } from '../composables/gtrack-voice-color'
+import { useOverallGraphs } from '../composables/use-overall-graphs'
 import { useAudioStore } from '../stores/audio'
 
 type VoiceStatePatch = { voiceId: number; muted?: boolean; hidden?: boolean; color?: string }
@@ -134,6 +168,7 @@ const { t } = useI18n()
 const $q = useQuasar()
 const audio = useAudioStore()
 const gtracks = useSharedGtrackLanes()
+const overallGraphs = useOverallGraphs()
 
 // BK8a: mute state is read from the dump (the editor model drops it); the actual voice_mute patch +
 // reload is owned by AudioPage. From here we just emit — AudioPage.applyScheduleVoiceStatePatches
