@@ -221,14 +221,8 @@
                   </q-list>
                 </q-btn-dropdown>
               </div>
-              <div class="audio-page__meta-cell audio-page__meta-cell--right audio-page__meta-cell--metric">
-                <div class="text-caption text-grey-7 audio-page__meta-label">{{ t('audio.position') }}</div>
-                <div class="text-body2 audio-page__meta-value">{{ positionLabel }}</div>
-              </div>
-              <div class="audio-page__meta-cell audio-page__meta-cell--right audio-page__meta-cell--metric">
-                <div class="text-caption text-grey-7 audio-page__meta-label">{{ t('audio.duration') }}</div>
-                <div class="text-body2 audio-page__meta-value">{{ durationLabel }}</div>
-              </div>
+              <!-- SB2.8 (owner 2026-07-14): Position/Duration removed from the top meta strip — they
+                   now live in the Tracks editor status bar (TrackStatusBar). -->
             </div>
           </div>
 
@@ -585,8 +579,6 @@ const {
   pauseResumeButtonIcon,
   pauseResumeDisabled,
   displayedPositionSec,
-  positionLabel,
-  durationLabel,
   sendAudioMessage,
   pausePlayback,
   resumePlayback,
