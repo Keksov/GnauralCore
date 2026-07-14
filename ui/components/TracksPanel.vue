@@ -769,9 +769,12 @@
 
     <!-- SB2.1 (status-bar plan): always-visible bottom status bar, OUTSIDE the scroll flow (req 1).
          Top row = the minimap, its start aligned with the graphs' vertical axis (SB-D2: left 46 /
-         right 8 = GTrackView AXIS_MARGIN). The position/format/duration fields row is added in SB2.2. -->
+         right 8 = GTrackView AXIS_MARGIN). The position/format/duration fields row is added in SB2.2.
+         SB2.9 (owner req.): the bar is rendered UNCONDITIONALLY — it must be present the moment the
+         Tracks tab is shown, not gated on spectrogram data (a large file can take a while to render,
+         and the bar should never appear with a delay). The minimap row inside is what depends on
+         data (see #minimap). -->
     <track-status-bar
-      v-if="showSpectrogram && hasSpectrogramData"
       :position-sec="gtrackPlayheadSec ?? 0"
       :duration-sec="spectrogramDuration"
       :format="timeFormat"
@@ -782,8 +785,10 @@
     >
       <template #minimap>
         <!-- SF10.4: whole-clip minimap-overview / timespan selector (SF-D24); B7 spectrogram thumbnail.
-             SB-D2 (req 3): inset by AXIS_MARGIN (46/8) so the minimap start aligns with the graph axis. -->
-        <div class="tracks-panel__statusbar-minimap">
+             SB-D2 (req 3): inset by AXIS_MARGIN (46/8) so the minimap start aligns with the graph axis.
+             SB2.9: the minimap needs real data (duration + analysis) to draw — while nothing is open
+             (or a big file is still rendering) we omit it, so the bar shows just the fields row. -->
+        <div v-if="hasSpectrogramData" class="tracks-panel__statusbar-minimap">
           <div class="audio-page__minimap-wrap">
             <spectrogram-minimap
               :duration-sec="spectrogramDuration"
