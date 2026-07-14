@@ -1,5 +1,9 @@
 <template>
-  <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram">
+  <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram tracks-panel__root">
+    <!-- PW5.2: dock-wrap hosts the «Список треков» PanelWindow + the track content; docked -> reflow,
+         floating -> teleported to <body>. .tracks-panel__dock-inner is the (new) scroll container. -->
+    <div class="tracks-panel__dock-wrap" :class="tracksListDockWrapClass">
+      <div class="tracks-panel__dock-inner">
     <div class="audio-page__player-toolbar">
       <!-- GT2.4: transport controls come from AudioPage (same pattern as GnauralScheduleView). -->
       <slot name="toolbar" />
@@ -73,10 +77,10 @@
             v-if="audio.displayMode === 'gnaural'"
             dense flat round size="sm"
             icon="queue_music"
-            :color="voicesPanelOpen ? 'primary' : undefined"
+            :color="tracksListPanel.open ? 'primary' : undefined"
             :aria-label="t('audio.tracksListPanel')"
-            :aria-expanded="voicesPanelOpen"
-            @click="voicesPanelOpen = !voicesPanelOpen"
+            :aria-expanded="tracksListPanel.open"
+            @click="tracksListPanel.open = !tracksListPanel.open"
           >
             <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
           </q-btn>
@@ -783,34 +787,18 @@
       </div>
       <template v-else>{{ noSpectrogramLabel }}</template>
     </div>
+      </div><!-- /tracks-panel__dock-inner -->
 
-    <!-- GT3.9 (GT-D15): the schedule's voice panel slides in OVER the tracks (left side). -->
-    <transition name="spectrogram-settings-backdrop">
-      <div
-        v-if="voicesPanelOpen"
-        class="audio-page__spectrogram-settings-backdrop"
-        aria-hidden="true"
-        @click="voicesPanelOpen = false"
-      />
-    </transition>
-    <transition name="gtrack-voices-panel">
-      <aside
-        v-if="voicesPanelOpen"
-        class="tracks-panel__voices-panel"
-        role="dialog"
-        aria-modal="false"
-        :aria-label="t('audio.tracksListPanel')"
+    <!-- PW5.2 (was GT3.9/GT-D15 slide-over): the «Список треков» content now lives in the universal
+         PanelWindow. floating -> teleported to <body>; docked -> flex sibling reflowing the tracks. -->
+    <Teleport to="body" :disabled="!tracksListFloating">
+      <PanelWindow
+        v-if="tracksListPanel.open"
+        :state="tracksListPanel"
+        :title="t('audio.tracksListPanel')"
+        icon="queue_music"
       >
-        <div class="audio-page__spectrogram-settings-header">
-          <div class="audio-page__spectrogram-settings-title">{{ t('audio.tracksListPanel') }}</div>
-          <q-btn
-            flat round dense
-            icon="close"
-            :aria-label="t('audio.spectrogramSettingsClose')"
-            @click="voicesPanelOpen = false"
-          />
-        </div>
-        <div class="audio-page__spectrogram-settings-body">
+        <div class="audio-page__spectrogram-settings-body tracks-panel__list-body">
           <!-- Bulk actions (owner req. 20). -->
           <div class="tracks-panel__voices-bulk">
             <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.gtrackMergeAll')" @click="gtracks.mergeAllIntoOneLane()">
@@ -920,8 +908,9 @@
             @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
           />
         </div>
-      </aside>
-    </transition>
+      </PanelWindow>
+    </Teleport>
+    </div><!-- /tracks-panel__dock-wrap -->
 
     <!-- GT9.2 (owner req. 42, GT-D21): schedule problems (lint) — slide-over list; click navigates. -->
     <transition name="spectrogram-settings-backdrop">
@@ -1240,6 +1229,8 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
+import PanelWindow from '@panel/PanelWindow.vue'
+import { useTracksListPanelState } from '../stores/track-list-panel'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
@@ -1384,8 +1375,16 @@ const gtracks = useGtrackLanes(
   computed(() => audio.displayFilePath),
 )
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
-// GT3.9 (GT-D15): the schedule's voice panel (slide-over, left).
-const voicesPanelOpen = ref(false)
+// PW5.2 (PW-D9): the schedule voice list is now the dockable/floating «Список треков» PanelWindow
+// (@panel), hosted here so it shares this component's gtracks state. Floating teleports to <body>;
+// docked reflows the tracks via the dock-wrap (see template + styles).
+const tracksListPanel = useTracksListPanelState()
+const tracksListFloating = computed(() => tracksListPanel.mode === 'floating')
+const tracksListDockWrapClass = computed(() =>
+  tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom'
+    ? 'tracks-panel__dock-wrap--col'
+    : 'tracks-panel__dock-wrap--row',
+)
 
 // GT9.2 (owner req. 42, GT-D21): schedule-problems (lint) panel. Diagnostics are live from the
 // composable (re-linted on every edit). Clicking one navigates to the offending point.
@@ -2723,9 +2722,9 @@ function onToggleLaneInMix(aLane: { voices: readonly { id: number }[] }): void {
 function handleTracksKeyDown(event: KeyboardEvent): void {
   altBigStep.value = event.altKey // GT10.22: keep the spinner big-step in sync with the Alt key
   // GT3.9: Escape closes the voice panel first, then the settings overlay.
-  if (event.key === 'Escape' && voicesPanelOpen.value) {
+  if (event.key === 'Escape' && tracksListPanel.open) {
     event.preventDefault()
-    voicesPanelOpen.value = false
+    tracksListPanel.open = false
     return
   }
   // GT9.2: Escape closes the schedule-problems panel too.
@@ -2828,7 +2827,9 @@ watch(() => audio.displayFilePath, (path) => { void openMetaAnalysis(path) })
 const rootEl = ref<HTMLElement | null>(null)
 const overlayFrame = ref<Record<string, string>>({})
 // GT10.30 (owner req. 79): the point inspector is pinned to the same frame, so measure while it is open too.
-const anyOverlayOpen = computed(() => voicesPanelOpen.value || diagnosticsOpen.value || spectrogramSettingsOpen.value || inspectorMode.value !== 'none')
+// PW5.2: the «Список треков» panel is a PanelWindow (owns its own positioning), so it no longer
+// uses the scroll-frame pinning (--tp-*) that the remaining fixed flyouts still need.
+const anyOverlayOpen = computed(() => diagnosticsOpen.value || spectrogramSettingsOpen.value || inspectorMode.value !== 'none')
 function measureOverlayFrame(): void {
   const el = rootEl.value
   if (el === null) return
@@ -2885,6 +2886,34 @@ onBeforeUnmount(() => {
 .audio-page__output-section--spectrogram {
   overflow: auto;
   position: relative;
+}
+
+/* PW5.2: «Список треков» dock host. The root stops being the scroll container (that moves down to
+   .tracks-panel__dock-inner) so a DOCKED PanelWindow sits ABOVE the scroll and reflows the content
+   instead of scrolling away with it. Two-class specificity overrides the --spectrogram overflow. */
+.audio-page__output-section--spectrogram.tracks-panel__root {
+  overflow: hidden;
+}
+.tracks-panel__dock-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.tracks-panel__dock-wrap--row { flex-direction: row; }
+.tracks-panel__dock-wrap--col { flex-direction: column; }
+.tracks-panel__dock-inner {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+/* the panel body fills + scrolls inside the PanelWindow chrome (which is a flex column). */
+.tracks-panel__list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .audio-page__player-toolbar {
