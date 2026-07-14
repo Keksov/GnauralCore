@@ -51,6 +51,9 @@ const KEY_HIDDEN = `${STORAGE_PREFIX}show-hidden`
 const KEY_TYPE = `${STORAGE_PREFIX}type-filter`
 const KEY_FAVORITES = `${STORAGE_PREFIX}favorites`
 const KEY_COLS = `${STORAGE_PREFIX}cols`
+// FB5.3 (owner req. 19): the last-visited folder — restored on init so a page refresh reopens the
+// dialog in the same directory it was in.
+const KEY_LAST_DIR = `${STORAGE_PREFIX}last-dir`
 
 const DEFAULT_COLS: FsTableColWidths = { name: 260, ext: 60, size: 92 }
 
@@ -281,10 +284,11 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
 
   let openToken = 0
 
-  async function openDir(path: string): Promise<void> {
+  // Returns true when the directory listed successfully (used by init's start-dir fallback chain).
+  async function openDir(path: string): Promise<boolean> {
     const base = baseUrl.value
     if (base === null) {
-      return
+      return false
     }
     const token = ++openToken
     loading.value = true
@@ -292,17 +296,20 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     try {
       const result = await fsBrowserApi.listDir(base, providerId.value, path, { showHidden: showHidden.value })
       if (token !== openToken) {
-        return
+        return false
       }
       currentPath.value = result.path
       parentPath.value = result.parent
       entries.value = [...result.entries]
+      rememberDir(result.path) // FB5.3: the current folder is restored after a page refresh.
+      return true
     } catch (err) {
       if (token !== openToken) {
-        return
+        return false
       }
       error.value = err instanceof Error ? err.message : 'Failed to list directory'
       entries.value = []
+      return false
     } finally {
       if (token === openToken) {
         loading.value = false
@@ -321,9 +328,25 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     return [...result.entries]
   }
 
+  // FB5.3: persist the last-visited folder (best-effort). Called on every successful openDir and on
+  // every tree reveal/browse, so init can restore it across a refresh.
+  const rememberDir = (path: string): void => {
+    persist(KEY_LAST_DIR, path)
+  }
+
+  const readLastDir = (): string | null => {
+    try {
+      const raw = localStorage.getItem(KEY_LAST_DIR)
+      return raw !== null && raw !== '' ? raw : null
+    } catch {
+      return null
+    }
+  }
+
   // FB5.1: ask the tree view (FsEntryList) to reveal + select a folder. Used by favorites/roots in
   // tree mode, where a flat openDir has no visible effect. The nonce forces a fresh signal object.
   const requestReveal = (path: string): void => {
+    rememberDir(path) // FB5.3: tree navigation (favorites/roots/reveal) also updates the remembered folder.
     revealNonce += 1
     revealSignal.value = { path, nonce: revealNonce }
   }
@@ -361,13 +384,29 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
       providerId.value = providers.value[0] ?? DEFAULT_PROVIDER
     }
     await loadRoots()
-    const startDir = initialPath
-      ?? favorites.value.find((f) => f.kind === 'dir' && f.providerId === providerId.value)?.path
-      ?? roots.value[0]?.path
-      ?? null
-    if (startDir !== null) {
-      await openDir(startDir)
-    } else {
+    // FB5.3 (FB-D20): start-dir priority — the remembered last folder wins (a refresh must reopen
+    // where the user was), then the caller's initialPath (presetsRoot default seed), then the first
+    // favorite dir, then the first root. Each is tried in order; a stale/removed folder that fails to
+    // list falls through to the next candidate so the dialog never opens onto an error.
+    const candidates: string[] = []
+    const pushCandidate = (path: string | undefined | null): void => {
+      if (typeof path === 'string' && path !== '' && !candidates.includes(path)) {
+        candidates.push(path)
+      }
+    }
+    pushCandidate(readLastDir())
+    pushCandidate(initialPath)
+    pushCandidate(favorites.value.find((f) => f.kind === 'dir' && f.providerId === providerId.value)?.path)
+    pushCandidate(roots.value[0]?.path)
+
+    let opened = false
+    for (const dir of candidates) {
+      if (await openDir(dir)) {
+        opened = true
+        break
+      }
+    }
+    if (!opened) {
       loading.value = false
     }
   }
@@ -457,6 +496,7 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     init,
     openDir,
     listChildren,
+    rememberDir,
     requestReveal,
     loadRoots,
     goUp,

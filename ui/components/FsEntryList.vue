@@ -377,6 +377,7 @@ const onTreeNodeClick = (node: FsTreeNode): void => {
   emit('select', node.entry)
   const tree = treeRef.value
   if (node.isDir && tree !== null) {
+    store.rememberDir(node.path) // FB5.3: remember the browsed folder so a refresh restores it.
     tree.setExpanded(node.path, !tree.isExpanded(node.path))
   }
 }
