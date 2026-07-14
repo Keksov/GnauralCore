@@ -3,27 +3,10 @@
     <!-- FB4.1 (owner req. 12, FB-D12): the menu bar spans the whole Audio form — above the side
          panels (Presets, and any future panel) AND the content — like a classic app menu bar. -->
     <div class="audio-page__menubar row items-center no-wrap">
-      <q-btn-dropdown flat dense no-caps :label="t('audio.menuFile')" class="audio-page__menu-file">
-        <q-list dense>
-          <q-item clickable v-close-popup @click="openFileDialog">
-            <q-item-section avatar>
-              <q-icon name="folder_open" />
-            </q-item-section>
-            <q-item-section>{{ t('audio.menuOpen') }}</q-item-section>
-          </q-item>
-        </q-list>
-      </q-btn-dropdown>
-      <!-- GT10.45 (owner 2026-07-13): "Edit" menu with Settings (Ctrl+P), next to "File". -->
-      <q-btn-dropdown flat dense no-caps :label="t('audio.editMenu')" class="audio-page__menu-file">
-        <q-list dense>
-          <q-item clickable v-close-popup @click="goToSettings">
-            <q-item-section avatar>
-              <q-icon name="settings" />
-            </q-item-section>
-            <q-item-section>{{ t('audio.openSettings') }}</q-item-section>
-            <q-item-section side><span class="text-caption text-grey">Ctrl+P</span></q-item-section>
-          </q-item>
-        </q-list>
+      <!-- MR1.1 (menu-redesign): a single «Меню» dropdown, data-driven from menuModel with sideways
+           submenus (owner reqs 1,2,3,5). Replaces the former «Файл»/«Правка» dropdowns. -->
+      <q-btn-dropdown ref="menuDropdownRef" flat dense no-caps :label="t('audio.menuRoot')" class="audio-page__menu-file">
+        <AppMenuList :nodes="menuModel" @select="onMenuSelect" />
       </q-btn-dropdown>
     </div>
 
@@ -416,7 +399,7 @@ import {
   type SpectrogramSelection,
   type TimeWindow,
 } from '../composables/spectrogram-viewport'
-import { QSpinnerHourglass, useQuasar, type QTreeNode } from 'quasar'
+import { QSpinnerHourglass, useQuasar, type QBtnDropdown, type QTreeNode } from 'quasar'
 import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@protocol'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -431,6 +414,9 @@ import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import TrackListDialog from '../components/TrackListDialog.vue'
+import AppMenuList from '../components/app-menu/AppMenuList.vue'
+import type { MenuNode } from '../components/app-menu/menu-node'
+import { menuNodeDisabled } from '../components/app-menu/menu-node'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -619,6 +605,42 @@ const dockWrapClass = computed<string>(() => {
 
 function openFileDialog(): void {
   filePanel.open = true
+}
+
+// MR1.1 (menu-redesign): the single «Меню» dropdown, its data-driven model, and the leaf-invoke
+// wrapper. invokeMenuCommand is the ONE code path for running a leaf; MRU recording (MR3.1) hangs
+// off it. exitApp closes the AppCore host window (owner req. 6; in a dev browser window.close()
+// only affects script-opened windows -> effectively a no-op there).
+const menuDropdownRef = ref<QBtnDropdown | null>(null)
+
+function exitApp(): void {
+  window.close()
+}
+
+const menuModel = computed<MenuNode[]>(() => [
+  {
+    id: 'file',
+    labelKey: 'audio.menuFile',
+    icon: 'insert_drive_file',
+    children: [
+      { id: 'file.open', labelKey: 'audio.menuOpen', icon: 'folder_open', run: openFileDialog },
+    ],
+  },
+  { id: 'settings', labelKey: 'audio.openSettings', icon: 'settings', shortcut: 'Ctrl+P', run: goToSettings },
+  { id: 'exit', labelKey: 'audio.menuExit', icon: 'logout', run: exitApp },
+])
+
+function invokeMenuCommand(node: MenuNode): void {
+  if (node.run === undefined || menuNodeDisabled(node)) {
+    return
+  }
+  node.run()
+  // MRU recording is added in MR3.1.
+}
+
+function onMenuSelect(node: MenuNode): void {
+  invokeMenuCommand(node)
+  menuDropdownRef.value?.hide()
 }
 
 async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Promise<void> {
