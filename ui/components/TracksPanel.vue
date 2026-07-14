@@ -68,18 +68,6 @@
               </q-item>
             </q-list>
           </q-btn-dropdown>
-          <!-- GT3.9: slide-over voice panel of the schedule (GT-D15). -->
-          <q-btn
-            v-if="audio.displayMode === 'gnaural'"
-            dense flat round size="sm"
-            icon="queue_music"
-            :color="tracksListPanel.open ? 'primary' : undefined"
-            :aria-label="t('audio.tracksListPanel')"
-            :aria-expanded="tracksListPanel.open"
-            @click="tracksListPanel.open = !tracksListPanel.open"
-          >
-            <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
-          </q-btn>
           <!-- GT9.2 (owner req. 42): schedule problems (lint) badge — count + severity colour. -->
           <q-btn
             v-if="audio.displayMode === 'gnaural' && gtracks.diagnostics.value.length > 0"
@@ -159,6 +147,17 @@
             :aria-expanded="spectrogramSettingsOpen"
             @click="toggleSpectrogramSettings"
           />
+          <!-- PW5.3: «Список треков» toggle — RIGHTMOST in the toolbar, always visible (incl. wav/flac). -->
+          <q-btn
+            dense flat round size="sm"
+            icon="queue_music"
+            :color="tracksListPanel.open ? 'primary' : undefined"
+            :aria-label="t('audio.tracksListPanel')"
+            :aria-expanded="tracksListPanel.open"
+            @click="tracksListPanel.open = !tracksListPanel.open"
+          >
+            <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
+          </q-btn>
         </div>
         <!-- GT2.2: gtrack editor lanes (schedule curves) above the waveform + spectrum.
              NOTE: MUST be PascalCase. Kebab <gtrack-view> resolves to "GtrackView" (lowercase t)
