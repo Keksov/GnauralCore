@@ -2,14 +2,19 @@
   <!-- The file-list panel: its own sticky toolbar (nav + view controls + filter funnel), the
        scrollable listing, and a sticky bottom filter — all in the SAME panel as the list
        (FB4-refine 2/3/4). Selection lives in the parent; this emits select/activate. -->
-  <div class="fs-entry-list" tabindex="0" @keydown="onKeydown">
-    <!-- Sticky top toolbar (FB4-refine 2): stays pinned; only the listing scrolls. -->
-    <div class="fs-entry-list__toolbar row items-center q-gutter-xs">
+  <div ref="rootRef" class="fs-entry-list" tabindex="0" @keydown="onKeydown">
+    <!-- Sticky top toolbar (FB4-refine 2): stays pinned; only the listing scrolls.
+         FB5.4 (FB-D21): responsive — buttons shrink to 'sm', then the controls wrap to a 2nd row. -->
+    <div
+      ref="toolbarRef"
+      class="fs-entry-list__toolbar row items-center q-gutter-xs"
+      :class="{ 'fs-entry-list__toolbar--wrap': toolbarTwoRows }"
+    >
       <!-- "Up" only makes sense in the flat dir listing; the tree navigates by expand/collapse. -->
-      <q-btn v-if="!isTree" flat dense round icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()">
+      <q-btn v-if="!isTree" flat dense round :size="btnSize" icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()">
         <q-tooltip>{{ t('fsBrowser.up') }}</q-tooltip>
       </q-btn>
-      <q-btn flat dense round icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="onRefresh">
+      <q-btn flat dense round :size="btnSize" icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="onRefresh">
         <q-tooltip>{{ t('fsBrowser.refresh') }}</q-tooltip>
       </q-btn>
 
@@ -21,47 +26,55 @@
       </div>
       <q-space v-else />
 
-      <q-btn-toggle
-        :model-value="store.viewMode"
-        flat
-        dense
-        toggle-color="primary"
-        :options="viewOptions"
-        @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
-      >
-        <template #view-table><q-icon name="table_chart" /><q-tooltip>{{ t('fsBrowser.viewTable') }}</q-tooltip></template>
-        <template #view-list><q-icon name="view_list" /><q-tooltip>{{ t('fsBrowser.viewList') }}</q-tooltip></template>
-        <template #view-icons><q-icon name="grid_view" /><q-tooltip>{{ t('fsBrowser.viewIcons') }}</q-tooltip></template>
-        <template #view-tree><q-icon name="account_tree" /><q-tooltip>{{ t('fsBrowser.viewTree') }}</q-tooltip></template>
-      </q-btn-toggle>
-      <q-btn-toggle
-        v-if="store.viewMode === 'icons'"
-        :model-value="store.iconSize"
-        flat
-        dense
-        toggle-color="primary"
-        :options="iconSizeOptions"
-        @update:model-value="(v: FsIconSize) => (store.iconSize = v)"
-      />
-      <!-- Audio toggle: pressed -> only supported audio files; released -> all files. -->
-      <q-btn
-        flat
-        dense
-        round
-        :color="store.typeFilter === 'supported' ? 'primary' : undefined"
-        icon="audiotrack"
-        :aria-label="t('fsBrowser.typeSupported')"
-        @click="store.typeFilter = store.typeFilter === 'supported' ? 'all' : 'supported'"
-      >
-        <q-tooltip>{{ store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll') }}</q-tooltip>
-      </q-btn>
-      <q-btn flat dense round :color="store.showHidden ? 'primary' : undefined" icon="visibility" :aria-label="t('fsBrowser.showHidden')" @click="store.showHidden = !store.showHidden">
-        <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
-      </q-btn>
-      <!-- FB4-refine 3: the filter is summoned by this funnel (or Ctrl-S), never always-on. -->
-      <q-btn flat dense round :color="store.filterVisible || store.filterText !== '' ? 'primary' : undefined" icon="filter_alt" :aria-label="t('fsBrowser.filterToggle')" @click="store.toggleFilter()">
-        <q-tooltip>{{ t('fsBrowser.filterToggle') }}</q-tooltip>
-      </q-btn>
+      <!-- Forced flex line-break: pushes the control group onto row 2 when it can't fit at 'sm'. -->
+      <div v-if="toolbarTwoRows" class="fs-entry-list__toolbar-break" />
+
+      <div class="fs-entry-list__controls row items-center no-wrap q-gutter-xs">
+        <q-btn-toggle
+          :model-value="store.viewMode"
+          flat
+          dense
+          :size="btnSize"
+          toggle-color="primary"
+          :options="viewOptions"
+          @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
+        >
+          <template #view-table><q-icon name="table_chart" /><q-tooltip>{{ t('fsBrowser.viewTable') }}</q-tooltip></template>
+          <template #view-list><q-icon name="view_list" /><q-tooltip>{{ t('fsBrowser.viewList') }}</q-tooltip></template>
+          <template #view-icons><q-icon name="grid_view" /><q-tooltip>{{ t('fsBrowser.viewIcons') }}</q-tooltip></template>
+          <template #view-tree><q-icon name="account_tree" /><q-tooltip>{{ t('fsBrowser.viewTree') }}</q-tooltip></template>
+        </q-btn-toggle>
+        <q-btn-toggle
+          v-if="store.viewMode === 'icons'"
+          :model-value="store.iconSize"
+          flat
+          dense
+          :size="btnSize"
+          toggle-color="primary"
+          :options="iconSizeOptions"
+          @update:model-value="(v: FsIconSize) => (store.iconSize = v)"
+        />
+        <!-- Audio toggle: pressed -> only supported audio files; released -> all files. -->
+        <q-btn
+          flat
+          dense
+          round
+          :size="btnSize"
+          :color="store.typeFilter === 'supported' ? 'primary' : undefined"
+          icon="audiotrack"
+          :aria-label="t('fsBrowser.typeSupported')"
+          @click="store.typeFilter = store.typeFilter === 'supported' ? 'all' : 'supported'"
+        >
+          <q-tooltip>{{ store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll') }}</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round :size="btnSize" :color="store.showHidden ? 'primary' : undefined" icon="visibility" :aria-label="t('fsBrowser.showHidden')" @click="store.showHidden = !store.showHidden">
+          <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
+        </q-btn>
+        <!-- FB4-refine 3: the filter is summoned by this funnel (or Ctrl-S), never always-on. -->
+        <q-btn flat dense round :size="btnSize" :color="store.filterVisible || store.filterText !== '' ? 'primary' : undefined" icon="filter_alt" :aria-label="t('fsBrowser.filterToggle')" @click="store.toggleFilter()">
+          <q-tooltip>{{ t('fsBrowser.filterToggle') }}</q-tooltip>
+        </q-btn>
+      </div>
     </div>
 
     <!-- FB4-refine: in the narrow vertical (left/right dock) layout, breadcrumbs get their own row
@@ -213,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { QInput, QTree, QVirtualScroll } from 'quasar'
 import type { FsEntry, FsRoot } from '@protocol'
@@ -242,6 +255,92 @@ const entries = computed<readonly FsEntry[]>(() => store.visibleEntries)
 // Narrow vertical layout (left/right dock): breadcrumbs move to their own row under the buttons.
 const isColumn = computed<boolean>(() => panel.mode === 'left' || panel.mode === 'right')
 const isTree = computed<boolean>(() => store.viewMode === 'tree')
+
+// FB5.4 (FB-D21): responsive toolbar. As the panel narrows: (1) shrink every toolbar button to
+// the track-editor size ('sm'); (2) if the small buttons still overflow one row, wrap the control
+// buttons to a second row (Up + Refresh + breadcrumbs stay on row 1). A ResizeObserver on the root
+// drives measureToolbar(), which escalates from the roomiest layout and stops at the first that fits.
+const rootRef = ref<HTMLElement | null>(null)
+const toolbarRef = ref<HTMLElement | null>(null)
+const toolbarCompact = ref<boolean>(false)
+const toolbarTwoRows = ref<boolean>(false)
+const btnSize = computed<string | undefined>(() => (toolbarCompact.value ? 'sm' : undefined))
+
+let measuring = false
+let measurePending = false
+const isToolbarOverflowing = (el: HTMLElement): boolean => el.scrollWidth > el.clientWidth + 1
+
+// One escalation pass: start roomy (default size, one row — toolbar is flex-nowrap so overflow is
+// measurable) and stop at the first layout that fits. nextTick between steps settles the DOM before
+// paint, so the intermediate states never flicker.
+const runToolbarPass = async (el: HTMLElement): Promise<void> => {
+  toolbarCompact.value = false
+  toolbarTwoRows.value = false
+  await nextTick()
+  if (!isToolbarOverflowing(el)) {
+    return
+  }
+  toolbarCompact.value = true
+  await nextTick()
+  if (!isToolbarOverflowing(el)) {
+    return
+  }
+  // Still cramped at the min button size -> break the controls onto a second row.
+  toolbarTwoRows.value = true
+}
+
+const measureToolbar = async (): Promise<void> => {
+  const el = toolbarRef.value
+  if (el === null) {
+    return
+  }
+  // A resize that arrives mid-measure is coalesced into one more pass afterwards (the DOM the pass
+  // mutated would otherwise swallow the ResizeObserver notification and leave a stale layout).
+  if (measuring) {
+    measurePending = true
+    return
+  }
+  measuring = true
+  try {
+    do {
+      measurePending = false
+      await runToolbarPass(el)
+    } while (measurePending)
+  } finally {
+    measuring = false
+  }
+}
+
+let resizeObserver: ResizeObserver | null = null
+let lastRootWidth = -1
+
+onMounted(() => {
+  void measureToolbar()
+  resizeObserver = new ResizeObserver((entries_) => {
+    const width = entries_[0]?.contentRect.width ?? 0
+    // Width-guard: wrapping to two rows changes the root's HEIGHT, not width — never re-measure on
+    // our own layout change, only on a real panel resize.
+    if (Math.abs(width - lastRootWidth) < 1) {
+      return
+    }
+    lastRootWidth = width
+    void measureToolbar()
+  })
+  if (rootRef.value !== null) {
+    resizeObserver.observe(rootRef.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
+// The visible button set changes with the view mode (Up hidden in tree; icon-size toggle only in
+// icons) and the dock layout — re-measure so the toolbar re-fits.
+watch([() => store.viewMode, isColumn], () => {
+  void measureToolbar()
+})
 
 // Icon-only view toggle; each option renders via a named slot so it can carry a tooltip.
 const viewOptions = [
@@ -594,8 +693,21 @@ const onColResize = (event: PointerEvent, key: keyof FsTableColWidths): void => 
   &__toolbar {
     flex: 0 0 auto;
     padding: 2px 6px;
+    // Default: single row, no wrap — so measureToolbar can detect button overflow via scrollWidth.
     flex-wrap: nowrap;
+
+    // FB5.4 (FB-D21): two-row mode — the break element below forces the controls onto row 2.
+    &--wrap { flex-wrap: wrap; }
   }
+
+  // Zero-height full-width flex item: a line break that drops the controls to the next row (FB5.4).
+  &__toolbar-break {
+    flex: 0 0 100%;
+    height: 0;
+  }
+
+  // The control buttons travel as one flex item so they wrap to row 2 as a group, not piecemeal.
+  &__controls { flex: 0 0 auto; }
 
   &__breadcrumbs {
     overflow-x: auto;
