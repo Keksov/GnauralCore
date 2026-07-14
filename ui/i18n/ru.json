@@ -44,7 +44,7 @@
     "gtrackCanvasLabel": "Кривые gnaural-трека",
     "gtrackSettings": "Настройки дорожки (режим / голоса)",
     "gtrackPointMode": "Режим правки точек (выбор точек)",
-    "gtrackVoicesPanel": "Голоса расписания",
+    "tracksListPanel": "Список треков",
     "gtrackMergeAll": "Все голоса в одну дорожку",
     "gtrackSpreadAll": "По дорожке на голос (раскладка по умолчанию)",
     "gtrackAllInMode": "Показать все в типе…",

@@ -74,11 +74,11 @@
             dense flat round size="sm"
             icon="queue_music"
             :color="voicesPanelOpen ? 'primary' : undefined"
-            :aria-label="t('audio.gtrackVoicesPanel')"
+            :aria-label="t('audio.tracksListPanel')"
             :aria-expanded="voicesPanelOpen"
             @click="voicesPanelOpen = !voicesPanelOpen"
           >
-            <q-tooltip>{{ t('audio.gtrackVoicesPanel') }}</q-tooltip>
+            <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
           </q-btn>
           <!-- GT9.2 (owner req. 42): schedule problems (lint) badge — count + severity colour. -->
           <q-btn
@@ -799,10 +799,10 @@
         class="tracks-panel__voices-panel"
         role="dialog"
         aria-modal="false"
-        :aria-label="t('audio.gtrackVoicesPanel')"
+        :aria-label="t('audio.tracksListPanel')"
       >
         <div class="audio-page__spectrogram-settings-header">
-          <div class="audio-page__spectrogram-settings-title">{{ t('audio.gtrackVoicesPanel') }}</div>
+          <div class="audio-page__spectrogram-settings-title">{{ t('audio.tracksListPanel') }}</div>
           <q-btn
             flat round dense
             icon="close"

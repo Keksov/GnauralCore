@@ -44,7 +44,7 @@
     "gtrackCanvasLabel": "Gnaural track curves",
     "gtrackSettings": "Lane settings (mode / voices)",
     "gtrackPointMode": "Point edit mode (select points)",
-    "gtrackVoicesPanel": "Schedule voices",
+    "tracksListPanel": "Track list",
     "gtrackMergeAll": "All voices in one lane",
     "gtrackSpreadAll": "One lane per voice (default layout)",
     "gtrackAllInMode": "Show all in type…",
