@@ -2428,19 +2428,39 @@ function onWaveformDividerPointerUp(aEvent: PointerEvent): void {
   wfDividerIndex = -1
   try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
 }
+// GT11.7 refinement (owner 2026-07-14): Ctrl/⌘ on an overall bottom handle unifies EVERY overall
+// graph (all waveform + spectrogram channels) to one height — the voice-graph Ctrl-resize applied to
+// the overall wave+spectrum. Ranges differ (wave 48..800, spectrum 120..1200), so each stack clamps
+// to its own bounds (identical for a target in the shared 120..800 range).
+function syncAllOverallHeights(target: number): void {
+  if (waveformTrackHeights.value.length > 0) {
+    const h = clampWaveformHeight(target)
+    waveformTrackHeights.value = waveformTrackHeights.value.map(() => h)
+  }
+  if (spectrogramTrackHeights.value.length > 0) {
+    const h = clampTrackHeight(target)
+    spectrogramTrackHeights.value = spectrogramTrackHeights.value.map(() => h)
+  }
+}
 let wfBottomResizing = false
 let wfBottomStartY = 0
 let wfBottomStartHeights: number[] = []
+let wfBottomSync = false
 function onWaveformBottomPointerDown(aEvent: PointerEvent): void {
   if (waveformTrackHeights.value.length === 0) return
   wfBottomResizing = true
   wfBottomStartY = aEvent.clientY
   wfBottomStartHeights = waveformTrackHeights.value.slice()
+  wfBottomSync = aEvent.ctrlKey || aEvent.metaKey
   ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
   aEvent.preventDefault()
 }
 function onWaveformBottomPointerMove(aEvent: PointerEvent): void {
   if (!wfBottomResizing) return
+  if (wfBottomSync) {
+    syncAllOverallHeights(wfBottomStartHeights[0]! + (aEvent.clientY - wfBottomStartY))
+    return
+  }
   const minH = Math.min(...wfBottomStartHeights)
   const maxH = Math.max(...wfBottomStartHeights)
   const lo = WAVEFORM_TRACK_HEIGHT_MIN - minH
@@ -2639,18 +2659,24 @@ function onSpectrogramDividerPointerUp(aEvent: PointerEvent): void {
 let bottomResizing = false
 let bottomStartY = 0
 let bottomStartHeights: number[] = []
+let bottomSync = false
 
 function onSpectrogramBottomPointerDown(aEvent: PointerEvent): void {
   if (spectrogramTrackHeights.value.length === 0) return
   bottomResizing = true
   bottomStartY = aEvent.clientY
   bottomStartHeights = spectrogramTrackHeights.value.slice()
+  bottomSync = aEvent.ctrlKey || aEvent.metaKey
   ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
   aEvent.preventDefault()
 }
 
 function onSpectrogramBottomPointerMove(aEvent: PointerEvent): void {
   if (!bottomResizing) return
+  if (bottomSync) {
+    syncAllOverallHeights(bottomStartHeights[0]! + (aEvent.clientY - bottomStartY))
+    return
+  }
   // Clamp the shared delta so no track leaves [MIN, MAX] — keeps the change equal.
   const minH = Math.min(...bottomStartHeights)
   const maxH = Math.max(...bottomStartHeights)
