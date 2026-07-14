@@ -48,6 +48,51 @@
       </q-card>
     </q-dialog>
 
+    <!-- MR2.1 (menu-redesign): export dialog (Меню → Файл → Экспорт) — pick the file type + name. -->
+    <q-dialog v-model="exportDialog.open">
+      <q-card class="audio-page__export-dialog">
+        <q-card-section class="row items-center q-py-sm">
+          <div class="text-h6">{{ t('audio.exportDialogTitle') }}</div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.exportCancel')" />
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="q-gutter-md">
+          <div>
+            <div class="text-caption text-grey-7 q-mb-xs">{{ t('audio.exportFormat') }}</div>
+            <q-option-group
+              v-model="exportDialog.format"
+              inline
+              :options="[
+                { label: 'WAV', value: 'wav' },
+                { label: 'FLAC', value: 'flac' },
+              ]"
+            />
+          </div>
+          <q-input
+            v-model="exportDialog.fileName"
+            dense
+            outlined
+            :label="t('audio.exportFileName')"
+            @keyup.enter="confirmExport"
+          />
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right">
+          <q-btn flat no-caps :label="t('audio.exportCancel')" v-close-popup />
+          <q-btn
+            color="primary"
+            no-caps
+            icon="download"
+            :label="t('audio.exportAction')"
+            :disable="exportDialog.fileName.trim() === '' || exportingFormat !== null"
+            :loading="exportingFormat !== null"
+            @click="confirmExport"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- FB4.3 (FB-D13): docked panel + editor reflow. Floating -> teleported to <body> (fixed
          overlay, no ancestor clipping); docked -> a flex sibling of the inner form. -->
     <div class="audio-page__dock-wrap" :class="dockWrapClass">
@@ -255,12 +300,8 @@
                           :pause-resume-icon="pauseResumeButtonIcon"
                           :pause-resume-label="pauseResumeButtonLabel"
                           :pause-resume-disabled="pauseResumeDisabled"
-                          :show-export="canExportCurrentFile"
-                          :export-disabled="exportingFormat !== null"
-                          :export-loading="exportingFormat !== null"
                           @start-stop="handleStartStop"
                           @pause-resume="handlePauseResume"
-                          @export="downloadSelectedAudio"
                         />
                       </div>
 
@@ -305,12 +346,8 @@
                               :pause-resume-icon="pauseResumeButtonIcon"
                               :pause-resume-label="pauseResumeButtonLabel"
                               :pause-resume-disabled="pauseResumeDisabled"
-                              :show-export="canExportCurrentFile"
-                              :export-disabled="exportingFormat !== null"
-                              :export-loading="exportingFormat !== null"
                               @start-stop="handleStartStop"
                               @pause-resume="handlePauseResume"
-                              @export="downloadSelectedAudio"
                             />
                           </template>
                         </gnaural-schedule-view>
@@ -342,12 +379,8 @@
                           :pause-resume-icon="pauseResumeButtonIcon"
                           :pause-resume-label="pauseResumeButtonLabel"
                           :pause-resume-disabled="pauseResumeDisabled"
-                          :show-export="canExportCurrentFile"
-                          :export-disabled="exportingFormat !== null"
-                          :export-loading="exportingFormat !== null"
                           @start-stop="handleStartStop"
                           @pause-resume="handlePauseResume"
-                          @export="downloadSelectedAudio"
                         />
                       </template>
                     </tracks-panel>
@@ -388,7 +421,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
 import SpectrogramMinimap from '../components/SpectrogramMinimap.vue'
 import SpectrogramView from '../components/SpectrogramView.vue'
 import WaveformView from '../components/WaveformView.vue'
@@ -553,6 +586,12 @@ const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
 const scheduleViewRef = ref<GnauralScheduleViewHandle | null>(null)
 const trackStateBusy = ref(false)
 const exportingFormat = ref<ExportAudioFileKind | null>(null)
+// MR2.1 (menu-redesign): export dialog state (type + filename), opened from Меню → Файл → Экспорт.
+const exportDialog = reactive({
+  open: false,
+  format: 'wav' as ExportAudioFileKind,
+  fileName: '',
+})
 const {
   canStart,
   canSeek,
@@ -624,6 +663,13 @@ const menuModel = computed<MenuNode[]>(() => [
     icon: 'insert_drive_file',
     children: [
       { id: 'file.open', labelKey: 'audio.menuOpen', icon: 'folder_open', run: openFileDialog },
+      {
+        id: 'file.export',
+        labelKey: 'audio.export',
+        icon: 'download',
+        run: openExportDialog,
+        disabled: () => !canExportCurrentFile.value,
+      },
     ],
   },
   { id: 'settings', labelKey: 'audio.openSettings', icon: 'settings', shortcut: 'Ctrl+P', run: goToSettings },
@@ -1686,7 +1732,7 @@ async function applyScheduleVoiceStatePatches(aPatches: readonly ScheduleVoiceSt
   }
 }
 
-async function downloadSelectedAudio(format: ExportAudioFileKind): Promise<void> {
+async function downloadSelectedAudio(format: ExportAudioFileKind, fileName?: string): Promise<void> {
   const filePath = audio.selectedPath
   if (filePath === null || audio.selectedFileKind !== 'gnaural' || exportingFormat.value !== null) {
     return
@@ -1706,7 +1752,7 @@ async function downloadSelectedAudio(format: ExportAudioFileKind): Promise<void>
     const objectUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = objectUrl
-    link.download = buildExportFileName(filePath, format)
+    link.download = fileName !== undefined && fileName.trim() !== '' ? fileName.trim() : buildExportFileName(filePath, format)
     document.body.append(link)
     link.click()
     link.remove()
@@ -1720,6 +1766,38 @@ async function downloadSelectedAudio(format: ExportAudioFileKind): Promise<void>
   } finally {
     exportingFormat.value = null
   }
+}
+
+// MR2.1 (menu-redesign): open the export dialog (Меню → Файл → Экспорт). Prefills the filename from
+// the source, gnaural-only (same gate as the old toolbar button).
+function openExportDialog(): void {
+  const filePath = audio.selectedPath
+  if (filePath === null || !canExportCurrentFile.value) {
+    return
+  }
+  exportDialog.format = 'wav'
+  exportDialog.fileName = buildExportFileName(filePath, 'wav')
+  exportDialog.open = true
+}
+
+// Swap the trailing extension of the (possibly user-edited) name when the export type changes.
+function swapExportExtension(name: string, format: ExportAudioFileKind): string {
+  const ext = name.match(/\.[^.\\/]+$/u)?.[0] ?? ''
+  return `${name.slice(0, Math.max(0, name.length - ext.length))}.${format}`
+}
+
+watch(() => exportDialog.format, (format) => {
+  exportDialog.fileName = swapExportExtension(exportDialog.fileName, format)
+})
+
+async function confirmExport(): Promise<void> {
+  const fileName = exportDialog.fileName.trim()
+  if (fileName === '') {
+    return
+  }
+  const format = exportDialog.format
+  exportDialog.open = false
+  await downloadSelectedAudio(format, fileName)
 }
 
 async function handleScheduleVoiceStatePatch(aPatch: ScheduleVoiceStatePatch): Promise<void> {
