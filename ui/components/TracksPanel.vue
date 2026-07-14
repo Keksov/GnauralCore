@@ -18,6 +18,9 @@
     >
       {{ audio.gnauralScheduleError }}
     </q-banner>
+    <!-- SB2.1 (status-bar plan, req 1): the tracks stack scrolls INSIDE this region; the status bar
+         below it stays pinned (always visible). Root is overflow:hidden; this div is the scroller. -->
+    <div class="tracks-panel__scroll">
     <div v-if="showGtracks || hasSpectrogramData" class="row no-wrap items-start" style="gap: 16px;">
       <div class="col column" style="min-width: 0;">
         <!-- SF10.1: common header above the whole stack; all buttons here (once) -->
@@ -535,30 +538,7 @@
           />
           </div>
         </template>
-        <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
-             B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
-        <div v-if="showSpectrogram && hasSpectrogramData" class="audio-page__minimap-wrap">
-          <spectrogram-minimap
-            :duration-sec="spectrogramDuration"
-            :file-path="audio.displayFilePath"
-                :reload-key="spectrogramReloadKey"
-            :analysis="spectrogramTracks[0]?.analysis"
-            :render="spectrogramStore.renderOptions"
-            :mode="minimapMode"
-            :waveform-color="wfColor(0)"
-            v-model:view="spectrogramView"
-          />
-          <!-- SF26: gear opens the minimap settings dialog. -->
-          <q-btn
-            dense flat round size="xs"
-            icon="settings"
-            class="audio-page__minimap-gear"
-            :aria-label="t('audio.minimapMode')"
-            @click="minimapSettingsOpen = true"
-          >
-            <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
-          </q-btn>
-        </div>
+        <!-- SB2.1: the minimap moved OUT of the scroll flow into the bottom status bar (see below). -->
 
         <!-- SF26: minimap settings dialog (thumbnail content). -->
         <q-dialog v-model="minimapSettingsOpen">
@@ -781,6 +761,38 @@
         </div>
       </div>
       <template v-else>{{ noSpectrogramLabel }}</template>
+    </div>
+    </div><!-- /tracks-panel__scroll (SB2.1) -->
+
+    <!-- SB2.1 (status-bar plan): always-visible bottom status bar, OUTSIDE the scroll flow (req 1).
+         Top row = the minimap, its start aligned with the graphs' vertical axis (SB-D2: left 46 /
+         right 8 = GTrackView AXIS_MARGIN). The position/format/duration fields row is added in SB2.2. -->
+    <div v-if="showSpectrogram && hasSpectrogramData" class="tracks-panel__statusbar">
+      <!-- SF10.4: whole-clip minimap-overview / timespan selector (SF-D24); B7 spectrogram thumbnail. -->
+      <div class="tracks-panel__statusbar-minimap">
+        <div class="audio-page__minimap-wrap">
+          <spectrogram-minimap
+            :duration-sec="spectrogramDuration"
+            :file-path="audio.displayFilePath"
+            :reload-key="spectrogramReloadKey"
+            :analysis="spectrogramTracks[0]?.analysis"
+            :render="spectrogramStore.renderOptions"
+            :mode="minimapMode"
+            :waveform-color="wfColor(0)"
+            v-model:view="spectrogramView"
+          />
+          <!-- SF26: gear opens the minimap settings dialog. -->
+          <q-btn
+            dense flat round size="xs"
+            icon="settings"
+            class="audio-page__minimap-gear"
+            :aria-label="t('audio.minimapMode')"
+            @click="minimapSettingsOpen = true"
+          >
+            <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
+          </q-btn>
+        </div>
+      </div>
     </div>
 
     <!-- GT9.2 (owner req. 42, GT-D21): schedule problems (lint) — slide-over list; click navigates. -->
@@ -2716,9 +2728,38 @@ onBeforeUnmount(() => {
   padding: 16px;
 }
 
+/* SB2.1 (req 1): the root no longer scrolls — the inner .tracks-panel__scroll does, so the status
+   bar below it can stay pinned. flex/min-height let the root fill the tab panel and bound the scroller. */
 .audio-page__output-section--spectrogram {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* SB2.1: the scrolling tracks region (everything above the status bar). position:relative so the
+   lane stack's absolutely-positioned descendants anchor here and scroll with the content as before. */
+.tracks-panel__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   position: relative;
+}
+
+/* SB2.1 (req 1): status bar pinned at the bottom of the editor area, outside the scroll flow. */
+.tracks-panel__statusbar {
+  flex: 0 0 auto;
+  border-top: 1px solid #1e293b;
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+/* SB-D2 (req 3): the minimap starts at the graphs' vertical axis — inset by the same AXIS_MARGIN
+   (left 46 / right 8) the views use — so its t=0 lines up with the plot area and free space remains
+   on the right (where the mode gear sits). */
+.tracks-panel__statusbar-minimap {
+  padding-left: 46px;
+  padding-right: 8px;
 }
 
 .audio-page__player-toolbar {
@@ -2875,13 +2916,16 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-/* GT10.13 (owner req. 62): the header sticks while the lane stack scrolls under it. */
+/* GT10.13 (owner req. 62): the header sticks while the lane stack scrolls under it.
+   SB2.1: the sticky ancestor is now .tracks-panel__scroll (no padding of its own), so the header
+   sticks flush at top:0 (the old top:-16px compensated the root's padding, which is now outside
+   the scroller). */
 .audio-page__output-section--spectrogram .audio-page__spectrogram-header {
   background: #0f172a;
   padding-bottom: 4px;
   padding-top: 4px;
   position: sticky;
-  top: -16px; /* compensates the section's 16px top padding */
+  top: 0;
   z-index: 40;
 }
 
