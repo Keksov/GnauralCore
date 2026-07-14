@@ -112,7 +112,7 @@ import {
   type TimeFormat,
 } from '../composables/time-format'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** Current cursor/playhead position, seconds. */
   positionSec: number
   /** Clip duration, seconds (read-only display). */
@@ -120,8 +120,10 @@ const props = defineProps<{
   /** Active display format (owned + persisted by the host). */
   format: TimeFormat
   /** Whether the minimap row is shown (toggled from the right of the bar; owned by the host). */
-  minimapVisible: boolean
-}>()
+  minimapVisible?: boolean
+}>(), {
+  minimapVisible: true,
+})
 
 const emit = defineEmits<{
   (event: 'update:positionSec', value: number): void
