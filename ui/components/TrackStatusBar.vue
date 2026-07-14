@@ -275,10 +275,10 @@ function step(dir: 1 | -1): void {
 }
 
 /* (feedback #1) the field auto-fits the value: width is set inline (fieldWidth) on this column, the
-   input fills it, and tabular-nums keeps every digit one `ch` wide so the sizing is exact. */
+   input fills it, and tabular-nums keeps every digit one `ch` wide so the sizing is exact.
+   position:relative anchors the format caption below the input (see .track-status-bar__format). */
 .track-status-bar__field-col {
-  display: flex;
-  flex-direction: column;
+  position: relative;
 }
 .track-status-bar__input {
   width: 100%;
@@ -287,12 +287,17 @@ function step(dir: 1 | -1): void {
   font-variant-numeric: tabular-nums;
 }
 
-/* the current format, shown small under the value (feedback). */
+/* the current format, shown small UNDER the value. It is taken out of flow (absolute) so the column
+   height equals the input — the "Position" label then centres against the input, and the caption
+   drops just below it (feedback). */
 .track-status-bar__format {
   color: #64748b;
   font-size: 10px;
+  left: 0;
   line-height: 1.2;
   padding-left: 2px;
+  position: absolute;
+  top: 100%;
   white-space: nowrap;
 }
 
