@@ -9,6 +9,8 @@ export interface MenuNode {
   readonly run?: () => void
   readonly children?: readonly MenuNode[]
   readonly disabled?: () => boolean
+  // When true, invoking this command is NOT recorded in the recent-commands (MRU) list (e.g. «Выход»).
+  readonly noMru?: boolean
 }
 
 export function menuNodeHasChildren(node: MenuNode): boolean {

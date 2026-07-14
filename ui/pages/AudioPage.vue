@@ -375,7 +375,7 @@
                     >
                       <template #toolbar>
                         <gnaural-transport-controls
-                          class="audio-page__player-controls"
+                          toolbar
                           :start-stop-icon="startStopButtonIcon"
                           :start-stop-label="startStopButtonLabel"
                           :start-stop-color="startStopButtonColor"
@@ -659,6 +659,14 @@ function openFileDialog(): void {
 const menuDropdownRef = ref<QBtnDropdown | null>(null)
 
 function exitApp(): void {
+  // AppCore binds window.__appcoreExit() to terminate its run loop — window.close() alone only
+  // raises WindowCloseRequested, which the AppCore webview library ignores (so it does nothing).
+  const appcoreExit = (window as unknown as { __appcoreExit?: () => void }).__appcoreExit
+  if (typeof appcoreExit === 'function') {
+    appcoreExit()
+    return
+  }
+  // Dev browser (no native host): best-effort — only works for script-opened windows.
   window.close()
 }
 
@@ -679,7 +687,7 @@ const menuModel = computed<MenuNode[]>(() => [
     ],
   },
   { id: 'settings', labelKey: 'audio.openSettings', icon: 'settings', shortcut: 'Ctrl+P', run: goToSettings },
-  { id: 'exit', labelKey: 'audio.menuExit', icon: 'logout', run: exitApp },
+  { id: 'exit', labelKey: 'audio.menuExit', icon: 'logout', run: exitApp, noMru: true },
 ])
 
 const menuMru = useMenuMru()
@@ -707,7 +715,7 @@ const mruNodes = computed<MenuNode[]>(() => {
   const byId = menuLeafById.value
   return menuMru.ids.value
     .map((id) => byId.get(id))
-    .filter((node): node is MenuNode => node !== undefined)
+    .filter((node): node is MenuNode => node !== undefined && node.noMru !== true)
 })
 
 function invokeMenuCommand(node: MenuNode): void {
@@ -715,7 +723,9 @@ function invokeMenuCommand(node: MenuNode): void {
     return
   }
   node.run()
-  menuMru.record(node.id)
+  if (node.noMru !== true) {
+    menuMru.record(node.id)
+  }
 }
 
 function onMenuSelect(node: MenuNode): void {
