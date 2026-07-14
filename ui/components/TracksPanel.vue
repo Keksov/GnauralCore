@@ -373,7 +373,7 @@
               class="tracks-panel__gtrack-fold"
               :icon="overallWaveFolded ? 'chevron_right' : 'expand_more'"
               :aria-label="overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
-              @click="onOverallFoldClick('wave', $event)"
+              @click="toggleOverallWaveFolded"
             >
               <q-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
             </q-btn>
@@ -420,7 +420,7 @@
               :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'waveform' && trackDrag?.channel === wtrack.channel }"
               @seek="handleSeek"
               @open-settings="openWaveformSettings(wtrack.channel)"
-              @hide="hideTrack('waveform', wtrack.channel)"
+              @hide="onOverallChannelHide('waveform', wtrack.channel, $event)"
               @reorder-grip="onTrackGripDown('waveform', wtrack.channel, $event)"
             />
             <div
@@ -460,7 +460,7 @@
               class="tracks-panel__gtrack-fold"
               :icon="overallSpectrumFolded ? 'chevron_right' : 'expand_more'"
               :aria-label="overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
-              @click="onOverallFoldClick('spectrum', $event)"
+              @click="toggleOverallSpectrumFolded"
             >
               <q-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
             </q-btn>
@@ -512,7 +512,7 @@
             :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'spectrogram' && trackDrag?.channel === track.channel }"
             @seek="handleSeek"
             @open-settings="openWaveformSettings(track.channel)"
-            @hide="hideTrack('spectrogram', track.channel)"
+            @hide="onOverallChannelHide('spectrogram', track.channel, $event)"
             @reorder-grip="onTrackGripDown('spectrogram', track.channel, $event)"
           />
           <!-- SF9.2: 2px mutual-resize divider between adjacent tracks -->
@@ -2210,17 +2210,19 @@ const overallWaveFolded = overallGraphs.waveFolded
 const overallSpectrumFolded = overallGraphs.spectrumFolded
 const overallWaveHidden = overallGraphs.waveHidden
 const overallSpectrumHidden = overallGraphs.spectrumHidden
-// PW5.8: plain click on the overall fold header folds; Ctrl/Cmd-click fully HIDES the graph (incl. its
-// header bar), restorable from the hidden-tracks dropdown — analogous to the gtrack lane hide.
-function onOverallFoldClick(which: 'wave' | 'spectrum', ev: Event): void {
+const toggleOverallWaveFolded = overallGraphs.toggleWaveFolded
+const toggleOverallSpectrumFolded = overallGraphs.toggleSpectrumFolded
+// PW5.8 (owner-corrected 2026-07-14): Ctrl/Cmd-click on ANY channel eye (L/R) of the overall wave /
+// spectrum fully HIDES the whole graph incl. its header bar (restore from the hidden-tracks dropdown)
+// — exactly like the gtrack lane hide. A plain click still hides just that one channel.
+function onOverallChannelHide(kind: TrackKind, channel: number, ev: Event): void {
   const me = ev as MouseEvent
   if (me.ctrlKey || me.metaKey) {
-    if (which === 'wave') overallGraphs.setWaveHidden(true)
+    if (kind === 'waveform') overallGraphs.setWaveHidden(true)
     else overallGraphs.setSpectrumHidden(true)
     return
   }
-  if (which === 'wave') overallGraphs.toggleWaveFolded()
-  else overallGraphs.toggleSpectrumFolded()
+  hideTrack(kind, channel)
 }
 watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
   try {

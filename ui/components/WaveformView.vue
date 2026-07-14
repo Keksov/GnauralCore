@@ -27,7 +27,7 @@
         dense flat round size="xs"
         icon="visibility_off"
         :aria-label="t('audio.trackHide')"
-        @click.stop="emit('hide')"
+        @click.stop="emit('hide', $event)"
       >
         <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
       </q-btn>
@@ -118,7 +118,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
   (event: 'open-settings'): void
-  (event: 'hide'): void
+  (event: 'hide', mouseEvent: Event): void
   (event: 'reorder-grip', ev: PointerEvent): void
 }>()
 
