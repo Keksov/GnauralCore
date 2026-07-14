@@ -275,7 +275,7 @@
                 :color="lane.soloWaveColor"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="false"
-                :label="`◑ ${gtrackLaneLabel(lane)}`"
+                :label="''"
                 :height="Math.round(gtracks.laneHeight.value * 0.7)"
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
@@ -293,7 +293,7 @@
                 :seekable="false"
                 :primary="false"
                 :show-settings-gear="true"
-                :label="`◐ ${gtrackLaneLabel(lane)}`"
+                :label="''"
                 :height="Math.round(gtracks.laneHeight.value * 0.9)"
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
@@ -314,7 +314,22 @@
         </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
-        <div v-if="showWaveform && hasSpectrogramData && gtracks.hasMixVoices.value" class="audio-page__waveform-stack">
+        <template v-if="showWaveform && hasSpectrogramData && gtracks.hasMixVoices.value">
+          <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL waveform stack. -->
+          <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
+            <span class="tracks-panel__gtrack-header-stripe" :style="{ background: wfColor(0) }" />
+            <q-btn
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-fold"
+              :icon="overallWaveFolded ? 'chevron_right' : 'expand_more'"
+              :aria-label="overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
+              @click="toggleOverallWaveFolded"
+            >
+              <q-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+            </q-btn>
+            <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallWave') }}</span>
+          </div>
+          <div v-show="!overallWaveFolded" class="audio-page__waveform-stack">
           <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
             <waveform-view
               :ref="(el) => setPrimaryWaveformRef(el, wIndex)"
@@ -323,7 +338,7 @@
               :solo-voice-ids="gtracks.mixVoiceIds.value"
               :analysis="spectrogramAnalysisForChannel(wtrack.channel)"
               :channel="wtrack.channel"
-              :label="wtrack.label"
+              :label="''"
               :scale="wfScale(wtrack.channel)"
               :color="wfColor(wtrack.channel)"
               :playhead-sec="gtrackPlayheadSec"
@@ -361,12 +376,28 @@
             @pointerup="onWaveformBottomPointerUp"
             @pointercancel="onWaveformBottomPointerUp"
           />
-        </div>
+          </div>
+        </template>
         <!-- owner 2026-07-13: all voices excluded from the overall mix -> nothing to render. -->
         <div v-if="hasSpectrogramData && !gtracks.hasMixVoices.value" class="audio-page__empty text-grey-7">
           {{ t('audio.gtrackMixAllExcluded') }}
         </div>
-        <div v-if="showSpectrogram && hasSpectrogramData && gtracks.hasMixVoices.value" class="audio-page__spectrogram-stack">
+        <template v-if="showSpectrogram && hasSpectrogramData && gtracks.hasMixVoices.value">
+          <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL spectrogram stack. -->
+          <div class="tracks-panel__gtrack-header tracks-panel__overall-header">
+            <span class="tracks-panel__gtrack-header-stripe" :style="{ background: '#64748b' }" />
+            <q-btn
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-fold"
+              :icon="overallSpectrumFolded ? 'chevron_right' : 'expand_more'"
+              :aria-label="overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
+              @click="toggleOverallSpectrumFolded"
+            >
+              <q-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+            </q-btn>
+            <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallSpectrum') }}</span>
+          </div>
+          <div v-show="!overallSpectrumFolded" class="audio-page__spectrogram-stack">
         <template v-for="(track, index) in spectrogramTracks" :key="track.key">
           <spectrogram-view
             :ref="(el) => setPrimarySpectrogramRef(el, index)"
@@ -383,9 +414,9 @@
             :waveform-channel="track.channel"
             :playhead-sec="gtrackPlayheadSec"
             :seekable="canSeek"
-            :label="track.label"
+            :label="''"
             :primary="track.primary"
-            :show-time-axis-top="index === 0 && !showWaveform"
+            :show-time-axis-top="index === 0 && (!showWaveform || overallWaveFolded)"
             :show-time-axis-bottom="index === spectrogramTracks.length - 1"
             :height="spectrogramTrackHeights[index]"
             data-track-kind="spectrogram"
@@ -420,7 +451,8 @@
             @pointerup="onSpectrogramBottomPointerUp"
             @pointercancel="onSpectrogramBottomPointerUp"
           />
-        </div>
+          </div>
+        </template>
         <!-- SF10.4: fixed bottom minimap-overview / timespan selector (SF-D24).
              B7: also renders a whole-clip spectrogram thumbnail (primary channel). -->
         <div v-if="showSpectrogram && hasSpectrogramData" class="audio-page__minimap-wrap">
@@ -2153,6 +2185,37 @@ const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.va
 const showSpectrogram = computed(() => viewMode.value !== 'waveform')
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
 const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
+
+// GT11.10 (owner 2026-07-14): fold the OVERALL waveform / spectrogram stacks from a header bar, like
+// the per-track fold (GT11.5). Persisted globally, matching the other tracks-panel UI state (heights,
+// view mode) which are also per-tab, not per-file.
+const STORAGE_TRACKS_OVERALL_FOLDED = 'mindwave-tracks-overall-folded'
+const overallWaveFolded = ref(false)
+const overallSpectrumFolded = ref(false)
+try {
+  const raw = localStorage.getItem(STORAGE_TRACKS_OVERALL_FOLDED)
+  if (raw !== null) {
+    const parsed = JSON.parse(raw) as { wave?: boolean; spectrum?: boolean }
+    overallWaveFolded.value = parsed.wave === true
+    overallSpectrumFolded.value = parsed.spectrum === true
+  }
+} catch { /* ignore */ }
+function persistOverallFolded(): void {
+  try {
+    localStorage.setItem(
+      STORAGE_TRACKS_OVERALL_FOLDED,
+      JSON.stringify({ wave: overallWaveFolded.value, spectrum: overallSpectrumFolded.value }),
+    )
+  } catch { /* ignore */ }
+}
+function toggleOverallWaveFolded(): void {
+  overallWaveFolded.value = !overallWaveFolded.value
+  persistOverallFolded()
+}
+function toggleOverallSpectrumFolded(): void {
+  overallSpectrumFolded.value = !overallSpectrumFolded.value
+  persistOverallFolded()
+}
 watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
   try {
     localStorage.setItem(

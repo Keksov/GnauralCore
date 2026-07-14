@@ -172,6 +172,8 @@
     "gtrackBeatBand": "Beat band (base ± beat/2)",
     "gtrackFold": "Collapse track graphs",
     "gtrackUnfold": "Expand track graphs",
+    "tracksOverallWave": "Overall waveform",
+    "tracksOverallSpectrum": "Overall spectrogram",
     "scheduleTrackColor": "Color",
     "scheduleTrackPatchFailed": "Failed to update the track state.",
     "scheduleCanvasLabel": "Interactive Gnaural schedule view",
