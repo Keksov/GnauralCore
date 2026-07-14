@@ -424,10 +424,10 @@
               role="separator"
               aria-orientation="horizontal"
               :aria-label="t('audio.spectrogramResizeHandle')"
-              @pointerdown="onWaveformDividerPointerDown($event, wIndex)"
-              @pointermove="onWaveformDividerPointerMove"
-              @pointerup="onWaveformDividerPointerUp"
-              @pointercancel="onWaveformDividerPointerUp"
+              @pointerdown="onOverallResizeDown('waveform', wIndex, $event)"
+              @pointermove="onOverallResizeMove"
+              @pointerup="onOverallResizeUp"
+              @pointercancel="onOverallResizeUp"
             />
           </template>
           <div
@@ -435,10 +435,10 @@
             role="separator"
             aria-orientation="horizontal"
             :aria-label="t('audio.spectrogramResizeHandle')"
-            @pointerdown="onWaveformBottomPointerDown"
-            @pointermove="onWaveformBottomPointerMove"
-            @pointerup="onWaveformBottomPointerUp"
-            @pointercancel="onWaveformBottomPointerUp"
+            @pointerdown="onOverallResizeDown('waveform', waveformTracks.length - 1, $event)"
+            @pointermove="onOverallResizeMove"
+            @pointerup="onOverallResizeUp"
+            @pointercancel="onOverallResizeUp"
           />
           </div>
         </template>
@@ -517,10 +517,10 @@
             role="separator"
             aria-orientation="horizontal"
             :aria-label="t('audio.spectrogramResizeHandle')"
-            @pointerdown="onSpectrogramDividerPointerDown($event, index)"
-            @pointermove="onSpectrogramDividerPointerMove"
-            @pointerup="onSpectrogramDividerPointerUp"
-            @pointercancel="onSpectrogramDividerPointerUp"
+            @pointerdown="onOverallResizeDown('spectrogram', index, $event)"
+            @pointermove="onOverallResizeMove"
+            @pointerup="onOverallResizeUp"
+            @pointercancel="onOverallResizeUp"
           />
         </template>
           <!-- SF9.3: bottom handle resizes ALL tracks uniformly (SF-D20) -->
@@ -529,10 +529,10 @@
             role="separator"
             aria-orientation="horizontal"
             :aria-label="t('audio.spectrogramResizeHandle')"
-            @pointerdown="onSpectrogramBottomPointerDown"
-            @pointermove="onSpectrogramBottomPointerMove"
-            @pointerup="onSpectrogramBottomPointerUp"
-            @pointercancel="onSpectrogramBottomPointerUp"
+            @pointerdown="onOverallResizeDown('spectrogram', spectrogramTracks.length - 1, $event)"
+            @pointermove="onOverallResizeMove"
+            @pointerup="onOverallResizeUp"
+            @pointercancel="onOverallResizeUp"
           />
           </div>
         </template>
@@ -2224,21 +2224,23 @@ function onGtrackGripDown(laneId: number, ev: PointerEvent): void {
 let graphResizeStartY = 0
 let graphResizeStartH = 0
 let graphResizeTarget: { laneId: number; which: 'curve' | 'wave' | 'spectrum' } | null = null
-// GT11.7 refinement (owner 2026-07-14): holding Ctrl (⌘) when the drag STARTS resizes every graph of
-// the dragged lane's voice(s) together, not just this one graph.
-let graphResizeSync = false
+// GT11.7 (owner 2026-07-14): the modifier captured at drag start decides the SCOPE — plain = just
+// this graph; Ctrl/⌘ = the voice's graphs (its group); Shift = ALL graphs everywhere. resizeModeOf +
+// setAllGraphsHeight are shared with the overall wave/spectrum handles for uniform behaviour.
+let graphResizeMode: ResizeMode = 'one'
 function onGraphResizeDown(laneId: number, which: 'curve' | 'wave' | 'spectrum', startH: number, ev: PointerEvent): void {
   graphResizeStartY = ev.clientY
   graphResizeStartH = startH
   graphResizeTarget = { laneId, which }
-  graphResizeSync = ev.ctrlKey || ev.metaKey
+  graphResizeMode = resizeModeOf(ev)
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   ev.preventDefault()
 }
 function onGraphResizeMove(ev: PointerEvent): void {
   if (graphResizeTarget === null) return
   const h = graphResizeStartH + (ev.clientY - graphResizeStartY)
-  if (graphResizeSync) gtracks.setVoiceGraphsHeight(graphResizeTarget.laneId, h)
+  if (graphResizeMode === 'all') setAllGraphsHeight(h)
+  else if (graphResizeMode === 'group') gtracks.setVoiceGraphsHeight(graphResizeTarget.laneId, h)
   else gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, h)
 }
 function onGraphResizeUp(): void {
@@ -2399,40 +2401,18 @@ watch(() => waveformTracks.value.length, (aCount) => {
 }, { immediate: true })
 
 // Waveform resize handlers (mirror the spectrogram: mutual divider + uniform bottom handle).
-let wfDividerIndex = -1
-let wfDividerStartY = 0
-let wfDividerTopStart = 0
-let wfDividerBottomStart = 0
-function onWaveformDividerPointerDown(aEvent: PointerEvent, aIndex: number): void {
-  const hs = waveformTrackHeights.value
-  if (aIndex < 0 || aIndex + 1 >= hs.length) return
-  wfDividerIndex = aIndex
-  wfDividerStartY = aEvent.clientY
-  wfDividerTopStart = hs[aIndex]
-  wfDividerBottomStart = hs[aIndex + 1]
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
+// GT11.7 unified resize (owner 2026-07-14): every resize bar behaves the same — gtrack graphs AND the
+// overall wave/spectrum channels. Plain drag = just that graph; Ctrl/⌘ = every graph in the same
+// GROUP (a voice / the overall wave / the overall spectrum) to one height; Shift = ALL graphs
+// everywhere to one height. Overall channels keep per-channel heights — the divider below a channel
+// and the bottom handle below the last channel each resize the channel ABOVE them.
+type ResizeMode = 'one' | 'group' | 'all'
+function resizeModeOf(ev: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): ResizeMode {
+  return ev.shiftKey ? 'all' : ev.ctrlKey || ev.metaKey ? 'group' : 'one'
 }
-function onWaveformDividerPointerMove(aEvent: PointerEvent): void {
-  if (wfDividerIndex < 0) return
-  const total = wfDividerTopStart + wfDividerBottomStart
-  let top = wfDividerTopStart + (aEvent.clientY - wfDividerStartY)
-  top = Math.max(WAVEFORM_TRACK_HEIGHT_MIN, Math.min(total - WAVEFORM_TRACK_HEIGHT_MIN, top))
-  const next = waveformTrackHeights.value.slice()
-  next[wfDividerIndex] = Math.round(top)
-  next[wfDividerIndex + 1] = Math.round(total - top)
-  waveformTrackHeights.value = next
-}
-function onWaveformDividerPointerUp(aEvent: PointerEvent): void {
-  if (wfDividerIndex < 0) return
-  wfDividerIndex = -1
-  try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
-}
-// GT11.7 refinement (owner 2026-07-14): Ctrl/⌘ on an overall bottom handle unifies EVERY overall
-// graph (all waveform + spectrogram channels) to one height — the voice-graph Ctrl-resize applied to
-// the overall wave+spectrum. Ranges differ (wave 48..800, spectrum 120..1200), so each stack clamps
-// to its own bounds (identical for a target in the shared 120..800 range).
-function syncAllOverallHeights(target: number): void {
+// Shift scope: set EVERY graph (all gtrack lanes + all overall wave/spectrum channels) to one height.
+function setAllGraphsHeight(target: number): void {
+  gtracks.setAllLanesGraphsHeight(target)
   if (waveformTrackHeights.value.length > 0) {
     const h = clampWaveformHeight(target)
     waveformTrackHeights.value = waveformTrackHeights.value.map(() => h)
@@ -2442,36 +2422,31 @@ function syncAllOverallHeights(target: number): void {
     spectrogramTrackHeights.value = spectrogramTrackHeights.value.map(() => h)
   }
 }
-let wfBottomResizing = false
-let wfBottomStartY = 0
-let wfBottomStartHeights: number[] = []
-let wfBottomSync = false
-function onWaveformBottomPointerDown(aEvent: PointerEvent): void {
-  if (waveformTrackHeights.value.length === 0) return
-  wfBottomResizing = true
-  wfBottomStartY = aEvent.clientY
-  wfBottomStartHeights = waveformTrackHeights.value.slice()
-  wfBottomSync = aEvent.ctrlKey || aEvent.metaKey
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
+let overallResize: { kind: 'waveform' | 'spectrogram'; index: number; startH: number; startY: number; mode: ResizeMode } | null = null
+function onOverallResizeDown(kind: 'waveform' | 'spectrogram', index: number, ev: PointerEvent): void {
+  const heights = kind === 'waveform' ? waveformTrackHeights.value : spectrogramTrackHeights.value
+  const startH = heights[index]
+  if (startH === undefined) return
+  overallResize = { kind, index, startH, startY: ev.clientY, mode: resizeModeOf(ev) }
+  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+  ev.preventDefault()
 }
-function onWaveformBottomPointerMove(aEvent: PointerEvent): void {
-  if (!wfBottomResizing) return
-  if (wfBottomSync) {
-    syncAllOverallHeights(wfBottomStartHeights[0]! + (aEvent.clientY - wfBottomStartY))
-    return
+function onOverallResizeMove(ev: PointerEvent): void {
+  if (overallResize === null) return
+  const target = overallResize.startH + (ev.clientY - overallResize.startY)
+  if (overallResize.mode === 'all') { setAllGraphsHeight(target); return }
+  const { kind, index, mode } = overallResize
+  if (kind === 'waveform') {
+    const h = clampWaveformHeight(target)
+    waveformTrackHeights.value = waveformTrackHeights.value.map((v, i) => (mode === 'group' || i === index ? h : v))
+  } else {
+    const h = clampTrackHeight(target)
+    spectrogramTrackHeights.value = spectrogramTrackHeights.value.map((v, i) => (mode === 'group' || i === index ? h : v))
   }
-  const minH = Math.min(...wfBottomStartHeights)
-  const maxH = Math.max(...wfBottomStartHeights)
-  const lo = WAVEFORM_TRACK_HEIGHT_MIN - minH
-  const hi = WAVEFORM_TRACK_HEIGHT_MAX - maxH
-  const dy = Math.max(lo, Math.min(hi, aEvent.clientY - wfBottomStartY))
-  waveformTrackHeights.value = wfBottomStartHeights.map((h) => Math.round(h + dy))
 }
-function onWaveformBottomPointerUp(aEvent: PointerEvent): void {
-  if (!wfBottomResizing) return
-  wfBottomResizing = false
-  try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+function onOverallResizeUp(ev: PointerEvent): void {
+  overallResize = null
+  try { (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId) } catch { /* ignore */ }
 }
 
 // Reset the shared spectrogram view/selection when the file changes (fresh full view).
@@ -2615,86 +2590,9 @@ watch(() => spectrogramTracks.value.length, (aCount) => {
   spectrogramTrackHeights.value = next
 }, { immediate: true })
 
-// --- Track resize: 2px mutual divider (SF-D19) + uniform bottom handle (SF-D20) ---
-let dividerIndex = -1
-let dividerStartY = 0
-let dividerTopStart = 0
-let dividerBottomStart = 0
-
-function onSpectrogramDividerPointerDown(aEvent: PointerEvent, aIndex: number): void {
-  const hs = spectrogramTrackHeights.value
-  if (aIndex < 0 || aIndex + 1 >= hs.length) return
-  dividerIndex = aIndex
-  dividerStartY = aEvent.clientY
-  dividerTopStart = hs[aIndex]
-  dividerBottomStart = hs[aIndex + 1]
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
-}
-
-function onSpectrogramDividerPointerMove(aEvent: PointerEvent): void {
-  if (dividerIndex < 0) return
-  const total = dividerTopStart + dividerBottomStart
-  // Drag down -> the track above grows, the one below shrinks; combined height is fixed.
-  let top = dividerTopStart + (aEvent.clientY - dividerStartY)
-  top = Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(total - SPECTROGRAM_TRACK_HEIGHT_MIN, top))
-  const next = spectrogramTrackHeights.value.slice()
-  next[dividerIndex] = Math.round(top)
-  next[dividerIndex + 1] = Math.round(total - top)
-  spectrogramTrackHeights.value = next
-}
-
-function onSpectrogramDividerPointerUp(aEvent: PointerEvent): void {
-  if (dividerIndex < 0) return
-  dividerIndex = -1
-  try {
-    ;(aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId)
-  } catch {
-    // pointer capture may already be released
-  }
-}
-
-// SF9.3: the bottom handle (below the last track) resizes ALL tracks by the SAME
-// amount (equal delta), unlike the divider which is mutual (SF-D20).
-let bottomResizing = false
-let bottomStartY = 0
-let bottomStartHeights: number[] = []
-let bottomSync = false
-
-function onSpectrogramBottomPointerDown(aEvent: PointerEvent): void {
-  if (spectrogramTrackHeights.value.length === 0) return
-  bottomResizing = true
-  bottomStartY = aEvent.clientY
-  bottomStartHeights = spectrogramTrackHeights.value.slice()
-  bottomSync = aEvent.ctrlKey || aEvent.metaKey
-  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
-  aEvent.preventDefault()
-}
-
-function onSpectrogramBottomPointerMove(aEvent: PointerEvent): void {
-  if (!bottomResizing) return
-  if (bottomSync) {
-    syncAllOverallHeights(bottomStartHeights[0]! + (aEvent.clientY - bottomStartY))
-    return
-  }
-  // Clamp the shared delta so no track leaves [MIN, MAX] — keeps the change equal.
-  const minH = Math.min(...bottomStartHeights)
-  const maxH = Math.max(...bottomStartHeights)
-  const lo = SPECTROGRAM_TRACK_HEIGHT_MIN - minH
-  const hi = SPECTROGRAM_TRACK_HEIGHT_MAX - maxH
-  const dy = Math.max(lo, Math.min(hi, aEvent.clientY - bottomStartY))
-  spectrogramTrackHeights.value = bottomStartHeights.map((h) => Math.round(h + dy))
-}
-
-function onSpectrogramBottomPointerUp(aEvent: PointerEvent): void {
-  if (!bottomResizing) return
-  bottomResizing = false
-  try {
-    ;(aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId)
-  } catch {
-    // pointer capture may already be released
-  }
-}
+// GT11.7: the waveform + spectrogram channel resize bars are handled by the unified onOverallResize*
+// above (per-channel drag; Ctrl = the whole stack; Shift = every graph). The old mutual divider +
+// uniform bottom handle were removed so all resize bars behave like the gtrack graph handles.
 
 // --- Keyboard: the Tracks tab owns the player hotkeys while it is mounted (AudioPage's frozen
 // handler early-returns when this tab is active). Escape closes the settings overlay; nav keys

@@ -541,6 +541,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     )
     persist()
   }
+  // GT11.7 (owner 2026-07-14): Shift-resize — set EVERY gtrack graph (all lanes' curve + solo
+  // wave/spectrum) to one height. The overall wave/spectrum are handled by the panel.
+  function setAllLanesGraphsHeight(h: number): void {
+    const clamped = clampHeight(h)
+    lanes.value = lanes.value.map((l) => ({ ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped }))
+    persist()
+  }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
   function setLaneSoloWaveStyle(id: number, color: string, opacity: number): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloWaveColor: color, soloWaveOpacity: opacity } : l))
@@ -1175,6 +1182,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setLaneSoloGraphHidden,
     setLaneGraphHeight,
     setVoiceGraphsHeight,
+    setAllLanesGraphsHeight,
     setLaneSoloWaveStyle,
     laneSpectrum,
     getLaneSpectrum,
