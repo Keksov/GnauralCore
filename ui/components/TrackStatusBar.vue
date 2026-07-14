@@ -3,12 +3,15 @@
        rendered by the host (TracksPanel) into the #minimap slot on top (SB-D2 alignment); this row
        holds the editable cursor position, the format gear, and the read-only duration. -->
   <div class="track-status-bar">
-    <slot name="minimap" />
+    <!-- (feedback #2) the minimap row is rendered only when visible — hiding it (v-if, not v-show)
+         drops it from the flow so the status bar shrinks by exactly the minimap height. -->
+    <slot v-if="minimapVisible" name="minimap" />
     <div class="track-status-bar__fields">
       <!-- (a) current cursor position — editable (req 2a). The step arrows + format gear sit INSIDE
            the field frame (feedback #2/#3): the arrows change whichever segment the caret is in. -->
       <label ref="labelEl" class="track-status-bar__field">
         <span class="track-status-bar__label">{{ t('audio.statusPosition') }}</span>
+        <div class="track-status-bar__field-col" :style="{ width: fieldWidth }">
         <q-input
           dense outlined
           class="track-status-bar__input"
@@ -69,6 +72,9 @@
             </q-btn>
           </template>
         </q-input>
+        <!-- (feedback) the active format shown under the value in a small font. -->
+        <span class="track-status-bar__format">{{ t(`audio.timeFormat_${format}`) }}</span>
+        </div>
       </label>
 
       <!-- (c) duration — read-only (req 2c). -->
@@ -76,6 +82,20 @@
         <span class="track-status-bar__label">{{ t('audio.statusDuration') }}</span>
         <span class="track-status-bar__duration">{{ durationText }}</span>
       </div>
+
+      <q-space />
+
+      <!-- (feedback #2) show/hide the minimap — pinned to the right of the status bar. -->
+      <q-btn
+        dense flat round size="sm"
+        icon="map"
+        class="track-status-bar__minimap-toggle"
+        :color="minimapVisible ? 'primary' : undefined"
+        :aria-label="t('audio.statusToggleMinimap')"
+        @click="emit('update:minimapVisible', !minimapVisible)"
+      >
+        <q-tooltip>{{ t('audio.statusToggleMinimap') }}</q-tooltip>
+      </q-btn>
     </div>
   </div>
 </template>
@@ -99,11 +119,14 @@ const props = defineProps<{
   durationSec: number
   /** Active display format (owned + persisted by the host). */
   format: TimeFormat
+  /** Whether the minimap row is shown (toggled from the right of the bar; owned by the host). */
+  minimapVisible: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'update:positionSec', value: number): void
   (event: 'update:format', value: TimeFormat): void
+  (event: 'update:minimapVisible', value: boolean): void
 }>()
 
 const { t } = useI18n()
@@ -117,6 +140,11 @@ watchEffect(() => {
 })
 
 const durationText = computed(() => formatTime(props.durationSec, props.format))
+
+// (feedback #1) the field auto-fits the value for the current format: width = text (in tabular-nums
+// `ch` units) + a fixed allowance for the in-frame arrows + gear. A short minimum keeps the append
+// controls usable for tiny values.
+const fieldWidth = computed(() => `calc(${Math.max(buf.value.length, 4)}ch + 78px)`)
 
 function onFocus(): void {
   editing.value = true
@@ -246,8 +274,26 @@ function step(dir: 1 | -1): void {
   font-size: 12px;
 }
 
+/* (feedback #1) the field auto-fits the value: width is set inline (fieldWidth) on this column, the
+   input fills it, and tabular-nums keeps every digit one `ch` wide so the sizing is exact. */
+.track-status-bar__field-col {
+  display: flex;
+  flex-direction: column;
+}
 .track-status-bar__input {
-  width: 210px;
+  width: 100%;
+}
+.track-status-bar__input :deep(input) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* the current format, shown small under the value (feedback). */
+.track-status-bar__format {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.2;
+  padding-left: 2px;
+  white-space: nowrap;
 }
 
 /* the input is compact — the status bar is a thin strip, not a form. */

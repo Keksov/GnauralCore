@@ -775,8 +775,10 @@
       :position-sec="gtrackPlayheadSec ?? 0"
       :duration-sec="spectrogramDuration"
       :format="timeFormat"
+      :minimap-visible="minimapVisible"
       @update:position-sec="handleSeek"
       @update:format="setTimeFormat"
+      @update:minimap-visible="(v: boolean) => (minimapVisible = v)"
     >
       <template #minimap>
         <!-- SF10.4: whole-clip minimap-overview / timespan selector (SF-D24); B7 spectrogram thumbnail.
@@ -2390,6 +2392,18 @@ function setTimeFormat(fmt: TimeFormat): void {
     // Ignore storage failures; the in-memory choice still applies for this session.
   }
 }
+
+// SB2.7 (feedback): show/hide the status-bar minimap (global UI pref, like the fold states). Hiding
+// drops the minimap row so the status bar shrinks by its height.
+const STORAGE_MINIMAP_HIDDEN = 'mindwave-tracks-minimap-hidden'
+const minimapVisible = ref<boolean>(localStorage.getItem(STORAGE_MINIMAP_HIDDEN) !== 'true')
+watch(minimapVisible, (v) => {
+  try {
+    localStorage.setItem(STORAGE_MINIMAP_HIDDEN, v ? 'false' : 'true')
+  } catch {
+    // Ignore storage failures; the in-memory toggle still applies for this session.
+  }
+})
 
 // SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
 // re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data

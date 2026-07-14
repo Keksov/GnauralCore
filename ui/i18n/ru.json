@@ -128,6 +128,7 @@
     "statusTimeFormat": "Формат времени",
     "statusStepUp": "Увеличить поле под курсором",
     "statusStepDown": "Уменьшить поле под курсором",
+    "statusToggleMinimap": "Показать / скрыть мини-карту",
     "timeFormat_sec": "сек.",
     "timeFormat_sec_ms": "сек. + миллисек.",
     "timeFormat_hms": "чч:мм:сс",
