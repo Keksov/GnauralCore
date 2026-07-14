@@ -4,8 +4,8 @@
        the SHARED gtracks singleton; voice mutes emit up to AudioPage (which saves unsaved curve edits
        first — PW5.6b — before the reload). -->
   <div class="track-list-panel">
-    <!-- Bulk actions (owner req. 20). -->
-    <div class="track-list-panel__bulk">
+    <!-- Bulk actions (owner req. 20) — gnaural-only (operate on schedule voices/lanes). -->
+    <div v-if="isGnaural" class="track-list-panel__bulk">
       <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.gtrackMergeAll')" @click="gtracks.mergeAllIntoOneLane()">
         <q-tooltip>{{ t('audio.gtrackMergeAll') }}</q-tooltip>
       </q-btn>
@@ -34,7 +34,7 @@
         @update:model-value="(m: GTrackMode | null) => { if (m !== null) gtracks.setAllLanesMode(m) }"
       />
     </div>
-    <q-separator class="q-my-sm" />
+    <q-separator v-if="isGnaural" class="q-my-sm" />
     <!-- Per-voice rows: colour, name/type, graph type, visibility. -->
     <q-list dense>
       <!-- PW5.4: the OVERALL tracks (waveform + spectrogram) as list rows — names only, the eye
@@ -132,23 +132,26 @@
         </q-item-section>
       </q-item>
     </q-list>
-    <q-separator class="q-my-sm" />
-    <!-- Editor properties (GT-D16): point-drag mode. -->
-    <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackDragMode') }}</div>
-    <q-btn-toggle
-      :model-value="gtracks.pointDragMode.value"
-      dense unelevated no-caps spread
-      toggle-color="primary"
-      :options="[
-        { label: t('audio.gtrackDragMode_crossover'), value: 'crossover' },
-        { label: t('audio.gtrackDragMode_clamp'), value: 'clamp' },
-      ]"
-      @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
-    />
+    <!-- Editor properties (GT-D16): point-drag mode — gnaural-only (curve editing). -->
+    <template v-if="isGnaural">
+      <q-separator class="q-my-sm" />
+      <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackDragMode') }}</div>
+      <q-btn-toggle
+        :model-value="gtracks.pointDragMode.value"
+        dense unelevated no-caps spread
+        toggle-color="primary"
+        :options="[
+          { label: t('audio.gtrackDragMode_crossover'), value: 'crossover' },
+          { label: t('audio.gtrackDragMode_clamp'), value: 'clamp' },
+        ]"
+        @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
+      />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 import { useSharedGtrackLanes, type GTrackPointDragMode } from '../composables/use-gtrack-lanes'
@@ -169,6 +172,10 @@ const $q = useQuasar()
 const audio = useAudioStore()
 const gtracks = useSharedGtrackLanes()
 const overallGraphs = useOverallGraphs()
+
+// PW5.4-fix: plain audio files (wav/flac) have no gnaural voices/lanes -> hide the gnaural-only
+// controls (bulk lane actions, point-drag mode), leaving just the overall wave/spectrum rows.
+const isGnaural = computed(() => audio.displayMode === 'gnaural')
 
 // BK8a: mute state is read from the dump (the editor model drops it); the actual voice_mute patch +
 // reload is owned by AudioPage. From here we just emit — AudioPage.applyScheduleVoiceStatePatches
