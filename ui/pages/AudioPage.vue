@@ -76,6 +76,15 @@
         />
       </Teleport>
 
+      <!-- PW5.6c: «Список треков» docks in the SAME wrap as «Открыть файл» (full editor height). -->
+      <Teleport to="body" :disabled="!tracksListFloating">
+        <TrackListDialog
+          v-if="tracksListPanel.open"
+          @patch-voice-state="handleScheduleVoiceStatePatch"
+          @patch-voice-state-batch="handleScheduleVoiceStateBatch"
+        />
+      </Teleport>
+
       <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
@@ -426,6 +435,8 @@ import GnauralTransportControls from '../components/GnauralTransportControls.vue
 import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
+import { useTracksListPanelState } from '../stores/track-list-panel'
+import TrackListDialog from '../components/TrackListDialog.vue'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -603,11 +614,16 @@ const fileDialogInitialPath = computed<string | undefined>(() => {
 // PW1.2: the window model lives in the universal panel state (@panel), not the fs-browser store.
 const filePanel = useFileOpenPanelState()
 const fsFloating = computed<boolean>(() => filePanel.mode === 'floating')
-const dockWrapClass = computed<string>(() =>
-  filePanel.mode === 'top' || filePanel.mode === 'bottom'
-    ? 'audio-page__dock-wrap--col'
-    : 'audio-page__dock-wrap--row',
-)
+// PW5.6c: «Список треков» shares this same AudioPage dock-wrap with «Открыть файл», so it docks the
+// FULL editor height and persists across tabs (its toggle button lives in the Треки tab header).
+const tracksListPanel = useTracksListPanelState()
+const tracksListFloating = computed<boolean>(() => tracksListPanel.mode === 'floating')
+const dockWrapClass = computed<string>(() => {
+  const anyVertical =
+    filePanel.mode === 'top' || filePanel.mode === 'bottom' ||
+    tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom'
+  return anyVertical ? 'audio-page__dock-wrap--col' : 'audio-page__dock-wrap--row'
+})
 
 function openFileDialog(): void {
   filePanel.open = true

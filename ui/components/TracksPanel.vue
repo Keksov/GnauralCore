@@ -1,9 +1,5 @@
 <template>
-  <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram tracks-panel__root">
-    <!-- PW5.2: dock-wrap hosts the «Список треков» PanelWindow + the track content; docked -> reflow,
-         floating -> teleported to <body>. .tracks-panel__dock-inner is the (new) scroll container. -->
-    <div class="tracks-panel__dock-wrap" :class="tracksListDockWrapClass">
-      <div class="tracks-panel__dock-inner">
+  <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram">
     <div class="audio-page__player-toolbar">
       <!-- GT2.4: transport controls come from AudioPage (same pattern as GnauralScheduleView). -->
       <slot name="toolbar" />
@@ -787,130 +783,6 @@
       </div>
       <template v-else>{{ noSpectrogramLabel }}</template>
     </div>
-      </div><!-- /tracks-panel__dock-inner -->
-
-    <!-- PW5.2 (was GT3.9/GT-D15 slide-over): the «Список треков» content now lives in the universal
-         PanelWindow. floating -> teleported to <body>; docked -> flex sibling reflowing the tracks. -->
-    <Teleport to="body" :disabled="!tracksListFloating">
-      <PanelWindow
-        v-if="tracksListPanel.open"
-        :state="tracksListPanel"
-        :title="t('audio.tracksListPanel')"
-        icon="queue_music"
-      >
-        <div class="audio-page__spectrogram-settings-body tracks-panel__list-body">
-          <!-- Bulk actions (owner req. 20). -->
-          <div class="tracks-panel__voices-bulk">
-            <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.gtrackMergeAll')" @click="gtracks.mergeAllIntoOneLane()">
-              <q-tooltip>{{ t('audio.gtrackMergeAll') }}</q-tooltip>
-            </q-btn>
-            <q-btn dense flat round size="sm" icon="call_split" :aria-label="t('audio.gtrackSpreadAll')" @click="gtracks.spreadPerVoiceLanes()">
-              <q-tooltip>{{ t('audio.gtrackSpreadAll') }}</q-tooltip>
-            </q-btn>
-            <!-- GT3.18 (owner req. 38): one lane per (voice × mode), grouped by voice. -->
-            <q-btn dense flat round size="sm" icon="grid_view" :aria-label="t('audio.gtrackAllModes')" @click="gtracks.showAllModesPerVoice()">
-              <q-tooltip>{{ t('audio.gtrackAllModes') }}</q-tooltip>
-            </q-btn>
-            <q-btn
-              dense flat round size="sm"
-              :icon="gtracks.allLanesHidden.value ? 'visibility' : 'visibility_off'"
-              :aria-label="gtracks.allLanesHidden.value ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll')"
-              @click="gtracks.setAllLanesHidden(!gtracks.allLanesHidden.value)"
-            >
-              <q-tooltip>{{ gtracks.allLanesHidden.value ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll') }}</q-tooltip>
-            </q-btn>
-            <q-select
-              class="tracks-panel__voices-mode-all"
-              dense options-dense outlined emit-value map-options
-              :model-value="null"
-              :display-value="t('audio.gtrackAllInMode')"
-              :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
-              :aria-label="t('audio.gtrackAllInMode')"
-              @update:model-value="(m: GTrackMode | null) => { if (m !== null) gtracks.setAllLanesMode(m) }"
-            />
-          </div>
-          <q-separator class="q-my-sm" />
-          <!-- Per-voice rows: colour, name/type, graph type, visibility. -->
-          <q-list dense>
-            <q-item v-for="(v, vi) in gtracks.voices.value" :key="v.id" class="tracks-panel__voice-row">
-              <q-item-section avatar style="min-width: 22px">
-                <span class="tracks-panel__voice-dot" :style="{ background: voiceDotColor(v, vi) }" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
-                <q-item-label caption>
-                  {{ gtracks.isVoicePreparse(v.id) ? `${v.type} · ${t('audio.gtrackGenerated')}` : v.type }}
-                </q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <div class="row items-center no-wrap q-gutter-xs">
-                  <!-- GT3.7 (owner req. 11): "fix / make editable" a generated (preparse) voice. -->
-                  <q-btn
-                    v-if="gtracks.isVoicePreparse(v.id)"
-                    dense flat round size="sm"
-                    icon="lock_open"
-                    color="warning"
-                    :aria-label="t('audio.gtrackFix')"
-                    @click="promptFixPreparse(v.id)"
-                  >
-                    <q-tooltip>{{ t('audio.gtrackFixTooltip') }}</q-tooltip>
-                  </q-btn>
-                  <q-select
-                    class="tracks-panel__voice-mode"
-                    dense options-dense borderless emit-value map-options
-                    :model-value="gtracks.voiceMode(v.id)"
-                    :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
-                    :aria-label="t('audio.gtrackModeLabel')"
-                    @update:model-value="(m: GTrackMode) => gtracks.setVoiceMode(v.id, m)"
-                  />
-                  <q-btn
-                    dense flat round size="sm"
-                    :icon="gtracks.isVoiceVisible(v.id) ? 'visibility' : 'visibility_off'"
-                    :color="gtracks.isVoiceVisible(v.id) ? undefined : 'grey-7'"
-                    :aria-label="t('audio.trackShow')"
-                    @click="gtracks.setVoiceVisible(v.id, !gtracks.isVoiceVisible(v.id))"
-                  />
-                  <!-- BK8a: per-voice playback mute (persisted voice_mute), migrated from ScheduleView. -->
-                  <q-btn
-                    dense flat round size="sm"
-                    :icon="isVoiceMuted(v.id) ? 'volume_off' : 'volume_up'"
-                    :color="isVoiceMuted(v.id) ? 'grey-7' : undefined"
-                    :aria-label="isVoiceMuted(v.id) ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute')"
-                    @click="onToggleVoiceMuted(v.id)"
-                  >
-                    <q-tooltip>{{ isVoiceMuted(v.id) ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
-                  </q-btn>
-                  <!-- owner 2026-07-13: include/exclude this voice from the OVERALL wave/spectrum. -->
-                  <q-btn
-                    dense flat round size="sm"
-                    icon="graphic_eq"
-                    :color="gtracks.isVoiceInMix(v.id) ? undefined : 'grey-7'"
-                    :aria-label="gtracks.isVoiceInMix(v.id) ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude')"
-                    @click="gtracks.setVoiceInMix(v.id, !gtracks.isVoiceInMix(v.id))"
-                  >
-                    <q-tooltip>{{ gtracks.isVoiceInMix(v.id) ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</q-tooltip>
-                  </q-btn>
-                </div>
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <q-separator class="q-my-sm" />
-          <!-- Editor properties (GT-D16): point-drag mode. -->
-          <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackDragMode') }}</div>
-          <q-btn-toggle
-            :model-value="gtracks.pointDragMode.value"
-            dense unelevated no-caps spread
-            toggle-color="primary"
-            :options="[
-              { label: t('audio.gtrackDragMode_crossover'), value: 'crossover' },
-              { label: t('audio.gtrackDragMode_clamp'), value: 'clamp' },
-            ]"
-            @update:model-value="(m: GTrackPointDragMode) => gtracks.setPointDragMode(m)"
-          />
-        </div>
-      </PanelWindow>
-    </Teleport>
-    </div><!-- /tracks-panel__dock-wrap -->
 
     <!-- GT9.2 (owner req. 42, GT-D21): schedule problems (lint) — slide-over list; click navigates. -->
     <transition name="spectrogram-settings-backdrop">
@@ -1229,7 +1101,6 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
-import PanelWindow from '@panel/PanelWindow.vue'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
@@ -1374,16 +1245,9 @@ const spectrogramStore = useSpectrogramStore()
 // the SAME gtrack state.
 const gtracks = useSharedGtrackLanes()
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
-// PW5.2 (PW-D9): the schedule voice list is now the dockable/floating «Список треков» PanelWindow
-// (@panel), hosted here so it shares this component's gtracks state. Floating teleports to <body>;
-// docked reflows the tracks via the dock-wrap (see template + styles).
+// PW5.6c: «Список треков» is hosted at the AudioPage level (dockable full editor height, cross-tab);
+// this shared store is toggled by the header button below.
 const tracksListPanel = useTracksListPanelState()
-const tracksListFloating = computed(() => tracksListPanel.mode === 'floating')
-const tracksListDockWrapClass = computed(() =>
-  tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom'
-    ? 'tracks-panel__dock-wrap--col'
-    : 'tracks-panel__dock-wrap--row',
-)
 
 // GT9.2 (owner req. 42, GT-D21): schedule-problems (lint) panel. Diagnostics are live from the
 // composable (re-linted on every edit). Clicking one navigates to the offending point.
@@ -2681,15 +2545,6 @@ async function saveGtrackEdits(): Promise<void> {
 function isVoiceMuted(aVoiceId: number): boolean {
   return audio.gnauralSchedule?.voices.find((v) => v.id === aVoiceId)?.muted ?? false
 }
-async function onToggleVoiceMuted(aVoiceId: number): Promise<void> {
-  // A voice-state patch reloads the schedule, which rebuilds the editor model -> unsaved curve edits
-  // would be lost. Persist them first (lossless); abort the mute if the save did not clear dirty.
-  if (gtracks.dirty.value) {
-    await saveGtrackEdits()
-    if (gtracks.dirty.value) return
-  }
-  emit('patch-voice-state', { voiceId: aVoiceId, muted: !isVoiceMuted(aVoiceId) })
-}
 
 // BK8a (owner 2026-07-13): the same mute mirrored on each lane (button above the eye). A lane groups
 // one or more voices; it counts as muted only when ALL are muted, and toggling flips them together in
@@ -2885,34 +2740,6 @@ onBeforeUnmount(() => {
 .audio-page__output-section--spectrogram {
   overflow: auto;
   position: relative;
-}
-
-/* PW5.2: «Список треков» dock host. The root stops being the scroll container (that moves down to
-   .tracks-panel__dock-inner) so a DOCKED PanelWindow sits ABOVE the scroll and reflows the content
-   instead of scrolling away with it. Two-class specificity overrides the --spectrogram overflow. */
-.audio-page__output-section--spectrogram.tracks-panel__root {
-  overflow: hidden;
-}
-.tracks-panel__dock-wrap {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-.tracks-panel__dock-wrap--row { flex-direction: row; }
-.tracks-panel__dock-wrap--col { flex-direction: column; }
-.tracks-panel__dock-inner {
-  order: 1;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-}
-/* the panel body fills + scrolls inside the PanelWindow chrome (which is a flex column). */
-.tracks-panel__list-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
 }
 
 .audio-page__player-toolbar {
