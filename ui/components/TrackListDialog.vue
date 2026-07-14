@@ -2,7 +2,7 @@
   <!-- PW5.6c: thin composition of the universal PanelWindow chrome (@panel) + the TrackListPanel
        content, mirroring FileOpenDialog. AudioPage teleports it to <body> when floating and hosts it
        as a flex child when docked; it renders only while the panel state is open (v-if host-side). -->
-  <PanelWindow :state="panel" :title="t('audio.tracksListPanel')" icon="queue_music">
+  <PanelWindow :state="panel" :title="t('audio.tracksListPanel')" icon="queue_music" :allow-detach="false">
     <TrackListPanel
       @patch-voice-state="(p) => emit('patch-voice-state', p)"
       @patch-voice-state-batch="(p) => emit('patch-voice-state-batch', p)"
@@ -25,4 +25,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const panel = useTracksListPanelState()
+
+// PW5.6c: detached (separate OS window) is unsound for this panel (the child is a separate app
+// instance with no loaded file + its own gtracks clobbering the same localStorage). Detach is hidden
+// (:allow-detach="false"); clear any stuck persisted detached mode so the panel reopens docked/float.
+if (panel.mode === 'detached') {
+  panel.setMode(panel.prevMode !== 'detached' ? panel.prevMode : 'floating')
+}
 </script>
