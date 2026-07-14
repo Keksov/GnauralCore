@@ -327,6 +327,25 @@
             >
               <q-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
             </q-btn>
+            <!-- GT11.11 (owner 2026-07-14): hidden graphs in this group -> eye toggle -> restore list. -->
+            <q-btn
+              v-if="hiddenWaveList.length > 0"
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-header-eye"
+              icon="visibility_off"
+              :aria-label="t('audio.hiddenTracks')"
+            >
+              <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+              <q-menu>
+                <q-list dense style="min-width: 180px">
+                  <q-item v-for="h in hiddenWaveList" :key="h.key" clickable v-close-popup @click="h.restore()">
+                    <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
+                    <q-item-section>{{ h.label }}</q-item-section>
+                    <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallWave') }}</span>
           </div>
           <div v-show="!overallWaveFolded" class="audio-page__waveform-stack">
@@ -394,6 +413,25 @@
               @click="toggleOverallSpectrumFolded"
             >
               <q-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+            </q-btn>
+            <!-- GT11.11 (owner 2026-07-14): hidden graphs in this group -> eye toggle -> restore list. -->
+            <q-btn
+              v-if="hiddenSpectrumList.length > 0"
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-header-eye"
+              icon="visibility_off"
+              :aria-label="t('audio.hiddenTracks')"
+            >
+              <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+              <q-menu>
+                <q-list dense style="min-width: 180px">
+                  <q-item v-for="h in hiddenSpectrumList" :key="h.key" clickable v-close-popup @click="h.restore()">
+                    <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
+                    <q-item-section>{{ h.label }}</q-item-section>
+                    <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                  </q-item>
+                </q-list>
+              </q-menu>
             </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallSpectrum') }}</span>
           </div>
@@ -2156,21 +2194,25 @@ function onGtrackBottomPointerUp(): void {
 // lanes (GT2.2) share one "hidden tracks" dropdown. Channels are listed only when their KIND is
 // shown by the view-mode preset (restoring under a preset-hidden kind wouldn't surface it).
 interface HiddenTrackEntry { readonly key: string; readonly label: string; readonly restore: () => void }
-const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
+// SF-D66: the hidden CHANNELS of one kind (waveform/spectrogram), each with a restore callback.
+// Shared by the global hidden-tracks dropdown and the per-group header eyes (GT11.11).
+function hiddenChannelEntries(kind: TrackKind): HiddenTrackEntry[] {
   const count = isSpectrogramStereo.value ? 2 : 1
+  const name = kind === 'waveform' ? t('audio.trackKindWaveform') : t('audio.trackKindSpectrogram')
   const out: HiddenTrackEntry[] = []
-  const kinds: ReadonlyArray<{ kind: TrackKind; shown: boolean; name: string }> = [
-    { kind: 'waveform', shown: showWaveform.value, name: t('audio.trackKindWaveform') },
-    { kind: 'spectrogram', shown: showSpectrogram.value, name: t('audio.trackKindSpectrogram') },
-  ]
-  for (const { kind, shown, name } of kinds) {
-    if (!shown) continue
-    for (let ch = 0; ch < count; ch++) {
-      if (!isTrackHidden(kind, ch)) continue
-      const chLabel = count > 1 ? (ch === 0 ? 'L' : 'R') : ''
-      out.push({ key: trackKey(kind, ch), label: chLabel ? `${name} ${chLabel}` : name, restore: () => showTrack(kind, ch) })
-    }
+  for (let ch = 0; ch < count; ch++) {
+    if (!isTrackHidden(kind, ch)) continue
+    const chLabel = count > 1 ? (ch === 0 ? 'L' : 'R') : ''
+    out.push({ key: trackKey(kind, ch), label: chLabel ? `${name} ${chLabel}` : name, restore: () => showTrack(kind, ch) })
   }
+  return out
+}
+const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
+  const out: HiddenTrackEntry[] = []
+  // Channels are listed only when their KIND is shown by the view-mode preset (restoring under a
+  // preset-hidden kind wouldn't surface it).
+  if (showWaveform.value) out.push(...hiddenChannelEntries('waveform'))
+  if (showSpectrogram.value) out.push(...hiddenChannelEntries('spectrogram'))
   // GT2.2: hidden gtrack lanes (only relevant while a gnaural is open).
   if (audio.displayMode === 'gnaural') {
     for (const lane of gtracks.hiddenLanes.value) {
@@ -2179,6 +2221,9 @@ const hiddenTrackList = computed<HiddenTrackEntry[]>(() => {
   }
   return out
 })
+// GT11.11 (owner 2026-07-14): hidden-graph lists per OVERALL group, for the header-bar eye toggles.
+const hiddenWaveList = computed<HiddenTrackEntry[]>(() => hiddenChannelEntries('waveform'))
+const hiddenSpectrumList = computed<HiddenTrackEntry[]>(() => hiddenChannelEntries('spectrogram'))
 
 // SF23.3: the view mode drives which layers are shown.
 const showWaveform = computed(() => viewMode.value === 'waveform' || viewMode.value === 'both')
@@ -2955,8 +3000,13 @@ onBeforeUnmount(() => {
   flex: 0 0 4px;
   width: 4px;
 }
-.tracks-panel__gtrack-fold {
+.tracks-panel__gtrack-fold,
+.tracks-panel__gtrack-header-eye {
   flex: 0 0 auto;
+}
+/* GT11.11: the eye reads as "there are hidden graphs here" — a soft accent so it stands out. */
+.tracks-panel__gtrack-header-eye {
+  color: #fbbf24;
 }
 .tracks-panel__gtrack-header-title {
   flex: 1 1 auto;
