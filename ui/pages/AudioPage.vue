@@ -13,6 +13,37 @@
           <AppMenuList :nodes="mruNodes" @select="onMenuSelect" />
         </template>
       </q-btn-dropdown>
+
+      <!-- MR5.1 (owner req. 9): the «Выбранный файл» control, moved here from the tabs-bar meta-strip
+           to the right of «Меню». Behavior identical (label + recent-files quick-pick). -->
+      <div class="audio-page__menubar-file row items-center no-wrap q-ml-sm">
+        <span class="text-caption text-grey-7 q-mr-xs">{{ t('audio.selectedFile') }}</span>
+        <q-btn-dropdown
+          dense flat no-caps
+          class="audio-page__file-dropdown"
+          :label="selectedFileLabel"
+          :title="audio.selectedPath ?? ''"
+        >
+          <q-list dense class="audio-page__recent-list">
+            <q-item v-if="audio.recentFiles.length === 0" disable>
+              <q-item-section class="text-grey-6">{{ t('audio.recentFilesEmpty') }}</q-item-section>
+            </q-item>
+            <q-item
+              v-for="path in audio.recentFiles"
+              :key="path"
+              clickable
+              v-close-popup
+              :active="path === audio.selectedPath"
+              @click="audio.selectPath(path)"
+            >
+              <q-item-section>
+                <q-item-label lines="1">{{ fileBasename(path) }}</q-item-label>
+                <q-item-label caption lines="1">{{ path }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
+      </div>
     </div>
 
     <!-- GT10.29/GT10.45 (owner 2026-07-13): settings dialog at PAGE level so the Edit menu / Ctrl+P
@@ -223,40 +254,8 @@
               <q-tab name="player" icon="volume_up" :label="t('audio.playerTab')" />
               <q-tab name="editor" icon="edit_document" :label="t('audio.editorTab')" />
             </q-tabs>
-
-            <div class="audio-page__meta-strip">
-              <!-- SF20: recent-files quick-pick dropdown replaces the static selected-file text. -->
-              <div class="audio-page__meta-cell audio-page__meta-cell--file">
-                <div class="text-caption text-grey-7 audio-page__meta-label">{{ t('audio.selectedFile') }}</div>
-                <q-btn-dropdown
-                  dense flat no-caps
-                  class="audio-page__file-dropdown"
-                  :label="selectedFileLabel"
-                  :title="audio.selectedPath ?? ''"
-                >
-                  <q-list dense class="audio-page__recent-list">
-                    <q-item v-if="audio.recentFiles.length === 0" disable>
-                      <q-item-section class="text-grey-6">{{ t('audio.recentFilesEmpty') }}</q-item-section>
-                    </q-item>
-                    <q-item
-                      v-for="path in audio.recentFiles"
-                      :key="path"
-                      clickable
-                      v-close-popup
-                      :active="path === audio.selectedPath"
-                      @click="audio.selectPath(path)"
-                    >
-                      <q-item-section>
-                        <q-item-label lines="1">{{ fileBasename(path) }}</q-item-label>
-                        <q-item-label caption lines="1">{{ path }}</q-item-label>
-                      </q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-btn-dropdown>
-              </div>
-              <!-- SB2.8 (owner 2026-07-14): Position/Duration removed from the top meta strip — they
-                   now live in the Tracks editor status bar (TrackStatusBar). -->
-            </div>
+            <!-- MR5.1 (owner req. 9): the «Выбранный файл» meta-strip moved up to the menubar (right
+                 of «Меню»). SB2.8 had already moved Position/Duration to the Tracks status bar. -->
           </div>
 
           <q-separator />
@@ -1987,6 +1986,14 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
   flex: 0 0 auto;
   padding: 2px 6px;
   border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+/* MR5.1: the «Выбранный файл» control relocated into the menubar — clamp its width so a long file
+   name never stretches the bar (mirrors the old meta-strip clamp). */
+.audio-page__menubar-file {
+  min-width: 0;
+  max-width: min(48vw, 560px);
+  overflow: hidden;
 }
 
 /* FB4.3 (FB-D13): wraps the docked file panel + the form inner; reflows around the dock side. */
