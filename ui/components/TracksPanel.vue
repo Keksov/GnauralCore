@@ -767,33 +767,43 @@
     <!-- SB2.1 (status-bar plan): always-visible bottom status bar, OUTSIDE the scroll flow (req 1).
          Top row = the minimap, its start aligned with the graphs' vertical axis (SB-D2: left 46 /
          right 8 = GTrackView AXIS_MARGIN). The position/format/duration fields row is added in SB2.2. -->
-    <div v-if="showSpectrogram && hasSpectrogramData" class="tracks-panel__statusbar">
-      <!-- SF10.4: whole-clip minimap-overview / timespan selector (SF-D24); B7 spectrogram thumbnail. -->
-      <div class="tracks-panel__statusbar-minimap">
-        <div class="audio-page__minimap-wrap">
-          <spectrogram-minimap
-            :duration-sec="spectrogramDuration"
-            :file-path="audio.displayFilePath"
-            :reload-key="spectrogramReloadKey"
-            :analysis="spectrogramTracks[0]?.analysis"
-            :render="spectrogramStore.renderOptions"
-            :mode="minimapMode"
-            :waveform-color="wfColor(0)"
-            v-model:view="spectrogramView"
-          />
-          <!-- SF26: gear opens the minimap settings dialog. -->
-          <q-btn
-            dense flat round size="xs"
-            icon="settings"
-            class="audio-page__minimap-gear"
-            :aria-label="t('audio.minimapMode')"
-            @click="minimapSettingsOpen = true"
-          >
-            <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
-          </q-btn>
+    <track-status-bar
+      v-if="showSpectrogram && hasSpectrogramData"
+      :position-sec="gtrackPlayheadSec ?? 0"
+      :duration-sec="spectrogramDuration"
+      :format="timeFormat"
+      @update:position-sec="handleSeek"
+      @update:format="setTimeFormat"
+    >
+      <template #minimap>
+        <!-- SF10.4: whole-clip minimap-overview / timespan selector (SF-D24); B7 spectrogram thumbnail.
+             SB-D2 (req 3): inset by AXIS_MARGIN (46/8) so the minimap start aligns with the graph axis. -->
+        <div class="tracks-panel__statusbar-minimap">
+          <div class="audio-page__minimap-wrap">
+            <spectrogram-minimap
+              :duration-sec="spectrogramDuration"
+              :file-path="audio.displayFilePath"
+              :reload-key="spectrogramReloadKey"
+              :analysis="spectrogramTracks[0]?.analysis"
+              :render="spectrogramStore.renderOptions"
+              :mode="minimapMode"
+              :waveform-color="wfColor(0)"
+              v-model:view="spectrogramView"
+            />
+            <!-- SF26: gear opens the minimap settings dialog. -->
+            <q-btn
+              dense flat round size="xs"
+              icon="settings"
+              class="audio-page__minimap-gear"
+              :aria-label="t('audio.minimapMode')"
+              @click="minimapSettingsOpen = true"
+            >
+              <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
+            </q-btn>
+          </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </track-status-bar>
 
     <!-- GT9.2 (owner req. 42, GT-D21): schedule problems (lint) — slide-over list; click navigates. -->
     <transition name="spectrogram-settings-backdrop">
@@ -1112,6 +1122,8 @@ import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
 import GTrackView from './GTrackView.vue'
+import TrackStatusBar from './TrackStatusBar.vue'
+import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
@@ -2319,6 +2331,41 @@ const spectrogramDuration = computed(
   () => backendAnalysis.value?.durationSec || gtracks.durationSec.value,
 )
 
+// SB2.2 (status-bar plan, req 2b): the position/duration display format. Persisted PER FILE
+// (SB-D5) as a {[filePath]: format} map; with no saved pick the format is auto-chosen from the
+// clip duration (autoPickFormat). An explicit pick via the gear persists and wins.
+const STORAGE_TIME_FORMAT = 'mindwave-tracks-timeformat'
+function loadTimeFormatMap(): Record<string, TimeFormat> {
+  try {
+    const raw = localStorage.getItem(STORAGE_TIME_FORMAT)
+    const parsed = raw !== null ? (JSON.parse(raw) as Record<string, string>) : {}
+    const out: Record<string, TimeFormat> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      if ((TIME_FORMATS as readonly string[]).includes(v)) out[k] = v as TimeFormat
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+const timeFormatMap = ref<Record<string, TimeFormat>>(loadTimeFormatMap())
+// The saved pick for the current file, if any; otherwise auto-pick from the duration.
+const timeFormat = computed<TimeFormat>(() => {
+  const path = audio.displayFilePath
+  const saved = path !== null ? timeFormatMap.value[path] : undefined
+  return saved ?? autoPickFormat(spectrogramDuration.value)
+})
+function setTimeFormat(fmt: TimeFormat): void {
+  const path = audio.displayFilePath
+  if (path === null) return
+  timeFormatMap.value = { ...timeFormatMap.value, [path]: fmt }
+  try {
+    localStorage.setItem(STORAGE_TIME_FORMAT, JSON.stringify(timeFormatMap.value))
+  } catch {
+    // Ignore storage failures; the in-memory choice still applies for this session.
+  }
+}
+
 // SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
 // re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data
 // mode for sharper time detail; changing these params re-analyses via the composable.
@@ -2746,13 +2793,8 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* SB2.1 (req 1): status bar pinned at the bottom of the editor area, outside the scroll flow. */
-.tracks-panel__statusbar {
-  flex: 0 0 auto;
-  border-top: 1px solid #1e293b;
-  margin-top: 6px;
-  padding-top: 6px;
-}
+/* SB2.1 (req 1): the status bar (TrackStatusBar.vue) is pinned at the bottom, outside the scroll
+   flow — see the component's own .track-status-bar rule for flex:0 0 auto. */
 
 /* SB-D2 (req 3): the minimap starts at the graphs' vertical axis — inset by the same AXIS_MARGIN
    (left 46 / right 8) the views use — so its t=0 lines up with the plot area and free space remains
