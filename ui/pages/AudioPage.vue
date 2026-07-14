@@ -7,6 +7,11 @@
            submenus (owner reqs 1,2,3,5). Replaces the former «Файл»/«Правка» dropdowns. -->
       <q-btn-dropdown ref="menuDropdownRef" flat dense no-caps :label="t('audio.menuRoot')" class="audio-page__menu-file">
         <AppMenuList :nodes="menuModel" @select="onMenuSelect" />
+        <!-- MR3.1: last-5 used commands under a divider after «Выход» (owner req. 4). -->
+        <template v-if="mruNodes.length > 0">
+          <q-separator />
+          <AppMenuList :nodes="mruNodes" @select="onMenuSelect" />
+        </template>
       </q-btn-dropdown>
     </div>
 
@@ -450,6 +455,7 @@ import TrackListDialog from '../components/TrackListDialog.vue'
 import AppMenuList from '../components/app-menu/AppMenuList.vue'
 import type { MenuNode } from '../components/app-menu/menu-node'
 import { menuNodeDisabled } from '../components/app-menu/menu-node'
+import { useMenuMru } from '../composables/use-menu-mru'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
@@ -676,12 +682,40 @@ const menuModel = computed<MenuNode[]>(() => [
   { id: 'exit', labelKey: 'audio.menuExit', icon: 'logout', run: exitApp },
 ])
 
+const menuMru = useMenuMru()
+
+// Flat registry of invocable leaves (by id), used to render the MRU rows from stored ids.
+function collectMenuLeaves(nodes: readonly MenuNode[], acc: Map<string, MenuNode>): void {
+  for (const node of nodes) {
+    if (node.children !== undefined) {
+      collectMenuLeaves(node.children, acc)
+    }
+    if (node.run !== undefined) {
+      acc.set(node.id, node)
+    }
+  }
+}
+
+const menuLeafById = computed(() => {
+  const map = new Map<string, MenuNode>()
+  collectMenuLeaves(menuModel.value, map)
+  return map
+})
+
+// MR3.1: the last-5 used commands, resolved back to their leaf nodes (dropping any stale id).
+const mruNodes = computed<MenuNode[]>(() => {
+  const byId = menuLeafById.value
+  return menuMru.ids.value
+    .map((id) => byId.get(id))
+    .filter((node): node is MenuNode => node !== undefined)
+})
+
 function invokeMenuCommand(node: MenuNode): void {
   if (node.run === undefined || menuNodeDisabled(node)) {
     return
   }
   node.run()
-  // MRU recording is added in MR3.1.
+  menuMru.record(node.id)
 }
 
 function onMenuSelect(node: MenuNode): void {
