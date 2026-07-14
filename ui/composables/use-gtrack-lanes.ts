@@ -11,7 +11,7 @@ import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
 import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
-import { findPreparseVoiceIds } from './gtrack-xml'
+import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
 
@@ -1107,7 +1107,32 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
+  // PW5.6: persist unsaved gtrack curve edits back to the .gnaural (extracted from TracksPanel so the
+  // AudioPage voice-patch guard can reuse it). Throws on a server error; on success reloads the
+  // schedule (rebuilds the model at the saved baseline). useAudioStore is read at CALL time so the
+  // pure composable stays creatable without an active Pinia (the unit tests do exactly that).
+  const saving = ref(false)
+  async function saveEdits(): Promise<'saved' | 'unchanged' | 'nochange' | 'skip'> {
+    const m = model.value
+    const fp = filePath.value
+    if (m === null || fp === null || saving.value) return 'skip'
+    if (!dirty.value) return 'nochange'
+    saving.value = true
+    try {
+      const doc = await audioApi.fetchEditorDocument(fp)
+      const patched = patchGnauralXml(doc.content, m.schedule, { preserveVoiceIds: findPreparseVoiceIds(doc.content) })
+      const res = await audioApi.saveEditorDocument({ path: fp, content: patched, expectedModifiedAtMs: doc.modifiedAtMs })
+      const audio = useAudioStore()
+      await audio.loadGnauralSchedule(fp, true)
+      return res.changed ? 'saved' : 'unchanged'
+    } finally {
+      saving.value = false
+    }
+  }
+
   return {
+    saving,
+    saveEdits,
     isLanePointMode,
     toggleLanePointMode,
     selection,

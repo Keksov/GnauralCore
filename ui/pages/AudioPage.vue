@@ -418,6 +418,7 @@ import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
+import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
 import GnauralSettingsTab from '../settings/GnauralSettingsTab.vue'
 import { useAudioTransport } from '../composables/use-audio-transport'
 import { useWsService } from '../composables/use-ws'
@@ -533,6 +534,9 @@ const { t } = useI18n()
 const $q = useQuasar()
 const router = useRouter()
 const audio = useAudioStore()
+// PW5.6 (PW-D10): the shared gtrack model (same instance the Треки tab + «Список треков» panel edit),
+// used by the voice-patch save-first guard below.
+const gtracks = useSharedGtrackLanes()
 const spectrogramStore = useSpectrogramStore()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
@@ -1599,6 +1603,18 @@ async function applyScheduleVoiceStatePatches(aPatches: readonly ScheduleVoiceSt
   })
   if (normalizedPatches.length === 0) {
     return
+  }
+
+  // PW5.6: a voice-state patch reloads the schedule, which rebuilds the gtrack editor model and would
+  // drop unsaved curve edits. Persist them first — the extracted «Список треков» panel no longer saves
+  // before muting, so this central guard covers every voice-patch caller.
+  if (gtracks.dirty.value) {
+    try {
+      await gtracks.saveEdits()
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('audio.gtrackSaveFailed') })
+      return
+    }
   }
 
   if (editorPanelRef.value !== null) {
