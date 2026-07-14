@@ -25,5 +25,15 @@ export const gnauralModule = {
       component: () => import('./components/FileOpenPanel.vue'),
       events: ['open'],
     },
+    // PW5.7c: «Список треков» detached content is the remote adapter — it renders the parent-pushed
+    // snapshot and bridges each gesture back as one serializable 'action' (no child-side gtracks or
+    // localStorage, PW-D11). The parent (TrackListDialog) applies the action to the shared singletons.
+    {
+      id: 'track-list',
+      titleKey: 'audio.tracksListPanel',
+      icon: 'queue_music',
+      component: () => import('./components/TrackListRemote.vue'),
+      events: ['action'],
+    },
   ],
 } as const
