@@ -3,11 +3,12 @@
 // mode). Config (which voices, which mode, order, hidden) persists per file. Kept in a composable
 // so AudioPage only renders + delegates.
 
-import { computed, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, effectScope, ref, shallowRef, watch, type Ref } from 'vue'
 
 import type { GnauralScheduleData } from '@protocol'
 
 import { audioApi } from '../audio-api'
+import { useAudioStore } from '../stores/audio'
 import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds } from './gtrack-xml'
@@ -1194,4 +1195,27 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     swapLanes,
     isTonal,
   }
+}
+
+// PW5.6 (PW-D10): a process-wide SINGLETON of the gtrack lane model, so the Треки tab (TracksPanel)
+// and the AudioPage-hosted «Список треков» panel share ONE reactive instance instead of each
+// building its own, divergent one. useGtrackLanes uses no lifecycle hooks (only ref/computed/watch),
+// so it runs safely inside a DETACHED effect scope — its per-file persistence watchers then live for
+// the app's lifetime, which is exactly what a singleton wants. The audio store (itself a singleton)
+// supplies the reactive schedule + file path.
+let sharedGtrackLanes: ReturnType<typeof useGtrackLanes> | null = null
+
+export function useSharedGtrackLanes(): ReturnType<typeof useGtrackLanes> {
+  if (sharedGtrackLanes === null) {
+    const scope = effectScope(true)
+    sharedGtrackLanes = scope.run(() => {
+      const audio = useAudioStore()
+      return useGtrackLanes(
+        computed(() => audio.gnauralSchedule),
+        computed(() => audio.displayFilePath),
+      )
+    }) ?? null
+    if (sharedGtrackLanes === null) throw new Error('useSharedGtrackLanes: initialisation failed')
+  }
+  return sharedGtrackLanes
 }

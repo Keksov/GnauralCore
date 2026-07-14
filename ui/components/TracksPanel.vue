@@ -1235,7 +1235,7 @@ import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
-import { useGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
+import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, ctrlStepValue, type GTrackMode } from '../composables/gtrack-render'
@@ -1370,10 +1370,9 @@ watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 const spectrogramStore = useSpectrogramStore()
 // GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
 // waveform + spectrum (GT-D2). Lanes appear only for a gnaural file with a loaded schedule.
-const gtracks = useGtrackLanes(
-  computed(() => audio.gnauralSchedule),
-  computed(() => audio.displayFilePath),
-)
+// PW5.6 (PW-D10): shared singleton so the AudioPage-hosted «Список треков» panel and this tab edit
+// the SAME gtrack state.
+const gtracks = useSharedGtrackLanes()
 const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.visibleLanes.value.length > 0)
 // PW5.2 (PW-D9): the schedule voice list is now the dockable/floating «Список треков» PanelWindow
 // (@panel), hosted here so it shares this component's gtracks state. Floating teleports to <body>;
