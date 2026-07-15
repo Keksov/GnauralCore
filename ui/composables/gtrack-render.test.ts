@@ -190,3 +190,70 @@ describe('axisWithRange (GT11.13)', () => {
     expect(axisWithRange(LIN, 0, 10).midLabel).toBe('5.0')
   })
 })
+
+// GT11.17 (owner 2026-07-15): a schedule may legitimately contain baseFreq 0, which a log axis
+// cannot place (log10(0) = -Inf). The Base axis becomes symlog: linear 0..threshold, log above.
+describe('symlog base axis (GT11.17)', () => {
+  const zeroVoice = voice([pt({ timeSec: 0, baseFreq: 100 }), pt({ timeSec: 1, baseFreq: 0 }), pt({ timeSec: 2, baseFreq: 100 })])
+
+  test('a base axis whose data reaches 0 becomes symlog with 0 at the bottom', () => {
+    const a = gtrackAxis([zeroVoice], 'base')
+    expect(a.scale).toBe('symlog')
+    expect(a.min).toBe(0)
+    expect(a.botLabel).toBe('0.0')
+    expect(valueToUnit(0, a)).toBe(0) // 0 sits exactly on the floor, not clamped up to the minimum
+  })
+
+  test('the OLD bug: 0 no longer renders where the flat 100 Hz points sit', () => {
+    // wakeup.gnaural is a flat ~100 Hz voice; before the fix the axis stayed 100..125 and a point
+    // edited to 0 clamped onto the bottom — exactly where every 100 Hz point already was.
+    const a = gtrackAxis([zeroVoice], 'base')
+    expect(valueToUnit(0, a)).toBeLessThan(valueToUnit(100, a) - 0.5)
+  })
+
+  test('a base axis without zeros stays logarithmic (classic editor look unchanged)', () => {
+    expect(gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 400 })])], 'base').scale).toBe('log')
+  })
+
+  test('symlog is monotonic and round-trips through unitToValue', () => {
+    const a = gtrackAxis([zeroVoice], 'base')
+    let previous = -1
+    for (const v of [0, 0.25, 0.5, 1, 2, 10, 50, 100]) {
+      const u = valueToUnit(v, a)
+      expect(u).toBeGreaterThan(previous)
+      expect(unitToValue(u, a)).toBeCloseTo(v, 6)
+      previous = u
+    }
+  })
+
+  test('the linear segment holds 0..threshold, the log segment everything above', () => {
+    const a = gtrackAxis([zeroVoice], 'base')
+    expect(valueToUnit(1, a)).toBeCloseTo(0.12, 6) // threshold = the linear/log seam
+    expect(valueToUnit(0.5, a)).toBeCloseTo(0.06, 6) // half of it -> half the linear segment
+  })
+
+  test('a NOISE voice (base 0 throughout) is still ignored — it must not drag the axis to symlog', () => {
+    const a = gtrackAxis([
+      voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })]),
+      voice([pt({ baseFreq: 0 }), pt({ baseFreq: 0 })]), // noise: no carrier to plot
+    ], 'base')
+    expect(a.scale).toBe('log')
+    expect(a.min).toBe(100)
+  })
+
+  test('a TONE voice that visits 0 goes symlog — the zero is part of the curve', () => {
+    const a = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 0 })])], 'base')
+    expect(a.scale).toBe('symlog')
+  })
+
+  test('axisWithRange keeps symlog and reads the mid back from the piecewise map', () => {
+    const a = axisWithRange(gtrackAxis([zeroVoice], 'base'), 0, 100)
+    expect(a.scale).toBe('symlog')
+    expect(a.midLabel).toBe(formatMid(a))
+  })
+})
+
+function formatMid(a: GTrackAxis): string {
+  const v = unitToValue(0.5, a)
+  return v >= 100 ? `${Math.round(v)}` : v >= 10 ? v.toFixed(0) : v.toFixed(1)
+}

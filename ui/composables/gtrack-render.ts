@@ -65,12 +65,65 @@ export function valuePatchForMode(
 export interface GTrackAxis {
   readonly min: number
   readonly max: number
-  /** GT2.8: 'log' for Base freq (matches the classic schedule editor); 'linear' otherwise. */
-  readonly scale: 'linear' | 'log'
+  /**
+   * GT2.8: 'log' for Base freq (matches the classic schedule editor); 'linear' otherwise.
+   * GT11.17 (owner 2026-07-15): 'symlog' for a Base axis whose data reaches 0 — log10(0) is -Inf,
+   * so a pure log axis cannot place 0 at all (it clamped it to the axis minimum, which on a flat
+   * ~100 Hz voice is exactly where every other point already sat: editing a point to 0 looked like
+   * nothing happened). A schedule may legitimately contain 0, so the axis has to show it: linear
+   * from 0 up to SYMLOG_THRESHOLD_HZ, logarithmic above it.
+   */
+  readonly scale: 'linear' | 'log' | 'symlog'
   /** Labels for the top / middle / bottom of the value axis. */
   readonly topLabel: string
   readonly midLabel: string
   readonly botLabel: string
+}
+
+/** Below this the Base axis is linear (so 0 is representable); above it, logarithmic. */
+export const SYMLOG_THRESHOLD_HZ = 1
+/** Share of a symlog axis given to the linear [0 .. threshold] segment. */
+const SYMLOG_LINEAR_FRACTION = 0.12
+
+/**
+ * Unit position on a symlog axis. `axis.min` is the bottom (0 for a zero-reaching schedule); the
+ * linear segment covers [min .. threshold] and takes SYMLOG_LINEAR_FRACTION of the height, the log
+ * segment covers [threshold .. max]. Degenerate cases (a range entirely below or entirely above the
+ * threshold) collapse to a plain linear / log map, so callers never special-case them.
+ */
+function symlogUnit(value: number, axis: GTrackAxis): number {
+  const thr = SYMLOG_THRESHOLD_HZ
+  const v = Math.max(axis.min, Math.min(axis.max, value))
+  if (axis.max <= thr) {
+    const span = axis.max - axis.min
+    return span <= 0 ? 0.5 : (v - axis.min) / span
+  }
+  if (axis.min >= thr) {
+    const span = Math.log10(axis.max) - Math.log10(axis.min)
+    return span <= 0 ? 0.5 : (Math.log10(v) - Math.log10(axis.min)) / span
+  }
+  if (v <= thr) {
+    const linSpan = thr - axis.min
+    return linSpan <= 0 ? 0 : ((v - axis.min) / linSpan) * SYMLOG_LINEAR_FRACTION
+  }
+  const logSpan = Math.log10(axis.max) - Math.log10(thr)
+  if (logSpan <= 0) return SYMLOG_LINEAR_FRACTION
+  return SYMLOG_LINEAR_FRACTION + (1 - SYMLOG_LINEAR_FRACTION) * ((Math.log10(v) - Math.log10(thr)) / logSpan)
+}
+
+/** Inverse of symlogUnit (drag: cursor unit position -> axis value). */
+function symlogValue(unit: number, axis: GTrackAxis): number {
+  const thr = SYMLOG_THRESHOLD_HZ
+  const u = Math.max(0, Math.min(1, unit))
+  if (axis.max <= thr) return axis.min + u * (axis.max - axis.min)
+  if (axis.min >= thr) {
+    return Math.pow(10, Math.log10(axis.min) + u * (Math.log10(axis.max) - Math.log10(axis.min)))
+  }
+  if (u <= SYMLOG_LINEAR_FRACTION) {
+    return axis.min + (u / SYMLOG_LINEAR_FRACTION) * (thr - axis.min)
+  }
+  const logSpan = Math.log10(axis.max) - Math.log10(thr)
+  return Math.pow(10, Math.log10(thr) + ((u - SYMLOG_LINEAR_FRACTION) / (1 - SYMLOG_LINEAR_FRACTION)) * logSpan)
 }
 
 function formatFreq(v: number): string {
@@ -81,6 +134,9 @@ function formatFreq(v: number): string {
 
 /** Map a value to a [0,1] unit position on the axis (0 = min/bottom, 1 = max/top), clamped. */
 export function valueToUnit(value: number, axis: GTrackAxis): number {
+  if (axis.scale === 'symlog') {
+    return Math.max(0, Math.min(1, symlogUnit(value, axis)))
+  }
   if (axis.scale === 'log') {
     const minLog = Math.log10(axis.min)
     const maxLog = Math.log10(axis.max)
@@ -97,6 +153,9 @@ export function valueToUnit(value: number, axis: GTrackAxis): number {
 /** Inverse of valueToUnit (GT3.2 drag: cursor unit position -> axis value). */
 export function unitToValue(unit: number, axis: GTrackAxis): number {
   const u = Math.max(0, Math.min(1, unit))
+  if (axis.scale === 'symlog') {
+    return symlogValue(u, axis)
+  }
   if (axis.scale === 'log') {
     const minLog = Math.log10(axis.min)
     const maxLog = Math.log10(axis.max)
@@ -137,6 +196,18 @@ export function ctrlStepValue(current: number, field: string, direction: 1 | -1)
  * a log axis, the arithmetic one otherwise.
  */
 export function axisWithRange(axis: GTrackAxis, min: number, max: number): GTrackAxis {
+  // GT11.17: on a symlog axis the midpoint is neither arithmetic nor geometric — the map is
+  // piecewise — so read it back from the axis itself (symlogUnit/symlogValue degrade to a plain
+  // linear or log map when the zoomed range sits wholly below or above the threshold).
+  if (axis.scale === 'symlog') {
+    const zoomed: GTrackAxis = { min, max, scale: 'symlog', topLabel: '', midLabel: '', botLabel: '' }
+    return {
+      ...zoomed,
+      topLabel: formatFreq(max),
+      midLabel: formatFreq(unitToValue(0.5, zoomed)),
+      botLabel: formatFreq(min),
+    }
+  }
   const mid = axis.scale === 'log'
     ? Math.pow(10, (Math.log10(min) + Math.log10(max)) / 2)
     : (min + max) / 2
@@ -157,13 +228,27 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, edi
   if (mode === 'balance') {
     return { min: -1, max: 1, scale: 'linear', topLabel: 'R', midLabel: 'C', botLabel: 'L' }
   }
-  // base / beat — collect the value range across all points (log ignores non-positive values).
+  // base / beat — collect the value range across all points.
+  // GT11.17: a non-positive base value is NO LONGER skipped. It used to be (log10(0) = -Inf), which
+  // left it out of the range AND clamped it to the axis minimum — on wakeup.gnaural (flat ~100 Hz)
+  // a point set to 0 then drew exactly where the 100 Hz points already were, so the edit looked
+  // like a no-op. A schedule can legitimately contain 0, so the axis switches to symlog instead.
   let lo = Number.POSITIVE_INFINITY
   let hi = Number.NEGATIVE_INFINITY
+  let hasNonPositiveBase = false
   for (const voice of voices) {
+    // A voice whose base is non-positive THROUGHOUT is a noise voice: it has no carrier to plot,
+    // and folding its 0 into the range would drag the axis off the real frequencies. Skip it, as
+    // before. A voice that MIXES real frequencies with 0 is a curve that genuinely visits 0 — its
+    // zeros count, and the axis goes symlog so they are visible.
+    const isNoiseVoice = mode === 'base'
+      && voice.points.length > 0
+      && voice.points.every((p) => pointValue(p, mode) <= 0)
+    if (isNoiseVoice) continue
+
     for (const p of voice.points) {
       const v = pointValue(p, mode)
-      if (mode === 'base' && v <= 0) continue
+      if (mode === 'base' && v <= 0) hasNonPositiveBase = true
       if (v < lo) lo = v
       if (v > hi) hi = v
       // owner 2026-07-14: when the beat band is shown, widen the base axis to fit base ± beat/2 so the
@@ -180,6 +265,23 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, edi
     return { min: 0, max: 1, scale: 'linear', topLabel: '1', midLabel: '0.5', botLabel: '0' }
   }
   if (mode === 'base') {
+    // GT11.17: the data reaches 0 (or below) — a log axis cannot place it. Keep the log character
+    // for the real frequencies and give 0 an honest spot: linear up to SYMLOG_THRESHOLD_HZ, log
+    // above it. The bottom is 0 exactly, so a point edited to 0 lands there and nowhere else.
+    if (hasNonPositiveBase) {
+      const min = Math.min(0, lo)
+      let max = Math.max(hi, SYMLOG_THRESHOLD_HZ)
+      if (editable) max *= 1.15 // headroom to drag a vertex above the data (as in the log branch)
+      const axis: GTrackAxis = {
+        min,
+        max,
+        scale: 'symlog',
+        topLabel: formatFreq(max),
+        midLabel: '',
+        botLabel: formatFreq(min),
+      }
+      return { ...axis, midLabel: formatFreq(unitToValue(0.5, axis)) }
+    }
     // Classic-editor log frequency axis (frequencyToY in GnauralScheduleView).
     let min = Math.max(lo, 1)
     let max = Math.max(hi, min)
