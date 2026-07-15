@@ -750,13 +750,35 @@
                   />
                   <div class="row items-center justify-between no-wrap">
                     <span class="text-body2">{{ t('audio.waveformColor') }}</span>
-                    <input
-                      type="color"
-                      v-model="wfDlgColor"
-                      class="audio-page__wf-color"
-                      :disabled="wfDlgControlsDisabled"
+                    <!-- WS1.4 (owner req 10): the app's OWN picker, not <input type="color"> — that
+                         one opens the browser's picker, which is chrome we cannot put a Close icon
+                         on. Same swatch + q-color + X pattern the owner specified for the lane
+                         colours in GT10.20 (see the gtrack settings dialog above). -->
+                    <div
+                      class="tracks-panel__color-swatch"
+                      :class="{ disabled: wfDlgControlsDisabled }"
+                      :style="{ background: wfDlgColor }"
+                      role="button"
+                      :tabindex="wfDlgControlsDisabled ? -1 : 0"
                       :aria-label="t('audio.waveformColor')"
-                    />
+                    >
+                      <q-popup-proxy
+                        v-if="!wfDlgControlsDisabled"
+                        anchor="top right" self="top left" :offset="[8, 0]"
+                        transition-show="scale" transition-hide="scale"
+                      >
+                        <div class="tracks-panel__color-popup">
+                          <div class="row justify-end">
+                            <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.close')" />
+                          </div>
+                          <q-color
+                            :model-value="wfDlgColor"
+                            format-model="hex" no-header-tabs default-view="palette"
+                            @update:model-value="(v) => (wfDlgColor = String(v ?? wfDlgColor))"
+                          />
+                        </div>
+                      </q-popup-proxy>
+                    </div>
                   </div>
                   <div class="row items-center justify-between no-wrap">
                     <span class="text-body2">{{ t('audio.waveformScale') }}</span>
@@ -1789,9 +1811,20 @@ async function openMetaAnalysis(path: string | null): Promise<void> {
 // the path and is handled by the displayFilePath watch + each view's own filePath watch, so guard on
 // the path to avoid a redundant double render on open.
 let lastSchedulePath: string | null = audio.displayFilePath
-watch(() => audio.gnauralSchedule, () => {
+// Owner 2026-07-15: compare the schedule's CONTENT, not the object identity. Gnaural re-emits the
+// schedule on every `load` — i.e. on every first Play of a file — with identical data, which used
+// to bump the key and re-run the whole STFT for nothing (visible as the graphs redrawing on Play).
+// The two cases this watch exists for (a Save, a voice mute) both change the content, so they still
+// fire; a replay does not.
+const scheduleSignature = (aSchedule: unknown): string => (aSchedule == null ? '' : JSON.stringify(aSchedule))
+let lastScheduleSignature = scheduleSignature(audio.gnauralSchedule)
+watch(() => audio.gnauralSchedule, (schedule) => {
   const path = audio.displayFilePath
-  if (path !== null && path === lastSchedulePath) {
+  const signature = scheduleSignature(schedule)
+  const contentChanged = signature !== lastScheduleSignature
+  lastScheduleSignature = signature
+
+  if (contentChanged && path !== null && path === lastSchedulePath) {
     spectrogramReloadKey.value += 1
     void openMetaAnalysis(path)
   }
@@ -1855,6 +1888,7 @@ function loadWaveformPrefs(): {
   opacities?: unknown
   minimap?: string
   link?: unknown // WS1.1 (WS-D7): the «apply to both channels» toggle; absent -> default
+  both?: unknown // WS1.4 (WS-D9): the «Оба канала» group's OWN settings; absent -> seeded from ch 0
 } {
   try {
     const raw = localStorage.getItem(STORAGE_TRACKS_WAVEFORM)
@@ -1892,13 +1926,37 @@ const waveformColors = ref<string[]>(
 const waveformOpacities = ref<number[]>(
   seedArray<number>(wfPrefs.opacities, typeof wfPrefs.opacity === 'number' ? wfPrefs.opacity : 0.55, () => 0.55),
 )
+// WS1.4 (WS-D9, owner req 12): «Оба канала» is a THIRD, independent group — not a bulk write over
+// L and R. Editing it never touches the per-channel groups (and vice versa); the toggle only picks
+// which group the tracks DRAW. That is also why linking applies instantly (owner req 11): nothing
+// is copied — the source changes — and unlinking brings each channel's own settings back untouched.
+// Seeded from channel 0 on migration: that is what the «Оба канала» tab used to show (WS1.1).
+interface WaveformBothPrefs { scale?: unknown; color?: unknown; opacity?: unknown }
+const bothPrefs: WaveformBothPrefs =
+  typeof wfPrefs.both === 'object' && wfPrefs.both !== null ? (wfPrefs.both as WaveformBothPrefs) : {}
+const waveformBothScale = ref<WaveformScale>(
+  bothPrefs.scale === 'db' || bothPrefs.scale === 'linear' ? bothPrefs.scale : (waveformScales.value[0] ?? 'linear'),
+)
+const waveformBothColor = ref<string>(
+  typeof bothPrefs.color === 'string' ? bothPrefs.color : (waveformColors.value[0] ?? WAVEFORM_DEFAULT_COLORS[0]!),
+)
+const waveformBothOpacity = ref<number>(
+  typeof bothPrefs.opacity === 'number' ? bothPrefs.opacity : (waveformOpacities.value[0] ?? 0.55),
+)
+// Mono ignores the toggle entirely: with one channel there is nothing to unify, so its «Моно» tab
+// IS the channel-0 group (WS-D4) — otherwise one graph would answer to two different groups.
+const waveformLinked = computed(() => waveformLinkChannels.value && isSpectrogramStereo.value)
+// What a TRACK draws (owner req 11): the «Оба канала» group while linked, its own otherwise.
 function wfScale(ch: number): WaveformScale {
+  if (waveformLinked.value) return waveformBothScale.value
   return waveformScales.value[ch] ?? waveformScales.value[0] ?? 'linear'
 }
 function wfColor(ch: number): string {
-  return waveformColors.value[ch] ?? WAVEFORM_DEFAULT_COLORS[ch] ?? WAVEFORM_DEFAULT_COLORS[0]
+  if (waveformLinked.value) return waveformBothColor.value
+  return waveformColors.value[ch] ?? WAVEFORM_DEFAULT_COLORS[ch] ?? WAVEFORM_DEFAULT_COLORS[0]!
 }
 function wfOpacity(ch: number): number {
+  if (waveformLinked.value) return waveformBothOpacity.value
   return waveformOpacities.value[ch] ?? waveformOpacities.value[0] ?? 0.55
 }
 // WS1.1 (WS-D2/WS-D3): waveform settings are a two-pane dialog — a channel-SCOPE list on the left,
@@ -1956,29 +2014,46 @@ watch([isSpectrogramStereo, waveformLinkChannels], ([stereo, link]) => {
   if (waveformSettingsTab.value !== 'both' && (!stereo || link)) waveformSettingsTab.value = 'both'
 })
 const wfDlgChannel = computed(() => (waveformSettingsTab.value === 'both' ? 0 : waveformSettingsTab.value))
-// The channels an edit on the current tab writes. 'both' means every channel that EXISTS: in mono
-// that is channel 0 alone — writing ch 1 there would silently overwrite the R preference that a
-// later stereo file will load (WS-D4).
-function wfDlgTargets(): readonly number[] {
-  if (waveformSettingsTab.value !== 'both') return [waveformSettingsTab.value]
-  return isSpectrogramStereo.value ? [0, 1] : [0]
-}
-function wfDlgWrite<T>(aList: Ref<T[]>, aValue: T): void {
+// WS1.4 (owner req 12): the dialog edits the group its ACTIVE TAB names, and only that one. In mono
+// the «Моно» tab is channel 0's group, not a «both» group (WS-D4).
+const wfDlgOnBothGroup = computed(() => waveformSettingsTab.value === 'both' && isSpectrogramStereo.value)
+// Reads the RAW per-channel value, never wfScale/wfColor/wfOpacity: those answer «what does this
+// track DRAW», which while linked is the «Оба канала» group — a per-channel tab must show its own
+// stored setting, or the three groups would stop being independent on screen.
+function wfDlgWriteChannel<T>(aList: Ref<T[]>, aValue: T): void {
   const next = aList.value.slice()
-  for (const ch of wfDlgTargets()) next[ch] = aValue
+  next[wfDlgChannel.value] = aValue
   aList.value = next
 }
 const wfDlgScale = computed<WaveformScale>({
-  get: () => wfScale(wfDlgChannel.value),
-  set: (v) => wfDlgWrite(waveformScales, v),
+  get: () =>
+    wfDlgOnBothGroup.value
+      ? waveformBothScale.value
+      : (waveformScales.value[wfDlgChannel.value] ?? waveformScales.value[0] ?? 'linear'),
+  set: (v) => {
+    if (wfDlgOnBothGroup.value) waveformBothScale.value = v
+    else wfDlgWriteChannel(waveformScales, v)
+  },
 })
 const wfDlgColor = computed<string>({
-  get: () => wfColor(wfDlgChannel.value),
-  set: (v) => wfDlgWrite(waveformColors, v),
+  get: () =>
+    wfDlgOnBothGroup.value
+      ? waveformBothColor.value
+      : (waveformColors.value[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[0]!),
+  set: (v) => {
+    if (wfDlgOnBothGroup.value) waveformBothColor.value = v
+    else wfDlgWriteChannel(waveformColors, v)
+  },
 })
 const wfDlgOpacity = computed<number>({
-  get: () => wfOpacity(wfDlgChannel.value),
-  set: (v) => wfDlgWrite(waveformOpacities, v),
+  get: () =>
+    wfDlgOnBothGroup.value
+      ? waveformBothOpacity.value
+      : (waveformOpacities.value[wfDlgChannel.value] ?? waveformOpacities.value[0] ?? 0.55),
+  set: (v) => {
+    if (wfDlgOnBothGroup.value) waveformBothOpacity.value = v
+    else wfDlgWriteChannel(waveformOpacities, v)
+  },
 })
 const minimapMode = ref<MinimapMode>(
   MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
@@ -2306,7 +2381,8 @@ function onOverallChannelHide(kind: TrackKind, channel: number, ev: Event): void
   }
   hideTrack(kind, channel)
 }
-watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode, waveformLinkChannels], () => {
+watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode, waveformLinkChannels,
+  waveformBothScale, waveformBothColor, waveformBothOpacity], () => {
   try {
     localStorage.setItem(
       STORAGE_TRACKS_WAVEFORM,
@@ -2317,6 +2393,9 @@ watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode,
         opacities: waveformOpacities.value,
         minimap: minimapMode.value,
         link: waveformLinkChannels.value, // WS1.1 (WS-D7)
+        // WS1.4 (WS-D9): the «Оба канала» group persists beside the per-channel ones — it is a
+        // third independent setting, so it must survive a reload like they do.
+        both: { scale: waveformBothScale.value, color: waveformBothColor.value, opacity: waveformBothOpacity.value },
       }),
     )
   } catch {
@@ -3061,6 +3140,12 @@ onBeforeUnmount(() => {
 .tracks-panel__gtrack-header-gear {
   flex: 0 0 auto;
 }
+/* WS1.4 (owner req 9): keep the gear the same distance from the right edge as it had on the graph,
+   where .waveform-view__actions sat at right: 4px. The header has no padding, so the button would
+   otherwise sit flush against the edge. Same element width, same 4px -> same gap. */
+.tracks-panel__gtrack-header-gear {
+  margin-right: 4px;
+}
 /* GT11.11: the eye reads as "there are hidden graphs here" — a soft accent so it stands out. */
 .tracks-panel__gtrack-header-eye {
   color: #fbbf24;
@@ -3134,14 +3219,8 @@ onBeforeUnmount(() => {
   outline-offset: -2px;
 }
 
-.audio-page__wf-color {
-  background: none;
-  border: none;
-  cursor: pointer;
-  height: 26px;
-  padding: 0;
-  width: 40px;
-}
+/* WS1.4: .audio-page__wf-color removed with its only user — the <input type="color"> that the
+   owner's own picker (swatch + q-color + X, owner req 10) replaced. */
 
 /* SF9.2: 2px mutual-resize divider between adjacent spectrogram tracks (SF-D19). */
 .audio-page__spectrogram-divider {
