@@ -1,10 +1,5 @@
 <template>
   <div ref="rootEl" :style="overlayFrame" class="audio-page__output-section audio-page__output-section--spectrogram">
-    <div class="audio-page__player-toolbar">
-      <!-- GT2.4: transport controls come from AudioPage (same pattern as GnauralScheduleView). -->
-      <slot name="toolbar" />
-    </div>
-
     <!-- GT2.6 fix: a spectrum error (e.g. a huge WAV that won't decode) is a non-blocking notice —
          the gtrack lanes still render from the schedule below it. -->
     <q-banner v-if="audio.spectrogramError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
@@ -22,6 +17,10 @@
          SB2.6 (feedback #1): the header lives ABOVE the scroll region as its own flex row, so the
          tracks scrollbar runs only alongside the lanes and never past the header (no longer sticky). -->
     <div v-if="showGtracks || hasSpectrogramData" class="audio-page__spectrogram-header">
+          <!-- GT2.4: transport controls come from AudioPage (same pattern as GnauralScheduleView).
+               Owner 2026-07-15: they render as icon buttons here, inline to the left of the zoom
+               controls, in the style of the other toolbar icons. -->
+          <slot name="toolbar" />
           <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
           <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
           <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
@@ -2853,11 +2852,6 @@ onBeforeUnmount(() => {
   padding-right: 8px;
 }
 
-.audio-page__player-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
 
 /* GT10.16: staged open-progress list. */
 .tracks-panel__stages {

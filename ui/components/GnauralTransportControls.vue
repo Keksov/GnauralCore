@@ -1,23 +1,51 @@
 <template>
-  <div class="gnaural-transport-controls">
-    <q-btn
-      v-if="!hideStartPause"
-      :color="startStopColor"
-      :flat="startStopFlat"
-      :icon="startStopIcon"
-      :label="startStopLabel"
-      :disable="startStopDisabled"
-      @click="emit('start-stop')"
-    />
-    <q-btn
-      v-if="!hideStartPause"
-      color="primary"
-      flat
-      :icon="pauseResumeIcon"
-      :label="pauseResumeLabel"
-      :disable="pauseResumeDisabled"
-      @click="emit('pause-resume')"
-    />
+  <div class="gnaural-transport-controls" :class="{ 'gnaural-transport-controls--toolbar': toolbar }">
+    <!-- toolbar variant (owner 2026-07-15): icon-only buttons matching the spectrogram-header
+         toolbar icons (dense/flat/round/sm + tooltip), used when the transport lives inline in
+         the Треки toolbar to the left of the zoom controls. -->
+    <template v-if="toolbar">
+      <q-btn
+        v-if="!hideStartPause"
+        dense flat round size="sm"
+        :color="startStopColor"
+        :icon="startStopIcon"
+        :disable="startStopDisabled"
+        :aria-label="startStopLabel"
+        @click="emit('start-stop')"
+      >
+        <q-tooltip>{{ startStopLabel }}</q-tooltip>
+      </q-btn>
+      <q-btn
+        v-if="!hideStartPause"
+        dense flat round size="sm"
+        :icon="pauseResumeIcon"
+        :disable="pauseResumeDisabled"
+        :aria-label="pauseResumeLabel"
+        @click="emit('pause-resume')"
+      >
+        <q-tooltip>{{ pauseResumeLabel }}</q-tooltip>
+      </q-btn>
+    </template>
+    <template v-else>
+      <q-btn
+        v-if="!hideStartPause"
+        :color="startStopColor"
+        :flat="startStopFlat"
+        :icon="startStopIcon"
+        :label="startStopLabel"
+        :disable="startStopDisabled"
+        @click="emit('start-stop')"
+      />
+      <q-btn
+        v-if="!hideStartPause"
+        color="primary"
+        flat
+        :icon="pauseResumeIcon"
+        :label="pauseResumeLabel"
+        :disable="pauseResumeDisabled"
+        @click="emit('pause-resume')"
+      />
+    </template>
   </div>
 </template>
 
@@ -34,12 +62,15 @@ withDefaults(defineProps<{
   readonly pauseResumeLabel: string
   readonly pauseResumeDisabled?: boolean
   readonly hideStartPause?: boolean
+  // Render as icon-only toolbar buttons (see the toolbar variant in the template).
+  readonly toolbar?: boolean
 }>(), {
   startStopColor: 'primary',
   startStopFlat: false,
   startStopDisabled: false,
   pauseResumeDisabled: false,
   hideStartPause: false,
+  toolbar: false,
 })
 
 const emit = defineEmits<{
@@ -53,5 +84,12 @@ const emit = defineEmits<{
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Icon-only toolbar variant: tighten to the 4px gap the spectrogram-header toolbar uses. */
+.gnaural-transport-controls--toolbar {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
 }
 </style>
