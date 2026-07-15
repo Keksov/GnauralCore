@@ -838,10 +838,12 @@ function ensureSpectrogramPrepared(): void {
     return
   }
 
-  // GT2.6: on the Треки tab, auto-render a gnaural to WAV for its spectrum (no playback needed).
-  // The frozen Спектрограмма tab keeps its "press play to render" behaviour.
+  // GT2.6 removed (2026-07-15): the Треки tab used to also fetch+decode a single-loop WAV render
+  // here (ensureGnauralSpectrogram) into the client-side gnauralSpectrogramBuffer. Nothing
+  // displays that buffer any more — the tab's waveform/spectrum come from the SpectrumCore
+  // backend analysis, which TracksPanel opens on its own — so it was a wasted fetch + decode on
+  // every tab open, and it was what raised the "loading spectrogram WAV" overlay.
   if (activePlayerViewTab.value === 'tracks' && audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
-    void audio.ensureGnauralSpectrogram(audio.displayFilePath)
     // GT2.2 fix: the gtrack lanes come from the schedule DUMP, which is loaded on file selection —
     // not on tab activation. Ensure it's loaded here too so an already-selected gnaural shows its
     // gtrack curves when the Треки tab is opened (idempotent — no-op if already cached).
