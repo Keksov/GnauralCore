@@ -130,18 +130,21 @@ import {
   pointValue,
   unitToValue,
   valueToUnit,
-  zoomAxisRange,
   type GTrackMode,
 } from '../composables/gtrack-render'
 import { formatTimeSec, timeAxisTicksWithMinor } from '../composables/spectrogram-axes'
 import {
+  FULL_UNIT,
   fractionToTime,
   fullWindow,
+  panUnitWindow,
   panWindow,
   timeToFraction,
+  zoomUnitWindow,
   zoomWindow,
   type SpectrogramSelection,
   type TimeWindow,
+  type UnitWindow,
 } from '../composables/spectrogram-viewport'
 
 // GT2.1 — a gtrack lane in the Audio stack (GT-D2). It draws one or more voices' schedule curves
@@ -298,11 +301,19 @@ const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 // mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
 const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand))
 
-// GT11.13 (owner 2026-07-15): a MANUAL value-axis range set by Alt+wheel, overriding the auto-fit
-// above. null = auto (the default). Per-lane and in-memory: it is a view control, so it resets when
-// the lane unmounts (e.g. leaving the Треки tab), like any other transient zoom.
-const yZoom = ref<{ min: number; max: number } | null>(null)
-const axis = computed(() => (yZoom.value === null ? autoAxis.value : axisWithRange(autoAxis.value, yZoom.value.min, yZoom.value.max)))
+// GT11.13 (owner 2026-07-15): the value (Y) view — a NORMALIZED [0,1] window over the auto-fit range
+// above, exactly the model SpectrogramView uses for its frequency band (freqView). {0,1} = the full
+// auto range, so zooming out simply clamps back to it. Per-lane and in-memory, like freqView's own
+// per-view fallback. The window maps to real values through the axis, so a log base-freq axis stays
+// log (unitToValue), matching how the spectrogram's band maps onto its frequency scale.
+const MIN_Y_SPAN = 0.02
+const yView = ref<UnitWindow>(FULL_UNIT)
+const axis = computed(() => {
+  const auto = autoAxis.value
+  const v = yView.value
+  if (v.lo <= 0 && v.hi >= 1) return auto
+  return axisWithRange(auto, unitToValue(v.lo, auto), unitToValue(v.hi, auto))
+})
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const view = computed<TimeWindow>({
@@ -589,22 +600,21 @@ function xFraction(aEvent: { offsetX: number }): number | null {
 function onWheel(aEvent: WheelEvent): void {
   if (!hasData.value) return
   const zoomIn = aEvent.deltaY < 0
-  // GT11.13 (owner 2026-07-15): Alt+wheel zooms the VALUE (Y) axis instead of time, anchored on the
-  // value under the cursor. Zooming back OUT to (or past) the auto-fit range snaps to auto — that is
-  // the way back, so no extra control is needed.
+  const zoomFactor = zoomIn ? 0.8 : 1.25
+  // GT11.13 (owner 2026-07-15): the SAME modifier map as SpectrogramView.onWheel, so the gesture is
+  // identical on both graphs — Alt+Shift = Y pan, Alt = Y zoom about the pointer, Shift = time pan,
+  // plain OR Ctrl = time zoom. Zooming Y back out clamps to the full range (no extra control).
+  if (aEvent.altKey && aEvent.shiftKey) {
+    yView.value = panUnitWindow(yView.value, (zoomIn ? 1 : -1) * 0.15 * (yView.value.hi - yView.value.lo))
+    scheduleDraw()
+    return
+  }
   if (aEvent.altKey) {
     const rect = plotRect()
     if (rect === null) return
-    const focusUnit = yToValueUnit(rect.plotY, rect.plotH, aEvent.offsetY)
-    const next = zoomAxisRange(axis.value, zoomIn ? 0.8 : 1.25, focusUnit)
-    const auto = autoAxis.value
-    if (next.min <= auto.min && next.max >= auto.max) {
-      yZoom.value = null
-    } else {
-      // A log axis (base freq) must stay positive — match gtrackAxis's >= 1 Hz floor.
-      const min = axis.value.scale === 'log' ? Math.max(1, next.min) : next.min
-      if (next.max > min) yZoom.value = { min, max: next.max }
-    }
+    // yTop 0 = top -> anchorBottom = 1 - yTop (same derivation as SpectrogramView).
+    const yTop = Math.min(1, Math.max(0, (aEvent.offsetY - rect.plotY) / rect.plotH))
+    yView.value = zoomUnitWindow(yView.value, zoomFactor, 1 - yTop, MIN_Y_SPAN)
     scheduleDraw()
     return
   }

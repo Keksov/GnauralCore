@@ -162,9 +162,11 @@ import {
   fractionToTime,
   fullWindow,
   MIN_WINDOW_SEC,
+  panUnitWindow,
   panWindow,
   timeToFraction,
   viewportZoomTier,
+  zoomUnitWindow,
   zoomWindow,
   type SpectrogramSelection,
   type TimeWindow,
@@ -361,25 +363,14 @@ const freqView = computed<FreqWindow>({
 })
 
 // Zoom the freq window about an anchor (0 = bottom, 1 = top); factor<1 zooms in.
+// GT11.13: the math moved to spectrogram-viewport (zoomUnitWindow/panUnitWindow) so the gtrack lane's
+// Alt+wheel Y zoom is literally the same gesture, not a copy that can drift.
 function zoomFreq(aFactor: number, aAnchorBottom: number): void {
-  const cur = freqView.value
-  const span = Math.max(MIN_FREQ_SPAN, cur.hi - cur.lo)
-  const anchor = cur.lo + Math.min(1, Math.max(0, aAnchorBottom)) * span
-  let newSpan = Math.min(1, Math.max(MIN_FREQ_SPAN, span * aFactor))
-  let lo = anchor - Math.min(1, Math.max(0, aAnchorBottom)) * newSpan
-  if (lo < 0) lo = 0
-  if (lo + newSpan > 1) lo = 1 - newSpan
-  if (lo < 0) { lo = 0; newSpan = 1 }
-  freqView.value = { lo, hi: lo + newSpan }
+  freqView.value = zoomUnitWindow(freqView.value, aFactor, aAnchorBottom, MIN_FREQ_SPAN)
 }
 // Pan the freq window by a fraction delta (clamped to [0,1]).
 function panFreq(aDelta: number): void {
-  const cur = freqView.value
-  const span = cur.hi - cur.lo
-  let lo = cur.lo + aDelta
-  if (lo < 0) lo = 0
-  if (lo + span > 1) lo = 1 - span
-  freqView.value = { lo, hi: lo + span }
+  freqView.value = panUnitWindow(freqView.value, aDelta)
 }
 
 const hasAnalysis = computed(() => spec.analysis.value !== null)
