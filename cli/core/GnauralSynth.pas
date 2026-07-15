@@ -655,11 +655,16 @@ begin
             Inc(pOut);
         end;
 
-        // Advance sample counter every BB_UPDATE_PERIOD samples
+        // Advance sample counter every BB_UPDATE_PERIOD samples.
+        // Only while actually playing: the audio callback keeps pulling frames when paused (it
+        // just gets silence, since the synthesis block above is skipped), so advancing here made
+        // the playback clock run through the pause. Resuming then jumped forward by exactly how
+        // long the pause lasted (measured 2026-07-15: paused at 70.025, resumed at 72.343).
         if FupdatePeriod = 0 then
         begin
             FupdatePeriod := BB_UPDATE_PERIOD;
-            Inc(FcurrentSampleCount, BB_UPDATE_PERIOD);
+            if not Fpaused and not Fcompleted then
+                Inc(FcurrentSampleCount, BB_UPDATE_PERIOD);
         end;
     end; // for each frame
 end;
@@ -720,8 +725,21 @@ begin
 end;
 
 function TGnauralSynth.getPlaybackPosition: Double;
+var
+    pendingSeek : Int64;
 begin
-    Result := FcurrentSampleCount / BB_AUDIOSAMPLERATE;
+    // seek() only REQUESTS a seek (FseekTarget); the render loop applies it to FcurrentSampleCount
+    // on its next pass. Until then FcurrentSampleCount still holds the pre-seek position, and the
+    // control loop in GnauralApp would report THAT as playback progress — the host then saw the
+    // playhead jump back to the old spot for one tick before the seek took effect
+    // (measured 2026-07-15: seek to 16.494 emitted 0 -> 16.494 -> 0.077 -> 16.623).
+    // While a seek is pending, the target IS the playback position as far as the outside world is
+    // concerned. Read the field once: the render thread may clear it at any moment.
+    pendingSeek := FseekTarget;
+    if pendingSeek >= 0 then
+        Result := pendingSeek / BB_AUDIOSAMPLERATE
+    else
+        Result := FcurrentSampleCount / BB_AUDIOSAMPLERATE;
 end;
 
 function TGnauralSynth.isCompleted: Boolean;
