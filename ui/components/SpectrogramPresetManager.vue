@@ -23,7 +23,7 @@
               <div class="row no-wrap items-center">
                 <q-btn flat dense no-caps size="sm" :label="t('audio.spectrogramPresetApply')" @click="store.applyPresetById(p.id)" />
                 <q-btn flat dense round size="sm" icon="content_copy" @click="duplicate(p)">
-                  <q-tooltip>{{ t('audio.spectrogramPresetDuplicate') }}</q-tooltip>
+                  <app-tooltip>{{ t('audio.spectrogramPresetDuplicate') }}</app-tooltip>
                 </q-btn>
               </div>
             </q-item-section>
@@ -46,16 +46,16 @@
               <div class="row no-wrap items-center">
                 <q-btn flat dense no-caps size="sm" :label="t('audio.spectrogramPresetApply')" @click="store.applyPresetById(p.id)" />
                 <q-btn flat dense round size="sm" icon="save" @click="store.updatePreset(p.id)">
-                  <q-tooltip>{{ t('audio.spectrogramPresetUpdate') }}</q-tooltip>
+                  <app-tooltip>{{ t('audio.spectrogramPresetUpdate') }}</app-tooltip>
                 </q-btn>
                 <q-btn flat dense round size="sm" icon="edit" @click="rename(p)">
-                  <q-tooltip>{{ t('audio.spectrogramPresetRename') }}</q-tooltip>
+                  <app-tooltip>{{ t('audio.spectrogramPresetRename') }}</app-tooltip>
                 </q-btn>
                 <q-btn flat dense round size="sm" icon="content_copy" @click="duplicate(p)">
-                  <q-tooltip>{{ t('audio.spectrogramPresetDuplicate') }}</q-tooltip>
+                  <app-tooltip>{{ t('audio.spectrogramPresetDuplicate') }}</app-tooltip>
                 </q-btn>
                 <q-btn flat dense round size="sm" icon="delete" color="negative" @click="remove(p)">
-                  <q-tooltip>{{ t('audio.spectrogramPresetDelete') }}</q-tooltip>
+                  <app-tooltip>{{ t('audio.spectrogramPresetDelete') }}</app-tooltip>
                 </q-btn>
               </div>
             </q-item-section>
@@ -87,6 +87,7 @@ import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 
 import { useSpectrogramStore } from '../stores/spectrogram'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()

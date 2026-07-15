@@ -64,6 +64,47 @@ export function panWindow(aWindow: TimeWindow, aDeltaSec: number, aDurationSec: 
 }
 
 /** True when the window covers (essentially) the whole clip. */
+/**
+ * A NORMALIZED [0,1] view window over some full range — the spectrogram's frequency band (SF15.1)
+ * and, since GT11.13, a gtrack lane's value (Y) range. {lo:0, hi:1} = the full range.
+ */
+export interface UnitWindow {
+  readonly lo: number
+  readonly hi: number
+}
+export const FULL_UNIT: UnitWindow = { lo: 0, hi: 1 }
+
+/**
+ * Zoom a normalized view window about an anchor (0 = bottom, 1 = top); factor < 1 zooms in. Clamped
+ * to [0,1] and to aMinSpan, so zooming out simply lands back on the full range.
+ *
+ * GT11.13: extracted verbatim from SpectrogramView's local zoomFreq so the gtrack lane's Alt+wheel is
+ * the SAME gesture BY CONSTRUCTION (both call this) rather than a lookalike copy that can drift.
+ */
+export function zoomUnitWindow(aWindow: UnitWindow, aFactor: number, aAnchorBottom: number, aMinSpan: number): UnitWindow {
+  const span = Math.max(aMinSpan, aWindow.hi - aWindow.lo)
+  const anchorFraction = Math.min(1, Math.max(0, aAnchorBottom))
+  const anchor = aWindow.lo + anchorFraction * span
+  let newSpan = Math.min(1, Math.max(aMinSpan, span * aFactor))
+  let lo = anchor - anchorFraction * newSpan
+  if (lo < 0) lo = 0
+  if (lo + newSpan > 1) lo = 1 - newSpan
+  if (lo < 0) {
+    lo = 0
+    newSpan = 1
+  }
+  return { lo, hi: lo + newSpan }
+}
+
+/** Pan a normalized view window by a fraction delta, clamped to [0,1] (span preserved). */
+export function panUnitWindow(aWindow: UnitWindow, aDelta: number): UnitWindow {
+  const span = aWindow.hi - aWindow.lo
+  let lo = aWindow.lo + aDelta
+  if (lo < 0) lo = 0
+  if (lo + span > 1) lo = 1 - span
+  return { lo, hi: lo + span }
+}
+
 export function isFullWindow(aWindow: TimeWindow, aDurationSec: number): boolean {
   return aWindow.startSec <= 1e-6 && aWindow.endSec >= aDurationSec - 1e-6
 }

@@ -49,7 +49,7 @@
               :aria-label="t('audio.statusTimeFormat')"
               @mousedown.prevent
             >
-              <q-tooltip>{{ t('audio.statusTimeFormat') }}</q-tooltip>
+              <app-tooltip>{{ t('audio.statusTimeFormat') }}</app-tooltip>
               <q-menu>
                 <q-list dense style="min-width: 200px">
                   <q-item-label header class="q-py-xs">{{ t('audio.statusTimeFormat') }}</q-item-label>
@@ -94,7 +94,7 @@
         :aria-label="t('audio.statusToggleMinimap')"
         @click="emit('update:minimapVisible', !minimapVisible)"
       >
-        <q-tooltip>{{ t('audio.statusToggleMinimap') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.statusToggleMinimap') }}</app-tooltip>
       </q-btn>
     </div>
   </div>
@@ -103,6 +103,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import {
   clampSec,

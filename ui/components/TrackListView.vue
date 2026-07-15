@@ -6,14 +6,14 @@
     <!-- Bulk actions (owner req. 20) — gnaural-only (operate on schedule voices/lanes). -->
     <div v-if="snapshot.isGnaural" class="track-list-panel__bulk">
       <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.gtrackMergeAll')" @click="emit('action', { kind: 'merge-all' })">
-        <q-tooltip>{{ t('audio.gtrackMergeAll') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackMergeAll') }}</app-tooltip>
       </q-btn>
       <q-btn dense flat round size="sm" icon="call_split" :aria-label="t('audio.gtrackSpreadAll')" @click="emit('action', { kind: 'spread-all' })">
-        <q-tooltip>{{ t('audio.gtrackSpreadAll') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackSpreadAll') }}</app-tooltip>
       </q-btn>
       <!-- GT3.18 (owner req. 38): one lane per (voice × mode), grouped by voice. -->
       <q-btn dense flat round size="sm" icon="grid_view" :aria-label="t('audio.gtrackAllModes')" @click="emit('action', { kind: 'show-all-modes' })">
-        <q-tooltip>{{ t('audio.gtrackAllModes') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackAllModes') }}</app-tooltip>
       </q-btn>
       <q-btn
         dense flat round size="sm"
@@ -21,7 +21,7 @@
         :aria-label="snapshot.allLanesHidden ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll')"
         @click="emit('action', { kind: 'set-all-hidden', hidden: !snapshot.allLanesHidden })"
       >
-        <q-tooltip>{{ snapshot.allLanesHidden ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll') }}</q-tooltip>
+        <app-tooltip>{{ snapshot.allLanesHidden ? t('audio.gtrackShowAll') : t('audio.gtrackHideAll') }}</app-tooltip>
       </q-btn>
       <q-select
         class="track-list-panel__mode-all"
@@ -49,7 +49,7 @@
             :aria-label="t('audio.trackShow')"
             @click="emit('action', { kind: 'set-wave-hidden', hidden: !snapshot.waveHidden })"
           >
-            <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
           </q-btn>
         </q-item-section>
       </q-item>
@@ -64,7 +64,7 @@
             :aria-label="t('audio.trackShow')"
             @click="emit('action', { kind: 'set-spectrum-hidden', hidden: !snapshot.spectrumHidden })"
           >
-            <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
           </q-btn>
         </q-item-section>
       </q-item>
@@ -91,7 +91,7 @@
               :aria-label="t('audio.gtrackFix')"
               @click="emit('action', { kind: 'fix-preparse', voiceId: v.id })"
             >
-              <q-tooltip>{{ t('audio.gtrackFixTooltip') }}</q-tooltip>
+              <app-tooltip>{{ t('audio.gtrackFixTooltip') }}</app-tooltip>
             </q-btn>
             <q-select
               class="track-list-panel__voice-mode"
@@ -116,7 +116,7 @@
               :aria-label="v.muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute')"
               @click="emit('action', { kind: 'toggle-voice-muted', voiceId: v.id })"
             >
-              <q-tooltip>{{ v.muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
+              <app-tooltip>{{ v.muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</app-tooltip>
             </q-btn>
             <!-- owner 2026-07-13: include/exclude this voice from the OVERALL wave/spectrum. -->
             <q-btn
@@ -126,7 +126,7 @@
               :aria-label="v.inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude')"
               @click="emit('action', { kind: 'set-voice-in-mix', voiceId: v.id, inMix: !v.inMix })"
             >
-              <q-tooltip>{{ v.inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</q-tooltip>
+              <app-tooltip>{{ v.inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</app-tooltip>
             </q-btn>
           </div>
         </q-item-section>
@@ -156,6 +156,7 @@ import { useI18n } from 'vue-i18n'
 import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
 import type { GTrackPointDragMode } from '../composables/use-gtrack-lanes'
 import type { TrackListSnapshot, TrackListAction } from '../composables/track-list-model'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 defineProps<{ snapshot: TrackListSnapshot }>()
 const emit = defineEmits<{ action: [action: TrackListAction] }>()

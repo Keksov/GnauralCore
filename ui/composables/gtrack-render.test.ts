@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GTrackPoint, GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, axisWithRange, ctrlStepValue, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit, zoomAxisRange, type GTrackAxis } from './gtrack-render'
+import { GTRACK_MODES, axisWithRange, ctrlStepValue, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit, type GTrackAxis } from './gtrack-render'
 
 function pt(over: Partial<GTrackPoint>): GTrackPoint {
   return { timeSec: 0, baseFreq: 200, beatFreqHalf: 5, volL: 0.5, volR: 0.5, ...over }
@@ -172,47 +172,10 @@ describe('valueToUnit (GT2.1)', () => {
   })
 })
 
-// GT11.13: Alt+wheel Y-axis zoom.
+// GT11.13: Alt+wheel Y zoom maps a normalized [0,1] window (spectrogram-viewport.zoomUnitWindow)
+// onto the lane's value range through this helper.
 const LIN: GTrackAxis = { min: 0, max: 10, scale: 'linear', topLabel: '', midLabel: '', botLabel: '' }
 const LOG: GTrackAxis = { min: 10, max: 1000, scale: 'log', topLabel: '', midLabel: '', botLabel: '' }
-
-describe('zoomAxisRange (GT11.13)', () => {
-  test('linear zoom-in halves the span around the focus', () => {
-    const r = zoomAxisRange(LIN, 0.5, 0.5)
-    expect(r.min).toBeCloseTo(2.5, 9)
-    expect(r.max).toBeCloseTo(7.5, 9)
-  })
-
-  // The whole point of the gesture: whatever value sits under the cursor must not move.
-  test('pins the focused value, at any focusUnit, on both scales', () => {
-    for (const axis of [LIN, LOG]) {
-      for (const u of [0, 0.25, 0.5, 1]) {
-        for (const factor of [0.8, 1.25]) {
-          const r = zoomAxisRange(axis, factor, u)
-          const zoomed = axisWithRange(axis, r.min, r.max)
-          expect(unitToValue(u, zoomed)).toBeCloseTo(unitToValue(u, axis), 6)
-        }
-      }
-    }
-  })
-
-  test('log zoom is multiplicative (equal decades) and stays positive', () => {
-    const r = zoomAxisRange(LOG, 0.5, 0.5)
-    expect(r.min).toBeCloseTo(Math.pow(10, 1.5), 6)
-    expect(r.max).toBeCloseTo(Math.pow(10, 2.5), 6)
-    expect(r.min).toBeGreaterThan(0)
-  })
-
-  test('zoom-out widens the span', () => {
-    const r = zoomAxisRange(LIN, 1.25, 0.5)
-    expect(r.max - r.min).toBeCloseTo(12.5, 9)
-  })
-
-  test('focusUnit is clamped to [0,1]', () => {
-    expect(zoomAxisRange(LIN, 0.5, 2)).toEqual(zoomAxisRange(LIN, 0.5, 1))
-    expect(zoomAxisRange(LIN, 0.5, -1)).toEqual(zoomAxisRange(LIN, 0.5, 0))
-  })
-})
 
 describe('axisWithRange (GT11.13)', () => {
   test('applies the range, keeps the scale, uses the GEOMETRIC mid on a log axis', () => {

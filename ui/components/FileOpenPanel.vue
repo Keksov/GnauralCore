@@ -45,7 +45,7 @@
             <q-item-section>{{ t('fsBrowser.favorites') }}</q-item-section>
             <q-item-section side>
               <q-btn flat dense round size="sm" icon="star" :aria-label="t('fsBrowser.addFavorite')" @click.stop="addCurrentToFavorites">
-                <q-tooltip>{{ t('fsBrowser.addFavorite') }}</q-tooltip>
+                <app-tooltip>{{ t('fsBrowser.addFavorite') }}</app-tooltip>
               </q-btn>
             </q-item-section>
           </template>
@@ -89,7 +89,7 @@
               <span>{{ t('fsBrowser.favorites') }}</span>
               <q-space />
               <q-btn flat dense round size="sm" icon="star" :aria-label="t('fsBrowser.addFavorite')" @click="addCurrentToFavorites">
-                <q-tooltip>{{ t('fsBrowser.addFavorite') }}</q-tooltip>
+                <app-tooltip>{{ t('fsBrowser.addFavorite') }}</app-tooltip>
               </q-btn>
             </q-item-label>
             <q-item v-if="store.favorites.length === 0" dense>
@@ -137,6 +137,7 @@ import { useI18n } from 'vue-i18n'
 import type { AudioFileKind, FsEntry, FsRootKind } from '@protocol'
 import { audioFileKindForExt, useFsBrowserStore, type FsFavorite } from '../stores/fs-browser'
 import FsEntryList from './FsEntryList.vue'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 const props = defineProps<{
   /** Narrow single-column (accordion) layout — the host sets it for left/right docks. */

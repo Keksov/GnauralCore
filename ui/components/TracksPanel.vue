@@ -45,7 +45,7 @@
                   <q-icon name="visibility" size="18px" />
                 </q-item-section>
                 <q-item-section>{{ h.label }}</q-item-section>
-                <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
               </q-item>
             </q-list>
           </q-btn-dropdown>
@@ -79,7 +79,7 @@
             <q-badge floating rounded :color="diagnosticsSeverity === 'error' ? 'negative' : 'warning'" text-color="dark">
               {{ gtracks.diagnostics.value.length }}
             </q-badge>
-            <q-tooltip>{{ t('audio.gtrackProblems') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.gtrackProblems') }}</app-tooltip>
           </q-btn>
           <!-- GT2.2: add a gtrack editor lane (only for a gnaural file). -->
           <q-btn
@@ -90,7 +90,7 @@
             :aria-label="t('audio.gtrackAddLane')"
             @click="onAddLane"
           >
-            <q-tooltip>{{ t('audio.gtrackAddLane') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.gtrackAddLane') }}</app-tooltip>
           </q-btn>
           <!-- GT3.4: save the gtrack edits back to the .gnaural (highlighted while dirty; Ctrl+S too). -->
           <q-btn
@@ -103,7 +103,7 @@
             :aria-label="t('audio.gtrackSave')"
             @click="saveGtrackEdits"
           >
-            <q-tooltip>{{ gtracks.dirty.value ? t('audio.gtrackSaveDirty') : t('audio.gtrackSave') }}</q-tooltip>
+            <app-tooltip>{{ gtracks.dirty.value ? t('audio.gtrackSaveDirty') : t('audio.gtrackSave') }}</app-tooltip>
           </q-btn>
           <!-- GT11.14 (owner 2026-07-15): the Select/Add/Delete tool switcher was REMOVED — it
                duplicated gestures already available: Select = the default (plain drag moves a vertex),
@@ -127,7 +127,7 @@
             :aria-expanded="tracksListPanel.open"
             @click="tracksListPanel.open = !tracksListPanel.open"
           >
-            <q-tooltip>{{ t('audio.tracksListPanel') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.tracksListPanel') }}</app-tooltip>
           </q-btn>
     </div>
 
@@ -157,7 +157,7 @@
                 :aria-label="lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
                 @click="gtracks.toggleLaneFolded(lane.id)"
               >
-                <q-tooltip>{{ lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+                <app-tooltip>{{ lane.folded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</app-tooltip>
               </q-btn>
               <!-- GT11.8/GT11.11: hidden solo sub-graphs of this track -> eye toggle -> restore. -->
               <q-btn
@@ -167,13 +167,13 @@
                 icon="visibility_off"
                 :aria-label="t('audio.hiddenTracks')"
               >
-                <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+                <app-tooltip>{{ t('audio.hiddenTracks') }}</app-tooltip>
                 <q-menu>
                   <q-list dense style="min-width: 160px">
                     <q-item v-for="h in laneHiddenGraphs(lane)" :key="h.key" clickable v-close-popup @click="h.restore()">
                       <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
                       <q-item-section>{{ h.label }}</q-item-section>
-                      <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                      <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
                     </q-item>
                   </q-list>
                 </q-menu>
@@ -345,7 +345,7 @@
               :aria-label="overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
               @click="toggleOverallWaveFolded"
             >
-              <q-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+              <app-tooltip>{{ overallWaveFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</app-tooltip>
             </q-btn>
             <!-- GT11.11 (owner 2026-07-14): hidden graphs in this group -> eye toggle -> restore list. -->
             <q-btn
@@ -355,13 +355,13 @@
               icon="visibility_off"
               :aria-label="t('audio.hiddenTracks')"
             >
-              <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+              <app-tooltip>{{ t('audio.hiddenTracks') }}</app-tooltip>
               <q-menu>
                 <q-list dense style="min-width: 180px">
                   <q-item v-for="h in hiddenWaveList" :key="h.key" clickable v-close-popup @click="h.restore()">
                     <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
                     <q-item-section>{{ h.label }}</q-item-section>
-                    <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                    <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
                   </q-item>
                 </q-list>
               </q-menu>
@@ -432,7 +432,7 @@
               :aria-label="overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold')"
               @click="toggleOverallSpectrumFolded"
             >
-              <q-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</q-tooltip>
+              <app-tooltip>{{ overallSpectrumFolded ? t('audio.gtrackUnfold') : t('audio.gtrackFold') }}</app-tooltip>
             </q-btn>
             <!-- GT11.11 (owner 2026-07-14): hidden graphs in this group -> eye toggle -> restore list. -->
             <q-btn
@@ -442,13 +442,13 @@
               icon="visibility_off"
               :aria-label="t('audio.hiddenTracks')"
             >
-              <q-tooltip>{{ t('audio.hiddenTracks') }}</q-tooltip>
+              <app-tooltip>{{ t('audio.hiddenTracks') }}</app-tooltip>
               <q-menu>
                 <q-list dense style="min-width: 180px">
                   <q-item v-for="h in hiddenSpectrumList" :key="h.key" clickable v-close-popup @click="h.restore()">
                     <q-item-section avatar style="min-width: 26px"><q-icon name="visibility" size="18px" /></q-item-section>
                     <q-item-section>{{ h.label }}</q-item-section>
-                    <q-tooltip>{{ t('audio.trackShow') }}</q-tooltip>
+                    <app-tooltip>{{ t('audio.trackShow') }}</app-tooltip>
                   </q-item>
                 </q-list>
               </q-menu>
@@ -778,7 +778,7 @@
               :aria-label="t('audio.minimapMode')"
               @click="minimapSettingsOpen = true"
             >
-              <q-tooltip>{{ t('audio.minimapMode') }}</q-tooltip>
+              <app-tooltip>{{ t('audio.minimapMode') }}</app-tooltip>
             </q-btn>
           </div>
         </div>
@@ -869,14 +869,14 @@
             :aria-label="t('audio.gtrackUndo')"
             @click="undoWithFocus()"
           >
-            <q-tooltip>{{ t('audio.gtrackUndo') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.gtrackUndo') }}</app-tooltip>
           </q-btn>
           <q-btn
             flat round dense icon="redo" :disable="!gtracks.canRedo.value"
             :aria-label="t('audio.gtrackRedo')"
             @click="redoWithFocus()"
           >
-            <q-tooltip>{{ t('audio.gtrackRedo') }}</q-tooltip>
+            <app-tooltip>{{ t('audio.gtrackRedo') }}</app-tooltip>
           </q-btn>
           <q-btn
             flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')"
@@ -1123,6 +1123,7 @@ import {
 } from '../composables/spectrogram-viewport'
 import { useAudioStore } from '../stores/audio'
 import { useSpectrogramStore } from '../stores/spectrogram'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 interface Props {
   /** Displayed playback position (drives the playheads). */

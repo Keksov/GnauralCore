@@ -12,10 +12,10 @@
     >
       <!-- "Up" only makes sense in the flat dir listing; the tree navigates by expand/collapse. -->
       <q-btn v-if="!isTree" flat dense round :size="btnSize" icon="arrow_upward" :disable="store.parentPath === null" :aria-label="t('fsBrowser.up')" @click="store.goUp()">
-        <q-tooltip>{{ t('fsBrowser.up') }}</q-tooltip>
+        <app-tooltip>{{ t('fsBrowser.up') }}</app-tooltip>
       </q-btn>
       <q-btn flat dense round :size="btnSize" icon="refresh" :aria-label="t('fsBrowser.refresh')" @click="onRefresh">
-        <q-tooltip>{{ t('fsBrowser.refresh') }}</q-tooltip>
+        <app-tooltip>{{ t('fsBrowser.refresh') }}</app-tooltip>
       </q-btn>
 
       <div v-if="!isColumn && !isTree" class="fs-entry-list__breadcrumbs row items-center no-wrap col">
@@ -39,10 +39,10 @@
           :options="viewOptions"
           @update:model-value="(v: FsViewMode) => (store.viewMode = v)"
         >
-          <template #view-table><q-icon name="table_chart" /><q-tooltip>{{ t('fsBrowser.viewTable') }}</q-tooltip></template>
-          <template #view-list><q-icon name="view_list" /><q-tooltip>{{ t('fsBrowser.viewList') }}</q-tooltip></template>
-          <template #view-icons><q-icon name="grid_view" /><q-tooltip>{{ t('fsBrowser.viewIcons') }}</q-tooltip></template>
-          <template #view-tree><q-icon name="account_tree" /><q-tooltip>{{ t('fsBrowser.viewTree') }}</q-tooltip></template>
+          <template #view-table><q-icon name="table_chart" /><app-tooltip>{{ t('fsBrowser.viewTable') }}</app-tooltip></template>
+          <template #view-list><q-icon name="view_list" /><app-tooltip>{{ t('fsBrowser.viewList') }}</app-tooltip></template>
+          <template #view-icons><q-icon name="grid_view" /><app-tooltip>{{ t('fsBrowser.viewIcons') }}</app-tooltip></template>
+          <template #view-tree><q-icon name="account_tree" /><app-tooltip>{{ t('fsBrowser.viewTree') }}</app-tooltip></template>
         </q-btn-toggle>
         <q-btn-toggle
           v-if="store.viewMode === 'icons'"
@@ -65,14 +65,14 @@
           :aria-label="t('fsBrowser.typeSupported')"
           @click="store.typeFilter = store.typeFilter === 'supported' ? 'all' : 'supported'"
         >
-          <q-tooltip>{{ store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll') }}</q-tooltip>
+          <app-tooltip>{{ store.typeFilter === 'supported' ? t('fsBrowser.typeSupported') : t('fsBrowser.typeAll') }}</app-tooltip>
         </q-btn>
         <q-btn flat dense round :size="btnSize" :color="store.showHidden ? 'primary' : undefined" icon="visibility" :aria-label="t('fsBrowser.showHidden')" @click="store.showHidden = !store.showHidden">
-          <q-tooltip>{{ t('fsBrowser.showHidden') }}</q-tooltip>
+          <app-tooltip>{{ t('fsBrowser.showHidden') }}</app-tooltip>
         </q-btn>
         <!-- FB4-refine 3: the filter is summoned by this funnel (or Ctrl-S), never always-on. -->
         <q-btn flat dense round :size="btnSize" :color="store.filterVisible || store.filterText !== '' ? 'primary' : undefined" icon="filter_alt" :aria-label="t('fsBrowser.filterToggle')" @click="store.toggleFilter()">
-          <q-tooltip>{{ t('fsBrowser.filterToggle') }}</q-tooltip>
+          <app-tooltip>{{ t('fsBrowser.filterToggle') }}</app-tooltip>
         </q-btn>
       </div>
     </div>
@@ -232,6 +232,7 @@ import type { QInput, QTree, QVirtualScroll } from 'quasar'
 import type { FsEntry, FsRoot } from '@protocol'
 import { audioFileKindForExt, fsNameMatches, useFsBrowserStore, type FsIconSize, type FsTableColWidths, type FsViewMode } from '../stores/fs-browser'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 const props = defineProps<{
   readonly selectedPath: string | null

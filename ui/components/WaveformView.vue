@@ -21,7 +21,7 @@
         :aria-label="t('audio.trackReorder')"
         @pointerdown.stop.prevent="emit('reorder-grip', $event)"
       >
-        <q-tooltip>{{ t('audio.trackReorder') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.trackReorder') }}</app-tooltip>
       </q-icon>
       <q-btn
         dense flat round size="xs"
@@ -29,7 +29,7 @@
         :aria-label="t('audio.trackHide')"
         @click.stop="emit('hide', $event)"
       >
-        <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.trackHide') }}</app-tooltip>
       </q-btn>
     </div>
     <!-- SF27: per-track colour/scale gear, top-right. -->
@@ -40,7 +40,7 @@
         :aria-label="t('audio.waveformStyle')"
         @click.stop="emit('open-settings')"
       >
-        <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.waveformStyle') }}</app-tooltip>
       </q-btn>
     </div>
     <div
@@ -59,6 +59,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { SpectrogramAnalysisParams } from '@protocol'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { amplitudeToDb, type AudioPeak } from '../composables/audio-model'
