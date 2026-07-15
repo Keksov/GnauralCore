@@ -21,9 +21,19 @@
                Owner 2026-07-15: they render as icon buttons here, inline to the left of the zoom
                controls, in the style of the other toolbar icons. -->
           <slot name="toolbar" />
-          <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn" />
-          <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut" />
-          <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit" />
+          <!-- Owner 2026-07-15: the zoom/fit trio had aria-labels but no visible hint. Same i18n keys
+               so the two can't drift apart. Note they are :disable-gated, and a tooltip cannot show on
+               a disabled button (Quasar sets the native disabled attribute, which suppresses the hover
+               events) — fine here, since the hint names the action rather than explaining the block. -->
+          <q-btn dense flat round size="sm" icon="zoom_in" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomIn')" @click="spectrogramZoomIn">
+            <app-tooltip>{{ t('audio.spectrogramZoomIn') }}</app-tooltip>
+          </q-btn>
+          <q-btn dense flat round size="sm" icon="zoom_out" :disable="!spectrogramHasView" :aria-label="t('audio.spectrogramZoomOut')" @click="spectrogramZoomOut">
+            <app-tooltip>{{ t('audio.spectrogramZoomOut') }}</app-tooltip>
+          </q-btn>
+          <q-btn dense flat round size="sm" icon="fit_screen" :disable="!spectrogramHasView || spectrogramIsFull" :aria-label="t('audio.spectrogramFit')" @click="spectrogramFit">
+            <app-tooltip>{{ t('audio.spectrogramFit') }}</app-tooltip>
+          </q-btn>
           <q-space />
           <!-- SF28.5: hidden-tracks dropdown, just left of the view-mode dropdown. -->
           <q-btn-dropdown
