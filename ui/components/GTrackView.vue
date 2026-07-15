@@ -1205,17 +1205,17 @@ onBeforeUnmount(() => {
   row-gap: 1px;
 }
 
-/* TT2.7: AppTooltip's plate went dark (owner reference, 2026-07-15), which retires the constraint
-   these two rules were bent around. On the old grey $grey-7 there was only ~6:1 of luminance in
-   total and legibility needed nearly all of it, so the label/value split could not be expressed in
-   colour and had to be carried by weight instead. The dark plate has room again: dimmed labels sit
-   at ~6.6:1 and values at ~11.9:1 — both comfortably readable AND plainly distinct. So the weight
-   crutch is gone; dimming says "secondary" on its own, as in the reference.
-   Dim the INHERITED colour rather than naming a hex — that is exactly what rotted when the plate
-   last changed under it. tabular-nums stays: it stops the value column jittering as the digits
-   change under the cursor. */
+/* TT2.7: AppTooltip's dark plate has luminance to spare, so the label/value split is carried by
+   colour again and the old font-weight crutch is gone (on the grey plate there was only ~6:1 in
+   total, all of it needed for legibility). Labels ~5.7:1, values ~11.9:1 — both readable, plainly
+   distinct.
+   Dim via AppTooltip's variable, NOT `opacity` (owner 2026-07-15: the labels "blurred, as if
+   semibold"): an opacity < 1 composites the text into its own layer and loses Windows' subpixel
+   antialiasing, so the glyphs soften and read heavier beside un-dimmed text. And not a local hex
+   either — that is what rotted when the plate changed under it. The variable is the one thing that
+   is neither. tabular-nums stays: it stops the value column jittering as digits change. */
 .gtrack-view__tooltip-label {
-  opacity: 0.7;
+  color: var(--app-tooltip-fg-dim);
   text-align: left;
 }
 
