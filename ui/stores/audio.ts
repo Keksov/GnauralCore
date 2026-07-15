@@ -15,6 +15,7 @@ import type {
   PresetTreeNode,
 } from '@protocol'
 import { audioApi } from '../audio-api'
+import { closeCurrentProject, openProjectForFile } from '../composables/use-project'
 
 // SF20: recent files (most-recent first, cap 5) for the toolbar quick-pick dropdown.
 // Replaces the old single "restore last selected path" (which auto-loaded on tab open).
@@ -856,6 +857,13 @@ export const useAudioStore = defineStore('audio', () => {
     // SF20: remember picked files for the toolbar quick-pick.
     if (nextSelectedPath !== null) recordRecentFile(nextSelectedPath)
 
+    // project-store PR1.5: every opened file gets its per-file project (provisioned server-side).
+    if (nextSelectedPath !== null) {
+      void openProjectForFile(nextSelectedPath)
+    } else {
+      closeCurrentProject()
+    }
+
     if (
       !isLocalAudioFileKind(selectedNode.value?.fileKind) ||
       nextSelectedPath !== wavSourcePath.value ||
@@ -885,6 +893,9 @@ export const useAudioStore = defineStore('audio', () => {
     selectedNode.value = node
     selectedPath.value = path
     recordRecentFile(path)
+
+    // project-store PR1.5: files picked outside the presets tree get their project too.
+    void openProjectForFile(path)
 
     if (
       !isLocalAudioFileKind(node.fileKind) ||
