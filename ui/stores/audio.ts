@@ -237,7 +237,10 @@ export const useAudioStore = defineStore('audio', () => {
     }
 
     if (displayMode.value === 'gnaural') {
-      return gnauralSpectrogramLoading.value || renderState.value === 'rendering'
+      // Playback no longer renders the gnaural to a WAV (that legacy render-on-play fed a buffer
+      // that is no longer displayed), so this reflects only the on-demand single-loop preview
+      // fetch — Play no longer shows the "rendering/loading WAV" overlay.
+      return gnauralSpectrogramLoading.value
     }
 
     return false

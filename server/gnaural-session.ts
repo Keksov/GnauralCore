@@ -707,9 +707,14 @@ class GnauralPlaybackSession implements GnauralSession {
     this.positionSec = 0
     this.pendingSeekPositionSec = null
     this.transportState = "loading"
-    this.renderState = "rendering"
+    // Render-on-play removed (2026-07-15): the spectrogram is served single-loop by
+    // SpectrogramAudioSource (the SpectrumCore worker analysis shown on the Tracks tab), and
+    // playback audio comes from the live `--server` process below. The former full-file
+    // render-on-play only fed a client-side buffer that is no longer displayed, so it is not
+    // started here — pressing Play no longer triggers a full WAV render or the
+    // "loading spectrogram WAV" reload.
+    this.renderState = "idle"
     this.publishStatus()
-    void this.startRender(aFilePath)
     this.beginStartSequence(aFilePath, aFileKind)
   }
 
