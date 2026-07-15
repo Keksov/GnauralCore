@@ -46,10 +46,11 @@
       </div>
     </div>
 
-    <!-- GT10.29/GT10.45 (owner 2026-07-13): settings dialog at PAGE level so the Edit menu / Ctrl+P
-         can open it regardless of which panels are shown (it used to live inside the Presets sidebar,
-         which is v-if="filesPanelOpen" — so it wouldn't open with that panel closed). Two-pane:
-         subsystem list (left) + the selected subsystem's settings (right). -->
+    <!-- GT10.29 (owner 2026-07-13): settings dialog at PAGE level so Меню→Настройки can open it
+         regardless of which panels are shown (it used to live inside the Presets sidebar, which is
+         v-if="filesPanelOpen" — so it wouldn't open with that panel closed). Two-pane: subsystem
+         list (left) + the selected subsystem's settings (right). (MR1.1 replaced the Edit menu with
+         «Меню»; MR4.1 dropped the Ctrl+P binding — that shortcut belongs to Print.) -->
     <q-dialog v-model="settingsDialogOpen">
       <q-card class="audio-page__settings-dialog">
         <q-card-section class="row items-center q-py-sm">
@@ -685,7 +686,8 @@ const menuModel = computed<MenuNode[]>(() => [
       },
     ],
   },
-  { id: 'settings', labelKey: 'audio.openSettings', icon: 'settings', shortcut: 'Ctrl+P', run: goToSettings },
+  // MR4.1 (owner 2026-07-15): no Ctrl+P shortcut — that combination belongs to the print dialog.
+  { id: 'settings', labelKey: 'audio.openSettings', icon: 'settings', run: goToSettings },
   { id: 'exit', labelKey: 'audio.menuExit', icon: 'logout', run: exitApp, noMru: true },
 ])
 
@@ -1661,13 +1663,9 @@ function handleTracksTogglePlay(): void {
 }
 
 function handlePlayerKeyDown(event: KeyboardEvent): void {
-  // GT10.45 (owner 2026-07-13): Ctrl/Cmd+P opens the settings dialog (Edit menu) on ANY tab —
-  // handled before the tracks-tab early return, and preventDefault overrides the browser's Print.
-  if ((event.ctrlKey || event.metaKey) && (event.key === 'p' || event.key === 'P')) {
-    event.preventDefault()
-    goToSettings()
-    return
-  }
+  // MR4.1 (owner 2026-07-15): the GT10.45 Ctrl/Cmd+P -> settings binding is REMOVED. It called
+  // preventDefault to override the browser's Print, i.e. it silently stole the print shortcut;
+  // Ctrl+P now reaches the print dialog again and Settings is opened from Меню (or its MRU entry).
   // GT2.4 (GT-D10): while the Треки tab is active, TracksPanel owns the player hotkeys
   // (its own window listener); skip entirely so the two handlers never double-act.
   if (activePlayerViewTab.value === 'tracks') {

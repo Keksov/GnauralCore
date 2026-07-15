@@ -13,11 +13,11 @@
         @click="showSubmenu(node.id)"
       >
         <q-item-section v-if="node.icon" avatar>
-          <q-icon :name="node.icon" />
+          <q-icon :name="node.icon" size="18px" />
         </q-item-section>
         <q-item-section>{{ t(node.labelKey) }}</q-item-section>
         <q-item-section side>
-          <q-icon name="chevron_right" />
+          <q-icon name="chevron_right" size="16px" />
         </q-item-section>
         <q-menu
           :ref="(el) => setSubmenuRef(node.id, el)"
@@ -37,7 +37,7 @@
         @click="emit('select', node)"
       >
         <q-item-section v-if="node.icon" avatar>
-          <q-icon :name="node.icon" />
+          <q-icon :name="node.icon" size="18px" />
         </q-item-section>
         <q-item-section>{{ t(node.labelKey) }}</q-item-section>
         <q-item-section v-if="node.shortcut" side>
@@ -106,3 +106,12 @@ function onContainerLeave(): void {
 
 onBeforeUnmount(clearHoverTimer)
 </script>
+
+<style scoped lang="scss">
+/* MR4.1 (owner 2026-07-15): smaller menu icons. Quasar's avatar slot reserves its width for a 24px
+   icon, so an 18px one would float in a gutter — tighten the slot to match the icon. */
+.app-menu-list :deep(.q-item__section--avatar) {
+  min-width: 24px;
+  padding-right: 12px;
+}
+</style>
