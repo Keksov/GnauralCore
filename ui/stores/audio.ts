@@ -5,8 +5,6 @@ import type {
   AudioExitEvent,
   AudioFileKind,
   AudioProgressEvent,
-  AudioRenderDoneEvent,
-  AudioRenderProgressEvent,
   AudioRenderState,
   AudioScheduleChangedEvent,
   AudioScheduleLoadedEvent,
@@ -583,51 +581,6 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
-  async function loadRenderedSpectrogram(sourceFilePath: string, tempWavPath: string): Promise<void> {
-    cancelPendingRenderedSpectrogramLoad()
-
-    const requestId = renderSpectrogramLoadRequestId + 1
-    const abortController = new AbortController()
-    renderSpectrogramLoadRequestId = requestId
-    renderSpectrogramAbortController = abortController
-    gnauralSpectrogramLoading.value = true
-    spectrogramError.value = null
-
-    try {
-      const blob = await audioApi.fetchAudioFileBlob(tempWavPath, abortController.signal)
-      const arrayBuffer = await blob.arrayBuffer()
-      const decodedBuffer = await decodeAudioBuffer(arrayBuffer)
-
-      if (
-        abortController.signal.aborted ||
-        requestId !== renderSpectrogramLoadRequestId ||
-        decodedBuffer === null ||
-        (selectedPath.value !== sourceFilePath && activeFilePath.value !== sourceFilePath && remoteFilePath.value !== sourceFilePath)
-      ) {
-        return
-      }
-
-      gnauralSpectrogramBuffer.value = decodedBuffer
-      gnauralSpectrogramSourcePath.value = sourceFilePath
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return
-      }
-
-      spectrogramError.value = error instanceof Error
-        ? error.message
-        : 'Failed to load the rendered Gnaural spectrogram WAV file.'
-    } finally {
-      if (renderSpectrogramAbortController === abortController) {
-        renderSpectrogramAbortController = null
-      }
-
-      if (requestId === renderSpectrogramLoadRequestId) {
-        gnauralSpectrogramLoading.value = false
-      }
-    }
-  }
-
   // GT2.6: render a .gnaural to WAV for its spectrum WITHOUT playback. The server renders on
   // demand (GET /api/audio/file?format=wav → renderGnauralAudioFile, cached by content hash), so
   // the Треки tab can show the waveform + spectrum automatically instead of asking the user to
@@ -971,20 +924,8 @@ export const useAudioStore = defineStore('audio', () => {
       }
     }
 
-    if (event.transportState === 'loading' && event.fileKind === 'gnaural') {
-      clearRenderedSpectrogram()
-    }
-
     if (event.transportState === 'loading' || event.transportState === 'playing' || event.transportState === 'paused') {
       clearLocalError()
-    }
-
-    if (event.renderState === 'rendering') {
-      spectrogramError.value = null
-    }
-
-    if (event.renderState === 'failed' && event.fileKind === 'gnaural') {
-      spectrogramError.value = 'Failed to render the selected Gnaural file for spectrogram display.'
     }
 
     if (event.transportState === 'idle') {
@@ -999,32 +940,6 @@ export const useAudioStore = defineStore('audio', () => {
 
   function handleError(event: AudioErrorEvent): void {
     lastError.value = event.message
-  }
-
-  function handleRenderProgress(event: AudioRenderProgressEvent): void {
-    if (
-      selectedPath.value !== event.filePath &&
-      activeFilePath.value !== event.filePath &&
-      remoteFilePath.value !== event.filePath
-    ) {
-      return
-    }
-
-    clearRenderedSpectrogram()
-    gnauralSpectrogramLoading.value = true
-    spectrogramError.value = null
-  }
-
-  function handleRenderDone(event: AudioRenderDoneEvent): void {
-    if (
-      selectedPath.value !== event.filePath &&
-      activeFilePath.value !== event.filePath &&
-      remoteFilePath.value !== event.filePath
-    ) {
-      return
-    }
-
-    void loadRenderedSpectrogram(event.filePath, event.tempWavPath)
   }
 
   function handleScheduleLoaded(event: AudioScheduleLoadedEvent): void {
@@ -1126,8 +1041,6 @@ export const useAudioStore = defineStore('audio', () => {
     handleStatus,
     handleProgress,
     handleError,
-    handleRenderProgress,
-    handleRenderDone,
     handleScheduleLoaded,
     handleScheduleChanged,
     handleExit,

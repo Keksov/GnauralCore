@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdtemp, rm, stat } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import type { PipedSubprocess, Subprocess } from "bun"
+import type { PipedSubprocess } from "bun"
 import {
   resolveAllowedAudioFilePath,
 } from "./audio-file-utils"
@@ -23,7 +20,6 @@ import type {
 } from "./protocol"
 
 type PlaybackChildProcess = PipedSubprocess
-type RenderChildProcess = Subprocess<"pipe", "ignore", "pipe">
 
 const isNumber = (value: unknown): value is number => {
   return typeof value === "number" && Number.isFinite(value)
@@ -73,14 +69,6 @@ const forEachLine = async (
   const finalLine = tail.replace(/\r$/, "")
   if (finalLine !== "") {
     await aLineHandler(finalLine)
-  }
-}
-
-const ensureFileExists = async (aPath: string): Promise<boolean> => {
-  try {
-    return (await stat(aPath)).isFile()
-  } catch {
-    return false
   }
 }
 
@@ -254,7 +242,6 @@ export interface GnauralSession {
   getStatus(): AudioStatusEvent
   getLoadedSchedule(): GnauralScheduleData | null
   getLoadedScheduleStartedAtMs(): number | null
-  getServableRoots(): readonly string[]
   start(aFilePath: string, aSettings: AudioSettings, aExtraRoots?: readonly string[]): Promise<void>
   stop(): void
   pause(): void
@@ -291,12 +278,6 @@ class GnauralPlaybackSession implements GnauralSession {
   private pendingRestartRequest: { readonly filePath: string, readonly fileKind: AudioFileKind } | null = null
   private startQueue: Promise<void> = Promise.resolve()
   private commandWriteQueue: Promise<void> = Promise.resolve()
-  private renderProcess: RenderChildProcess | null = null
-  private renderRunId: string | null = null
-  private renderFilePath: string | undefined
-  private renderTempWavPath: string | undefined
-  private tempDirPath: string | null = null
-  private tempDirPromise: Promise<string> | null = null
 
   public constructor(aServerDir: string, aOptions: CreateGnauralSessionOptions) {
     void aServerDir
@@ -325,10 +306,6 @@ class GnauralPlaybackSession implements GnauralSession {
 
   public getLoadedScheduleStartedAtMs(): number | null {
     return this.loadedScheduleStartedAtMs
-  }
-
-  public getServableRoots(): readonly string[] {
-    return this.tempDirPath === null ? [] : [this.tempDirPath]
   }
 
   public start(aFilePath: string, aSettings: AudioSettings, aExtraRoots: readonly string[] = []): Promise<void> {
@@ -383,10 +360,6 @@ class GnauralPlaybackSession implements GnauralSession {
   }
 
   public stop(): void {
-    if (this.renderState === "rendering") {
-      this.cancelRender()
-    }
-
     if (this.childProcess === null) {
       this.transportState = "idle"
       this.positionSec = 0
@@ -436,8 +409,6 @@ class GnauralPlaybackSession implements GnauralSession {
   }
 
   public async dispose(): Promise<void> {
-    this.cancelRender()
-
     const child = this.childProcess
     if (child !== null) {
       this.sendCommand({ cmd: "quit" })
@@ -446,17 +417,6 @@ class GnauralPlaybackSession implements GnauralSession {
       } catch {
         child.kill()
       }
-    }
-
-    try {
-      if (this.tempDirPath !== null) {
-        await rm(this.tempDirPath, { recursive: true, force: true })
-      }
-    } catch {
-      // Ignore temp directory cleanup failures during shutdown.
-    } finally {
-      this.tempDirPath = null
-      this.tempDirPromise = null
     }
   }
 
@@ -520,184 +480,6 @@ class GnauralPlaybackSession implements GnauralSession {
 
     this.pendingStartAfterLoad = false
     this.sendCommand({ cmd: "start" })
-  }
-
-  private async ensureTempDir(): Promise<string> {
-    if (this.tempDirPath !== null) {
-      return this.tempDirPath
-    }
-
-    if (this.tempDirPromise !== null) {
-      return this.tempDirPromise
-    }
-
-    this.tempDirPromise = mkdtemp(join(tmpdir(), "mindwave-gnaural-"))
-      .then((tempDirPath) => {
-        this.tempDirPath = tempDirPath
-        return tempDirPath
-      })
-      .finally(() => {
-        this.tempDirPromise = null
-      })
-
-    return this.tempDirPromise
-  }
-
-  private async removeTempWav(aTempWavPath?: string): Promise<void> {
-    if (aTempWavPath === undefined) {
-      return
-    }
-
-    try {
-      await rm(aTempWavPath, { force: true })
-    } catch {
-      // Ignore temp file cleanup failures; they should not break playback.
-    }
-  }
-
-  private cancelRender(): void {
-    const child = this.renderProcess
-    const tempWavPath = this.renderTempWavPath
-
-    this.renderProcess = null
-    this.renderRunId = null
-    this.renderFilePath = undefined
-    this.renderTempWavPath = undefined
-    this.renderState = "idle"
-
-    if (child !== null && child.exitCode === null) {
-      child.kill()
-    }
-
-    void this.removeTempWav(tempWavPath)
-  }
-
-  private async startRender(aFilePath: string): Promise<void> {
-    const renderRunId = randomUUID()
-    const previousRender = this.renderProcess
-    const previousTempWavPath = this.renderTempWavPath
-
-    this.renderProcess = null
-    this.renderRunId = renderRunId
-    this.renderFilePath = aFilePath
-    this.renderTempWavPath = undefined
-    this.renderState = "rendering"
-
-    if (previousRender !== null && previousRender.exitCode === null) {
-      previousRender.kill()
-    }
-
-    await this.removeTempWav(previousTempWavPath)
-
-    this.emit({
-      type: "audio_render_progress",
-      filePath: aFilePath,
-    })
-    this.publishStatus()
-
-    let tempDirPath: string
-    try {
-      tempDirPath = await this.ensureTempDir()
-    } catch (error) {
-      if (this.renderRunId !== renderRunId) {
-        return
-      }
-
-      this.renderRunId = null
-      this.renderFilePath = undefined
-      this.renderState = "failed"
-      this.publishStatus()
-      this.emitError(
-        error instanceof Error ? error.message : "Failed to create a temp directory for Gnaural render output",
-        aFilePath,
-      )
-      return
-    }
-
-    if (this.renderRunId !== renderRunId) {
-      return
-    }
-
-    const tempWavPath = join(tempDirPath, `${renderRunId}.wav`)
-    let child: RenderChildProcess
-
-    try {
-      child = Bun.spawn([
-        this.gnauralExePath,
-        aFilePath,
-        "-o",
-        tempWavPath,
-      ], {
-        cwd: this.gnauralCwd,
-        stdout: "ignore",
-        stderr: "pipe",
-      })
-    } catch (error) {
-      if (this.renderRunId !== renderRunId) {
-        return
-      }
-
-      this.renderRunId = null
-      this.renderFilePath = undefined
-      this.renderState = "failed"
-      this.publishStatus()
-      this.emitError(error instanceof Error ? error.message : "Failed to spawn Gnaural render process", aFilePath)
-      return
-    }
-
-    this.renderProcess = child
-    this.renderTempWavPath = tempWavPath
-    void this.forwardRenderErrorStream(renderRunId, child.stderr, aFilePath)
-    void this.watchRenderExit(renderRunId, child, aFilePath, tempWavPath)
-  }
-
-  private async forwardRenderErrorStream(
-    aRenderRunId: string,
-    aStream: ReadableStream<Uint8Array<ArrayBuffer>> | null,
-    aFilePath: string,
-  ): Promise<void> {
-    await forEachLine(aStream, async (line) => {
-      if (this.renderRunId !== aRenderRunId) {
-        return
-      }
-
-      this.emitError(line, aFilePath)
-    })
-  }
-
-  private async watchRenderExit(
-    aRenderRunId: string,
-    aChild: RenderChildProcess,
-    aFilePath: string,
-    aTempWavPath: string,
-  ): Promise<void> {
-    const exitCode = await aChild.exited
-    if (this.renderRunId !== aRenderRunId) {
-      await this.removeTempWav(aTempWavPath)
-      return
-    }
-
-    this.renderProcess = null
-    this.renderRunId = null
-    this.renderFilePath = undefined
-
-    if (exitCode !== 0 || !(await ensureFileExists(aTempWavPath))) {
-      this.renderTempWavPath = undefined
-      this.renderState = "failed"
-      await this.removeTempWav(aTempWavPath)
-      this.publishStatus()
-      this.emitError(`Gnaural render failed with exit code ${exitCode}`, aFilePath)
-      return
-    }
-
-    this.renderTempWavPath = aTempWavPath
-    this.renderState = "ready"
-    this.emit({
-      type: "audio_render_done",
-      filePath: aFilePath,
-      tempWavPath: aTempWavPath,
-    })
-    this.publishStatus()
   }
 
   private transitionToLoading(aFilePath: string, aFileKind: AudioFileKind): void {
