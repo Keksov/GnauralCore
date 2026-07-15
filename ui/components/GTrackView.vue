@@ -1168,8 +1168,13 @@ onBeforeUnmount(() => {
   row-gap: 1px;
 }
 
+/* TT2.3 follow-up (owner 2026-07-15): the labels were #94a3b8, a slate grey picked back when this
+   tooltip had its own near-black box. AppTooltip's shared box is Quasar's $grey-7, against which that
+   hex sank to ~2.4:1 contrast. Dim the INHERITED tooltip colour instead of naming a new one: it
+   tracks the shared palette, so it cannot rot again if the tooltip theme changes, and it keeps the
+   label/value hierarchy while landing near 4.5:1. */
 .gtrack-view__tooltip-label {
-  color: #94a3b8;
+  opacity: 0.8;
   text-align: left;
 }
 
