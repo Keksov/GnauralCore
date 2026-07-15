@@ -808,11 +808,10 @@ function ensureSpectrogramPrepared(): void {
     return
   }
 
-  // GT2.6 removed (2026-07-15): the Треки tab used to also fetch+decode a single-loop WAV render
-  // here (ensureGnauralSpectrogram) into the client-side gnauralSpectrogramBuffer. Nothing
-  // displays that buffer any more — the tab's waveform/spectrum come from the SpectrumCore
-  // backend analysis, which TracksPanel opens on its own — so it was a wasted fetch + decode on
-  // every tab open, and it was what raised the "loading spectrogram WAV" overlay.
+  // A gnaural needs nothing decoded here: the tab's waveform/spectrum come from the SpectrumCore
+  // backend analysis, which TracksPanel opens itself. (GT2.6 used to fetch + decode a single-loop
+  // WAV render on every tab open for a client-side buffer nothing displayed; removed 2026-07-15
+  // together with that buffer.) Only the schedule is needed, for the gtrack curves.
   if (activePlayerViewTab.value === 'tracks' && audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
     // GT2.2 fix: the gtrack lanes come from the schedule DUMP, which is loaded on file selection —
     // not on tab activation. Ensure it's loaded here too so an already-selected gnaural shows its
@@ -936,7 +935,9 @@ const playerViewMainTabIcon = computed(() => {
 })
 
 const spectrogramLoadingLabel = computed(() => {
-  return audio.displayMode === 'gnaural' ? t('audio.gnauralSpectrogramLoading') : t('audio.spectrogramLoading')
+  // Only local wav/flac decode through the store, so only they can raise this overlay — a gnaural
+  // has no client-side buffer (its spectrum is the backend analysis, opened by TracksPanel).
+  return t('audio.spectrogramLoading')
 })
 
 

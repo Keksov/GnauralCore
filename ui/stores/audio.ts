@@ -105,8 +105,6 @@ export const useAudioStore = defineStore('audio', () => {
   let wavLoadRequestId = 0
   let gnauralScheduleAbortController: AbortController | null = null
   let wavLoadAbortController: AbortController | null = null
-  let renderSpectrogramLoadRequestId = 0
-  let renderSpectrogramAbortController: AbortController | null = null
   const settings = ref<AudioSettings>({ presetsRoot: '' })
   const presetsTree = ref<readonly PresetTreeNode[]>([])
   // SF20: no auto-load on Audio-tab open — the last file is NOT restored into the selection.
@@ -135,9 +133,6 @@ export const useAudioStore = defineStore('audio', () => {
   const gnauralScheduleLoadingPath = ref<string | null>(null)
   const gnauralScheduleErrorPath = ref<string | null>(null)
   const gnauralScheduleErrorMessage = ref<string | null>(null)
-  const gnauralSpectrogramBuffer = ref<AudioBuffer | null>(null)
-  const gnauralSpectrogramSourcePath = ref<string | null>(null)
-  const gnauralSpectrogramLoading = ref(false)
   const pendingLocalStartPath = ref<string | null>(null)
   const spectrogramError = ref<string | null>(null)
   const lastError = ref<string | null>(null)
@@ -235,22 +230,17 @@ export const useAudioStore = defineStore('audio', () => {
       return wavLoading.value
     }
 
-    if (displayMode.value === 'gnaural') {
-      // Playback no longer renders the gnaural to a WAV (that legacy render-on-play fed a buffer
-      // that is no longer displayed), so this reflects only the on-demand single-loop preview
-      // fetch — Play no longer shows the "rendering/loading WAV" overlay.
-      return gnauralSpectrogramLoading.value
-    }
+    // A gnaural never loads a client-side buffer: the Треки tab's waveform/spectrum come from the
+    // SpectrumCore backend analysis, which TracksPanel opens itself. Only local wav/flac decode
+    // through this store (for HTML playback), so only they can be "loading".
 
     return false
   })
+  /** The decoded local wav/flac buffer, when it is the file on display. Gnaural has no client-side
+   *  buffer (see spectrogramLoading above) — its spectrum is the backend analysis. */
   const spectrogramBuffer = computed(() => {
     if (isLocalAudioFileKind(displayMode.value) && displayFilePath.value === wavSourcePath.value) {
       return wavAudioBuffer.value
-    }
-
-    if (displayMode.value === 'gnaural' && displayFilePath.value === gnauralSpectrogramSourcePath.value) {
-      return gnauralSpectrogramBuffer.value
     }
 
     return null
@@ -331,23 +321,6 @@ export const useAudioStore = defineStore('audio', () => {
     }
 
     wavLoading.value = false
-  }
-
-  function cancelPendingRenderedSpectrogramLoad(): void {
-    renderSpectrogramLoadRequestId += 1
-
-    if (renderSpectrogramAbortController !== null) {
-      renderSpectrogramAbortController.abort()
-      renderSpectrogramAbortController = null
-    }
-
-    gnauralSpectrogramLoading.value = false
-  }
-
-  function clearRenderedSpectrogram(): void {
-    cancelPendingRenderedSpectrogramLoad()
-    gnauralSpectrogramBuffer.value = null
-    gnauralSpectrogramSourcePath.value = null
   }
 
   function cancelPendingGnauralScheduleLoad(): void {
@@ -579,68 +552,6 @@ export const useAudioStore = defineStore('audio', () => {
     return {
       blob: fallbackBlob,
       decodedBuffer,
-    }
-  }
-
-  // GT2.6: render a .gnaural to WAV for its spectrum WITHOUT playback. The server renders on
-  // demand (GET /api/audio/file?format=wav → renderGnauralAudioFile, cached by content hash), so
-  // the Треки tab can show the waveform + spectrum automatically instead of asking the user to
-  // press play. Reuses the rendered-spectrogram decode + request/abort bookkeeping.
-  async function ensureGnauralSpectrogram(filePath: string, force = false): Promise<void> {
-    // GT3.4: after a Save the file changed on disk but the path is unchanged — force clears the
-    // cached render so the waveform + spectrum re-fetch the freshly-rendered WAV.
-    if (force) {
-      clearRenderedSpectrogram()
-    }
-    if (!force && gnauralSpectrogramSourcePath.value === filePath && gnauralSpectrogramBuffer.value !== null) {
-      return
-    }
-    if (gnauralSpectrogramLoading.value) {
-      return
-    }
-
-    cancelPendingRenderedSpectrogramLoad()
-    const requestId = renderSpectrogramLoadRequestId + 1
-    const abortController = new AbortController()
-    renderSpectrogramLoadRequestId = requestId
-    renderSpectrogramAbortController = abortController
-    gnauralSpectrogramLoading.value = true
-    spectrogramError.value = null
-
-    try {
-      // GT2.6 fix: cap the gnaural render to a single loop so files like "1 s x 4900 loops" don't
-      // produce a huge WAV the browser cannot decode.
-      const blob = await audioApi.fetchAudioFileBlob(filePath, abortController.signal, { format: 'wav', singleLoop: true })
-      const arrayBuffer = await blob.arrayBuffer()
-      const decodedBuffer = await decodeAudioBuffer(arrayBuffer)
-
-      if (
-        abortController.signal.aborted ||
-        requestId !== renderSpectrogramLoadRequestId ||
-        decodedBuffer === null ||
-        displayFilePath.value !== filePath
-      ) {
-        return
-      }
-
-      gnauralSpectrogramBuffer.value = decodedBuffer
-      gnauralSpectrogramSourcePath.value = filePath
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return
-      }
-
-      spectrogramError.value = error instanceof Error
-        ? error.message
-        : 'Failed to render the selected Gnaural file for spectrogram display.'
-    } finally {
-      if (renderSpectrogramAbortController === abortController) {
-        renderSpectrogramAbortController = null
-      }
-
-      if (requestId === renderSpectrogramLoadRequestId) {
-        gnauralSpectrogramLoading.value = false
-      }
     }
   }
 
@@ -980,7 +891,6 @@ export const useAudioStore = defineStore('audio', () => {
 
   onScopeDispose(() => {
     cancelPendingGnauralScheduleLoad()
-    cancelPendingRenderedSpectrogramLoad()
     cancelPendingWavLoad()
     cancelPendingLocalStart()
     releaseWavObjectUrl()
@@ -1043,7 +953,6 @@ export const useAudioStore = defineStore('audio', () => {
     queueLocalStartAfterRemoteStop,
     cancelPendingLocalStart,
     ensureLocalAudioReady,
-    ensureGnauralSpectrogram,
     startLocalPlayback,
     pauseLocalPlayback,
     resumeLocalPlayback,
