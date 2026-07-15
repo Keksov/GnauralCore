@@ -377,6 +377,18 @@
               </q-menu>
             </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallWave') }}</span>
+            <!-- WS1.2 (WS-D1, owner req 1): the group's settings gear, moved here OUT of the track
+                 graphics area (where SF27 had one per channel). The title's flex:1 pushes it to the
+                 right edge. It covers the whole group, so it opens the «Оба канала» scope. -->
+            <q-btn
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-header-gear"
+              icon="settings"
+              :aria-label="t('audio.waveformSettingsTitle')"
+              @click="openWaveformSettingsGroup"
+            >
+              <app-tooltip>{{ t('audio.waveformSettingsTitle') }}</app-tooltip>
+            </q-btn>
           </div>
           <div v-show="!overallWaveFolded" class="audio-page__waveform-stack">
           <template v-for="(wtrack, wIndex) in waveformTracks" :key="wtrack.key">
@@ -397,9 +409,9 @@
               :height="waveformTrackHeights[wIndex]"
               data-track-kind="waveform"
               :data-track-channel="wtrack.channel"
+              :show-settings-gear="false"
               :class="{ 'audio-page__track--dragging': trackDrag?.kind === 'waveform' && trackDrag?.channel === wtrack.channel }"
               @seek="handleSeek"
-              @open-settings="openWaveformSettings(wtrack.channel)"
               @hide="onOverallChannelHide('waveform', wtrack.channel, $event)"
               @reorder-grip="onTrackGripDown('waveform', wtrack.channel, $event)"
             />
@@ -1906,6 +1918,13 @@ function openWaveformSettings(ch: number): void {
     waveformLinkChannels.value || !isSpectrogramStereo.value ? 'both' : ch === 1 ? 1 : 0
   waveformSettingsOpen.value = true
 }
+// WS1.2 (WS-D1): the title-bar gear covers the whole group, not one channel, so it always opens the
+// shared scope (owner req 1). This is now the only entry point while the wave stack is visible; the
+// per-channel one above survives for the overlay mode, where this title bar does not exist (WS-D5).
+function openWaveformSettingsGroup(): void {
+  waveformSettingsTab.value = 'both'
+  waveformSettingsOpen.value = true
+}
 interface WaveformSettingsTabItem { readonly id: WaveformSettingsTab; readonly label: string; readonly disable: boolean }
 const waveformSettingsTabs = computed<WaveformSettingsTabItem[]>(() => {
   // WS-D4 (owner req 7): mono has ONE channel — a single «Моно» item, no L/R, no link toggle.
@@ -3038,7 +3057,8 @@ onBeforeUnmount(() => {
   width: 4px;
 }
 .tracks-panel__gtrack-fold,
-.tracks-panel__gtrack-header-eye {
+.tracks-panel__gtrack-header-eye,
+.tracks-panel__gtrack-header-gear {
   flex: 0 0 auto;
 }
 /* GT11.11: the eye reads as "there are hidden graphs here" — a soft accent so it stands out. */

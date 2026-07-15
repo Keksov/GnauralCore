@@ -32,8 +32,10 @@
         <app-tooltip>{{ t('audio.trackHide') }}</app-tooltip>
       </q-btn>
     </div>
-    <!-- SF27: per-track colour/scale gear, top-right. -->
-    <div class="waveform-view__actions">
+    <!-- SF27: per-track colour/scale gear, top-right. WS1.2 (WS-D6): the OVERALL wave stack turns
+         it off — its gear moved to the group's title bar (owner req 1). The gtrack lanes keep it:
+         there it opens the lane's own settings, not the waveform's. -->
+    <div v-if="showSettingsGear" class="waveform-view__actions">
       <q-btn
         dense flat round size="xs"
         icon="settings"
@@ -110,6 +112,11 @@ interface Props {
   soloVoiceIds?: readonly number[]
   /** GT7.4-R2 (owner 2026-07-13): bump to force a fresh re-open for the SAME file (after a Save). */
   reloadKey?: number
+  /** WS1.2 (WS-D6): show the per-track settings gear. The OVERALL wave stack passes false — its
+      gear moved to the group's title bar (owner req 1); the gtrack lanes pass nothing and keep it.
+      The default MUST come from withDefaults: an absent type-only boolean casts to false, which
+      would silently strip the lanes' gear. Mirrors SpectrogramView's GT10.3 prop, inverted. */
+  showSettingsGear?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   channel: 0,
@@ -119,6 +126,7 @@ const props = withDefaults(defineProps<Props>(), {
   seekable: false,
   showTimeAxisTop: false,
   showTimeAxisBottom: false,
+  showSettingsGear: true,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
