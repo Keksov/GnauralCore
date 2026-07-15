@@ -35,7 +35,7 @@
         :aria-label="t('audio.trackReorder')"
         @pointerdown.stop.prevent="emit('reorder-grip', $event)"
       >
-        <q-tooltip>{{ t('audio.trackReorder') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.trackReorder') }}</app-tooltip>
       </q-icon>
       <!-- BK8a (owner 2026-07-13): per-voice playback mute mirrored on the lane, above the eye. -->
       <q-btn
@@ -45,7 +45,7 @@
         :aria-label="muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute')"
         @click.stop="emit('toggle-mute')"
       >
-        <q-tooltip>{{ muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</q-tooltip>
+        <app-tooltip>{{ muted ? t('audio.scheduleTrackUnmute') : t('audio.scheduleTrackMute') }}</app-tooltip>
       </q-btn>
       <q-btn
         dense flat round size="xs"
@@ -53,7 +53,7 @@
         :aria-label="t('audio.trackHide')"
         @click.stop="emit('hide')"
       >
-        <q-tooltip>{{ t('audio.trackHide') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.trackHide') }}</app-tooltip>
       </q-btn>
       <!-- owner 2026-07-13: include/exclude this voice from the OVERALL wave/spectrum (under the eye). -->
       <q-btn
@@ -63,7 +63,7 @@
         :aria-label="inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude')"
         @click.stop="emit('toggle-in-mix')"
       >
-        <q-tooltip>{{ inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</q-tooltip>
+        <app-tooltip>{{ inMix ? t('audio.gtrackMixExclude') : t('audio.gtrackMixInclude') }}</app-tooltip>
       </q-btn>
       <!-- GT10.44 (owner 2026-07-12): remove this lane, under the hide/eye icon. -->
       <q-btn
@@ -73,7 +73,7 @@
         :aria-label="t('audio.gtrackRemoveLane')"
         @click.stop="emit('remove-lane')"
       >
-        <q-tooltip>{{ t('audio.gtrackRemoveLane') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackRemoveLane') }}</app-tooltip>
       </q-btn>
     </div>
     <!-- GT3.1: point-edit mode toggle + the lane settings gear. -->
@@ -86,7 +86,7 @@
         :aria-pressed="pointMode"
         @click.stop="emit('toggle-point-mode')"
       >
-        <q-tooltip>{{ t('audio.gtrackPointMode') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackPointMode') }}</app-tooltip>
       </q-btn>
       <q-btn
         dense flat round size="xs"
@@ -94,7 +94,7 @@
         :aria-label="t('audio.gtrackSettings')"
         @click.stop="emit('open-settings')"
       >
-        <q-tooltip>{{ t('audio.gtrackSettings') }}</q-tooltip>
+        <app-tooltip>{{ t('audio.gtrackSettings') }}</app-tooltip>
       </q-btn>
     </div>
     <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging.

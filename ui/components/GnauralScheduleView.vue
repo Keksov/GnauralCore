@@ -174,10 +174,11 @@
               text-color="white"
               icon="settings"
               :aria-label="t('audio.scheduleSettingsOpen')"
-              :title="t('audio.scheduleSettingsOpen')"
               aria-controls="gnaural-schedule-settings-panel"
               @click="toggleSettingsPanel"
-            />
+            >
+              <app-tooltip>{{ t('audio.scheduleSettingsOpen') }}</app-tooltip>
+            </q-btn>
           </div>
         </div>
       </div>
@@ -275,6 +276,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { AudioTransportState, GnauralScheduleData, GnauralScheduleEntry, GnauralScheduleVoice } from '@protocol'
 import { useI18n } from 'vue-i18n'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 type LayoutMode = 'overlay' | 'tracks'
 type ScaleMode = 'log' | 'linear'
