@@ -94,17 +94,21 @@
         <q-tooltip>{{ t('audio.waveformStyle') }}</q-tooltip>
       </q-btn>
     </div>
-    <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar) -->
-    <div
-      v-if="tooltipText !== null && tooltipPos !== null"
+    <!-- SF-D25: point/area readout as a tooltip at the cursor (not a toolbar).
+         TT2.4 (owner req. 1/3): the box and its placement moved to AppTooltip. It used to sit at
+         +12/+12 from the pointer — down-right, i.e. straight under the arrow glyph — and, unlike the
+         gtrack one, it had no clamping at all, so it could run off the right/bottom edge. Both are
+         AppTooltip's problem now. role/aria are kept: this is a LIVE readout, so it stays a polite
+         status region rather than becoming a plain tooltip. -->
+    <app-tooltip
+      :at="tooltipAnchor"
       class="spectrogram-view__tooltip"
-      :style="{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px` }"
       role="status"
       aria-live="polite"
       :aria-label="t('audio.spectrogramReadout')"
     >
       {{ tooltipText }}
-    </div>
+    </app-tooltip>
     <div
       v-if="isPreparing"
       class="spectrogram-view__loading"
@@ -140,6 +144,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SpectrogramAnalysisParams, SpectrogramAreaResult } from '@protocol'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { amplitudeToDb, type AudioPeak } from '../composables/audio-model'
@@ -719,8 +724,11 @@ watch(zoomMenuOpen, (aOpen) => {
 })
 
 const hover = ref<{ timeSec: number; freqHz: number; db: number } | null>(null)
-// SF-D25: cursor tooltip position (offset within the view) + text (area result on the
-// primary track, else the hover point).
+// SF-D25: cursor tooltip position + text (area result on the primary track, else the hover point).
+// TT2.4: VIEWPORT coords (clientX/Y) now, not offsetX/Y within the view — AppTooltip's cursor mode is
+// position:fixed and clamps against the viewport. That also retires a latent bug: offsetX/Y are
+// measured from the EVENT TARGET, which is not necessarily the box the tooltip was absolutely
+// positioned in, so the two could disagree.
 const tooltipPos = ref<{ x: number; y: number } | null>(null)
 const tooltipText = computed<string | null>(() => {
   if (props.primary && areaResult.value !== null) {
@@ -743,6 +751,10 @@ const tooltipText = computed<string | null>(() => {
   }
   return null
 })
+// TT2.4: hand the anchor over only when there is something to show — that is AppTooltip's own v-if,
+// and it replaces the old two-part `tooltipText !== null && tooltipPos !== null` render guard.
+const tooltipAnchor = computed(() => (tooltipText.value !== null ? tooltipPos.value : null))
+
 const internalSelection = ref<SpectrogramSelection | null>(null)
 // Shared area selection across stacked tracks (or per-view fallback).
 const selection = computed<SpectrogramSelection | null>({
@@ -809,8 +821,10 @@ function onPointerMove(aEvent: PointerEvent): void {
   const f = plotFractions(aEvent)
   if (f === null) return
 
-  // Track the cursor for the tooltip (offset a little so it doesn't sit under the pointer).
-  tooltipPos.value = { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 }
+  // Track the cursor for the tooltip. AppTooltip owns the offset — and gets its direction right: the
+  // old +12/+12 here meant well ("so it doesn't sit under the pointer") but pushed the box down-right,
+  // which is precisely where the arrow glyph is.
+  tooltipPos.value = { x: aEvent.clientX, y: aEvent.clientY }
 
   if (dragStart !== null) {
     if (!dragging && Math.hypot(aEvent.offsetX - dragStart.x, aEvent.offsetY - dragStart.y) < 4) return
@@ -1155,19 +1169,10 @@ onBeforeUnmount(() => {
 }
 
 /* SF-D25: point/area readout tooltip anchored at the cursor. */
-.spectrogram-view__tooltip {
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  border-radius: 4px;
-  color: #e2e8f0;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  padding: 2px 6px;
-  pointer-events: none;
-  position: absolute;
-  white-space: nowrap;
-  z-index: 7;
-}
+/* TT2.4: the box (background, border, radius, colour, padding, positioning, z-index, pointer-events)
+   now comes from AppTooltip — one look for every tooltip (owner req. 3). What is left is about the
+   READOUT rather than the plate, and lives in the global block at the end of this file: AppTooltip
+   teleports the box to <body>, so it carries no scope attribute and a scoped rule cannot reach it. */
 
 .spectrogram-view__canvas {
   display: block;
@@ -1224,5 +1229,17 @@ onBeforeUnmount(() => {
 .spectrogram-view__canvas:focus-visible {
   outline: 1px solid rgba(148, 163, 184, 0.6);
   outline-offset: -1px;
+}
+</style>
+
+<!-- TT2.4: AppTooltip renders the readout box and teleports it to <body>, so it is not a descendant
+     of this component and carries no scope attribute — a `scoped` rule can never match it. These two
+     are not styling of the plate but properties of the readout itself, so they must survive the move:
+     tabular-nums keeps the numbers from jittering as they change under the cursor, and nowrap keeps
+     the reading on one line (Quasar's box would otherwise wrap it at its own max-width). -->
+<style>
+.spectrogram-view__tooltip {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 </style>
