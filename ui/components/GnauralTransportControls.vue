@@ -13,7 +13,7 @@
         :aria-label="startStopLabel"
         @click="emit('start-stop')"
       >
-        <q-tooltip>{{ startStopLabel }}</q-tooltip>
+        <app-tooltip>{{ startStopLabel }}</app-tooltip>
       </q-btn>
       <q-btn
         v-if="!hideStartPause"
@@ -23,7 +23,7 @@
         :aria-label="pauseResumeLabel"
         @click="emit('pause-resume')"
       >
-        <q-tooltip>{{ pauseResumeLabel }}</q-tooltip>
+        <app-tooltip>{{ pauseResumeLabel }}</app-tooltip>
       </q-btn>
     </template>
     <template v-else>
@@ -52,6 +52,8 @@
 <script setup lang="ts">
 // MR2.1 (menu-redesign): the «Экспорт» dropdown moved out of the transport toolbar into
 // Меню → Файл → Экспорт (a dialog in AudioPage). This component is now transport-only.
+import AppTooltip from '@tooltip/AppTooltip.vue'
+
 withDefaults(defineProps<{
   readonly startStopIcon: string
   readonly startStopLabel: string
