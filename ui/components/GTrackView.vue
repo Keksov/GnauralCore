@@ -98,16 +98,13 @@
       </q-btn>
     </div>
     <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging.
-         GT3.17 (owner req. 33): teleported to <body> + position:fixed so it renders above every
-         lane/panel and is never clipped by a lane's overflow:hidden; clamped to the viewport. -->
-    <Teleport to="body">
-      <div
-        v-if="hoverTooltip !== null && hoverPos !== null"
-        ref="tooltipEl"
-        class="gtrack-view__tooltip"
-        :style="tooltipStyle"
-        role="status"
-      >
+         TT2.3 (owner req. 1/3): the box, its teleport and its placement now belong to AppTooltip —
+         this component only says WHERE the pointer is and WHAT to show. That is what moved the
+         tooltip from under the cursor (it used to sit +14/+14 down-right of the hotspot, i.e. right
+         beneath the arrow glyph) to above it, and it keeps GT3.17's never-clipped behaviour, since
+         AppTooltip teleports to <body> and clamps to the viewport too. -->
+    <app-tooltip :at="hoverAnchor" class="gtrack-view__tooltip">
+      <template v-if="hoverTooltip !== null">
         <div class="gtrack-view__tooltip-name">{{ hoverTooltip.name }}</div>
         <!-- GT3.19: two-column grid — parameter names | values, both left-aligned. -->
         <div class="gtrack-view__tooltip-grid">
@@ -116,14 +113,15 @@
             <span class="gtrack-view__tooltip-value">{{ row.value }}</span>
           </template>
         </div>
-      </div>
-    </Teleport>
+      </template>
+    </app-tooltip>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
 import {
@@ -254,33 +252,11 @@ const hoverEdge = ref<BeatEdgeRef | null>(null)
 // GT3.13/3.17: cursor VIEWPORT position (clientX/Y) for the hover tooltip; null while not hovering /
 // while dragging. Viewport coords because the tooltip is teleported to <body> + position:fixed.
 const hoverPos = ref<{ x: number; y: number } | null>(null)
-const tooltipEl = ref<HTMLElement | null>(null)
-const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
 const HIT_RADIUS_PX = 8
 
-// GT3.17 (owner req. 33): keep the teleported tooltip fully on-screen — offset from the cursor,
-// flipping to the other side when it would overflow the right/bottom edge.
-function positionTooltip(): void {
-  const anchor = hoverPos.value
-  if (anchor === null) return
-  const guessLeft = anchor.x + 14
-  const guessTop = anchor.y + 14
-  tooltipStyle.value = { left: `${guessLeft}px`, top: `${guessTop}px` }
-  void nextTick(() => {
-    const el = tooltipEl.value
-    if (el === null || hoverPos.value === null) return
-    const pad = 8
-    const w = el.offsetWidth
-    const h = el.offsetHeight
-    let left = hoverPos.value.x + 14
-    let top = hoverPos.value.y + 14
-    if (left + w + pad > window.innerWidth) left = hoverPos.value.x - w - 14
-    if (top + h + pad > window.innerHeight) top = hoverPos.value.y - h - 14
-    left = Math.max(pad, Math.min(left, window.innerWidth - w - pad))
-    top = Math.max(pad, Math.min(top, window.innerHeight - h - pad))
-    tooltipStyle.value = { left: `${left}px`, top: `${top}px` }
-  })
-}
+// TT2.3: AppTooltip owns measuring, placing and clamping (GT3.17's job) — it only needs the anchor,
+// and only while there is something to show.
+const hoverAnchor = computed(() => (hoverTooltip.value !== null ? hoverPos.value : null))
 
 const AXIS_MARGIN = { left: 46, right: 8 }
 const AXIS_TIME_MARGIN = 18
@@ -826,7 +802,6 @@ function onPointerMove(aEvent: PointerEvent): void {
   }
   if (next !== null) {
     hoverPos.value = { x: aEvent.clientX, y: aEvent.clientY }
-    positionTooltip()
   } else {
     hoverPos.value = null
   }
@@ -1174,19 +1149,10 @@ onBeforeUnmount(() => {
 
 /* GT3.13: hover-a-vertex tooltip (multi-line — voice, time, frequencies, volumes).
    GT3.17: teleported to <body>, position:fixed in viewport coords, above every lane/panel. */
-.gtrack-view__tooltip {
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  color: #e2e8f0;
-  font-size: 11px;
-  max-width: 260px;
-  padding: 4px 7px;
-  pointer-events: none;
-  position: fixed;
-  z-index: 7000;
-}
+/* TT2.3: the box itself (background, border, radius, colour, padding, fixed positioning, z-index and
+   pointer-events) now comes from AppTooltip, so every tooltip in the app looks the same — the local
+   copies of those values are gone. Only the width cap is still ours; see the global block below for
+   why it cannot live here. */
 
 /* GT3.19: two-column tooltip (labels | values, both left-aligned). */
 .gtrack-view__tooltip-name {
@@ -1209,5 +1175,16 @@ onBeforeUnmount(() => {
 
 .gtrack-view__tooltip-value {
   text-align: left;
+}
+</style>
+
+<!-- TT2.3: AppTooltip renders the tooltip box and teleports it to <body>, so it is not a descendant
+     of this component and carries no scope attribute — a `scoped` rule can never match it. The inner
+     rows above are slot content, compiled in THIS component's scope, so they stay scoped as before.
+     Only the width cap has to be global: without it a long voice name would stretch the tooltip out
+     to Quasar's 95vw default. -->
+<style>
+.gtrack-view__tooltip {
+  max-width: 260px;
 }
 </style>
