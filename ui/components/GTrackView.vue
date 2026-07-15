@@ -837,11 +837,6 @@ function onPointerMove(aEvent: PointerEvent): void {
     hoverPoint.value = next
     scheduleDraw()
   }
-  if (next !== null) {
-    hoverPos.value = { x: aEvent.clientX, y: aEvent.clientY }
-  } else {
-    hoverPos.value = null
-  }
   // GT11.4: track the hovered beat-band edge (vertex hover wins) for the resize cursor + highlight.
   const nextEdge = next === null ? beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY) : null
   const prevEdge = hoverEdge.value
@@ -849,6 +844,10 @@ function onPointerMove(aEvent: PointerEvent): void {
     hoverEdge.value = nextEdge
     scheduleDraw()
   }
+  // GT11.15 (owner 2026-07-15): the anchor must be set for a beat-band edge too, not just a vertex —
+  // the edges are nodes of the same point and were the one hoverable thing with no tooltip. Hence
+  // AFTER nextEdge is known: it used to be decided from `next` alone, a few lines up.
+  hoverPos.value = next !== null || nextEdge !== null ? { x: aEvent.clientX, y: aEvent.clientY } : null
 }
 
 function onPointerUp(aEvent: PointerEvent): void {
@@ -893,7 +892,10 @@ function onPointerLeave(): void {
 // {label, value} rendered as a two-column grid (labels | values, both left-aligned).
 interface TooltipRow { readonly label: string; readonly value: string }
 const hoverTooltip = computed<{ name: string; rows: TooltipRow[] } | null>(() => {
-  const hp = hoverPoint.value
+  // GT11.15 (owner 2026-07-15): a hovered beat-band edge describes the SAME point as a vertex does —
+  // it is drawn at base ± beat/2 of it — so it gets the same readout. Vertex still wins when both are
+  // under the cursor, matching the hit-test order in onPointerMove.
+  const hp = hoverPoint.value ?? hoverEdge.value
   if (hp === null) return null
   const voice = props.voices.find((v) => v.id === hp.voiceId)
   const p = voice?.points[hp.pointIndex]
