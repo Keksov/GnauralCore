@@ -43,14 +43,18 @@
         <app-tooltip>{{ t('audio.waveformStyle') }}</app-tooltip>
       </q-btn>
     </div>
-    <div
-      v-if="hover !== null && hoverPos !== null"
+    <!-- SF24.1: readout at the cursor (time + amplitude + dBFS).
+         TT2.10 (owner 2026-07-15): this one was MISSED by the TT2.4 sweep and still had the old
+         hand-rolled box — it sat at +12/+12 from the pointer, i.e. straight under the arrow glyph,
+         with no clamping at all. Same treatment as the spectrogram readout: AppTooltip owns the box
+         and the placement; role="status" stays, since this is a live readout, not a plain hint. -->
+    <app-tooltip
+      :at="hoverAnchor"
       class="waveform-view__tooltip"
-      :style="{ left: `${hoverPos.x}px`, top: `${hoverPos.y}px` }"
       role="status"
     >
       {{ hoverText }}
-    </div>
+    </app-tooltip>
   </div>
 </template>
 
@@ -427,6 +431,9 @@ function handleNavKey(aEvent: KeyboardEvent): void {
 defineExpose({ handleNavKey })
 
 const hover = ref<{ timeSec: number; amp: number } | null>(null)
+// TT2.10: VIEWPORT coords (clientX/Y), as AppTooltip's cursor mode is position:fixed. Also retires
+// the offsetX/Y ambiguity — those are measured from the EVENT TARGET, not necessarily the box this
+// was absolutely positioned in.
 const hoverPos = ref<{ x: number; y: number } | null>(null)
 const hoverText = computed(() => {
   const h = hover.value
@@ -435,6 +442,9 @@ const hoverText = computed(() => {
   // SF24.1: readout at the cursor — time + amplitude (peak of the hovered column) + dBFS.
   return `${formatTimeSec(h.timeSec)} · ${h.amp.toFixed(3)} · ${db.toFixed(1)} dB`
 })
+// TT2.10: hand the anchor over only while there is something to show — AppTooltip's own v-if.
+// Replaces the old two-part `hover !== null && hoverPos !== null` render guard.
+const hoverAnchor = computed(() => (hover.value !== null ? hoverPos.value : null))
 
 // Amplitude at the cursor = the max magnitude of the hovered backend peak column.
 function ampAtFraction(aFraction: number): number {
@@ -459,7 +469,7 @@ function onPointerMove(aEvent: PointerEvent): void {
   }
   const timeSec = fractionToTime(f, view.value)
   hover.value = { timeSec, amp: ampAtFraction(f) }
-  hoverPos.value = { x: aEvent.offsetX + 12, y: aEvent.offsetY + 12 }
+  hoverPos.value = { x: aEvent.clientX, y: aEvent.clientY }
 }
 
 function onPointerLeave(): void {
@@ -613,15 +623,20 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
+/* TT2.10: the box (background, radius, colour, font, padding, positioning, z-index, pointer-events)
+   now comes from AppTooltip — one look for every tooltip. What is left is about the READOUT rather
+   than the plate, and has to live in the global block at the end of this file: AppTooltip teleports
+   the box to <body>, so it carries no scope attribute and a scoped rule cannot reach it. */
+</style>
+
+<!-- TT2.10: not styling of the plate but a property of the readout, so it must survive the move —
+     nowrap keeps the reading on one line (Quasar's box would otherwise wrap it at its own max-width).
+     Global for the same reason as the sibling views: the box is teleported to <body> and carries no
+     scope attribute. tabular-nums matches the spectrogram readout: the numbers change under the
+     cursor, so the column must not jitter. -->
+<style>
 .waveform-view__tooltip {
-  background: rgba(15, 23, 42, 0.92);
-  border-radius: 4px;
-  color: #e2e8f0;
-  font-size: 11px;
-  padding: 3px 6px;
-  pointer-events: none;
-  position: absolute;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  z-index: 6;
 }
 </style>
