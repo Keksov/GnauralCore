@@ -130,6 +130,48 @@ export function ctrlStepValue(current: number, field: string, direction: 1 | -1)
   return next
 }
 
+/**
+ * GT11.13 (owner 2026-07-15): zoom a value-axis range by `factor` (<1 = zoom in, >1 = out) keeping
+ * the value under `focusUnit` (0 = bottom/min, 1 = top/max — same convention as valueToUnit) pinned
+ * under the cursor. A LOG axis (base freq) zooms multiplicatively in log10 space, so the gesture
+ * feels identical at 20 Hz and at 2 kHz. Returns the raw new range; clamping and the
+ * snap-back-to-auto policy belong to the caller.
+ */
+export function zoomAxisRange(axis: GTrackAxis, factor: number, focusUnit: number): { min: number; max: number } {
+  const u = Math.max(0, Math.min(1, focusUnit))
+  if (axis.scale === 'log') {
+    const minLog = Math.log10(axis.min)
+    const maxLog = Math.log10(axis.max)
+    const anchor = minLog + u * (maxLog - minLog)
+    const newSpan = (maxLog - minLog) * factor
+    const lo = anchor - u * newSpan
+    return { min: Math.pow(10, lo), max: Math.pow(10, lo + newSpan) }
+  }
+  const anchor = axis.min + u * (axis.max - axis.min)
+  const newSpan = (axis.max - axis.min) * factor
+  const lo = anchor - u * newSpan
+  return { min: lo, max: lo + newSpan }
+}
+
+/**
+ * GT11.13: the same axis with an EXPLICIT range (a manual Alt+wheel Y zoom overriding the auto-fit).
+ * Keeps the scale and re-derives the three edge labels for the new range — the geometric midpoint on
+ * a log axis, the arithmetic one otherwise.
+ */
+export function axisWithRange(axis: GTrackAxis, min: number, max: number): GTrackAxis {
+  const mid = axis.scale === 'log'
+    ? Math.pow(10, (Math.log10(min) + Math.log10(max)) / 2)
+    : (min + max) / 2
+  return {
+    min,
+    max,
+    scale: axis.scale,
+    topLabel: formatFreq(max),
+    midLabel: formatFreq(mid),
+    botLabel: formatFreq(min),
+  }
+}
+
 export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false, beatBand = false): GTrackAxis {
   if (mode === 'volume') {
     return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
