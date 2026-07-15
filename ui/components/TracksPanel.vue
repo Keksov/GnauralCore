@@ -699,36 +699,74 @@
           </q-card>
         </q-dialog>
 
-        <!-- SF27: per-track waveform settings (colour / amplitude scale / overlay opacity). -->
+        <!-- WS1.1 (WS-D2): waveform display settings — two-pane, built like the GT10.29 settings
+             dialog (AudioPage.vue): a narrow channel-SCOPE list on the left, the settings for the
+             active scope on the right. Replaces SF27's single-column per-channel dialog. -->
         <q-dialog v-model="waveformSettingsOpen">
-          <q-card class="audio-page__minimap-dialog">
-            <q-card-section class="row items-center q-pb-sm">
-              <div class="text-subtitle1">
-                {{ t('audio.waveformStyle') }}<span v-if="wfDlgLabel"> — {{ wfDlgLabel }}</span>
-              </div>
+          <q-card class="tracks-panel__wf-settings">
+            <q-card-section class="row items-center q-py-sm">
+              <div class="text-subtitle1">{{ t('audio.waveformSettingsTitle') }}</div>
               <q-space />
-              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
+              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.close')" />
             </q-card-section>
             <q-separator />
-            <q-card-section class="q-gutter-md">
-              <div class="row items-center justify-between no-wrap">
-                <span class="text-body2">{{ t('audio.waveformColor') }}</span>
-                <input type="color" v-model="wfDlgColor" class="audio-page__wf-color" />
+            <div class="tracks-panel__wf-settings-body row no-wrap">
+              <q-list class="tracks-panel__wf-settings-nav">
+                <q-item
+                  v-for="tab in waveformSettingsTabs"
+                  :key="String(tab.id)"
+                  clickable
+                  :disable="tab.disable"
+                  :active="waveformSettingsTab === tab.id"
+                  active-class="tracks-panel__wf-settings-nav--active"
+                  @click="selectWaveformSettingsTab(tab)"
+                >
+                  <q-item-section>{{ tab.label }}</q-item-section>
+                </q-item>
+              </q-list>
+              <q-separator vertical />
+              <div class="tracks-panel__wf-settings-content">
+                <q-card-section class="q-gutter-md">
+                  <!-- owner req 6: the link toggle lives ON the «Оба канала» form; while it is ON
+                       the per-channel items are locked (waveformSettingsTabs) so the channels
+                       cannot diverge. Hidden for mono — one channel, nothing to apply to (WS-D4). -->
+                  <q-toggle
+                    v-if="waveformSettingsTab === 'both' && isSpectrogramStereo"
+                    v-model="waveformLinkChannels"
+                    dense
+                    :label="t('audio.waveformApplyBoth')"
+                  />
+                  <div class="row items-center justify-between no-wrap">
+                    <span class="text-body2">{{ t('audio.waveformColor') }}</span>
+                    <input
+                      type="color"
+                      v-model="wfDlgColor"
+                      class="audio-page__wf-color"
+                      :disabled="wfDlgControlsDisabled"
+                      :aria-label="t('audio.waveformColor')"
+                    />
+                  </div>
+                  <div class="row items-center justify-between no-wrap">
+                    <span class="text-body2">{{ t('audio.waveformScale') }}</span>
+                    <q-btn-toggle
+                      v-model="wfDlgScale"
+                      dense unelevated no-caps
+                      :disable="wfDlgControlsDisabled"
+                      toggle-color="primary"
+                      :options="[{ label: 'lin', value: 'linear' }, { label: 'dB', value: 'db' }]"
+                    />
+                  </div>
+                  <div v-if="viewMode === 'overlay'">
+                    <div class="text-body2 q-mb-xs">{{ t('audio.waveformOpacity') }}: {{ Math.round(wfDlgOpacity * 100) }}%</div>
+                    <q-slider v-model="wfDlgOpacity" :min="0.1" :max="1" :step="0.05" dense :disable="wfDlgControlsDisabled" />
+                  </div>
+                </q-card-section>
               </div>
-              <div class="row items-center justify-between no-wrap">
-                <span class="text-body2">{{ t('audio.waveformScale') }}</span>
-                <q-btn-toggle
-                  v-model="wfDlgScale"
-                  dense unelevated no-caps
-                  toggle-color="primary"
-                  :options="[{ label: 'lin', value: 'linear' }, { label: 'dB', value: 'db' }]"
-                />
-              </div>
-              <div v-if="viewMode === 'overlay'">
-                <div class="text-body2 q-mb-xs">{{ t('audio.waveformOpacity') }}: {{ Math.round(wfDlgOpacity * 100) }}%</div>
-                <q-slider v-model="wfDlgOpacity" :min="0.1" :max="1" :step="0.05" dense />
-              </div>
-            </q-card-section>
+            </div>
+            <q-separator />
+            <q-card-actions align="right">
+              <q-btn flat no-caps :label="t('audio.close')" v-close-popup />
+            </q-card-actions>
           </q-card>
         </q-dialog>
       </div>
@@ -1101,7 +1139,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component, type Ref } from 'vue'
 import { QSpinnerHourglass, useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -1186,10 +1224,13 @@ function onRemoveLane(id: number): void {
 }
 function handleSeek(aSec: number): void {
   localPlayheadSec.value = aSec // persistent local cursor (survives an idle transport)
-  // GT10.32 (owner 2026-07-12): only issue the REAL transport seek when a session is actually
-  // active — seeking an idle gnaural session errors ("Gnaural session is not active"). The visible
-  // local cursor is set regardless of transport state.
-  if (audio.transportState === 'playing' || audio.transportState === 'paused') emit('seek', aSec)
+  // GT10.32 (owner 2026-07-12) gated the REAL seek to a live session, because seeking an idle
+  // gnaural raised "Gnaural session is not active". That made the cursor purely cosmetic while
+  // stopped: the session never learned where it was, so Play rewound to 0 and the playhead
+  // snapped back the moment transportState turned 'playing' (see gtrackPlayheadSec below).
+  // Owner 2026-07-15: the server now records an idle seek instead of erroring, and replays it
+  // right after `load`, so the seek must always go through.
+  emit('seek', aSec)
 }
 
 // GT-D10: OWN storage keys — never shared with the frozen Spectrogram tab.
@@ -1801,6 +1842,7 @@ function loadWaveformPrefs(): {
   colors?: unknown
   opacities?: unknown
   minimap?: string
+  link?: unknown // WS1.1 (WS-D7): the «apply to both channels» toggle; absent -> default
 } {
   try {
     const raw = localStorage.getItem(STORAGE_TRACKS_WAVEFORM)
@@ -1847,44 +1889,77 @@ function wfColor(ch: number): string {
 function wfOpacity(ch: number): number {
   return waveformOpacities.value[ch] ?? waveformOpacities.value[0] ?? 0.55
 }
-// Per-track settings dialog: which channel's settings are open (null = closed).
-const waveformSettingsChannel = ref<number | null>(null)
-const waveformSettingsOpen = computed<boolean>({
-  get: () => waveformSettingsChannel.value !== null,
-  set: (v) => {
-    if (!v) waveformSettingsChannel.value = null
-  },
-})
+// WS1.1 (WS-D2/WS-D3): waveform settings are a two-pane dialog — a channel-SCOPE list on the left,
+// the settings for the active scope on the right. The scope is `waveformSettingsTab`: 'both' writes
+// every channel, 0/1 write just that one. `waveformLinkChannels` (owner req 6) is the toggle on the
+// «Оба канала» form: while it is ON the per-channel tabs are locked, so the channels cannot diverge.
+// (Replaces SF27's channel|null open-flag, where the open channel WAS the scope.)
+type WaveformSettingsTab = 'both' | 0 | 1
+const waveformSettingsOpen = ref(false)
+const waveformSettingsTab = ref<WaveformSettingsTab>('both')
+const waveformLinkChannels = ref<boolean>(typeof wfPrefs.link === 'boolean' ? wfPrefs.link : true)
+// WS-D5: a per-channel entry point (the overlay spectrogram gear; the per-track gears until WS1.2
+// retires them) must never land on a tab the link toggle has locked -> fall back to «Оба канала»,
+// which is where a linked edit belongs anyway.
 function openWaveformSettings(ch: number): void {
-  waveformSettingsChannel.value = ch
+  waveformSettingsTab.value =
+    waveformLinkChannels.value || !isSpectrogramStereo.value ? 'both' : ch === 1 ? 1 : 0
+  waveformSettingsOpen.value = true
 }
-const wfDlgChannel = computed(() => waveformSettingsChannel.value ?? 0)
-const wfDlgLabel = computed(() =>
-  isSpectrogramStereo.value ? (wfDlgChannel.value === 0 ? 'L' : 'R') : '',
+interface WaveformSettingsTabItem { readonly id: WaveformSettingsTab; readonly label: string; readonly disable: boolean }
+const waveformSettingsTabs = computed<WaveformSettingsTabItem[]>(() => {
+  // WS-D4 (owner req 7): mono has ONE channel — a single «Моно» item, no L/R, no link toggle.
+  if (!isSpectrogramStereo.value) return [{ id: 'both', label: t('audio.waveformChannelMono'), disable: false }]
+  const locked = waveformLinkChannels.value // owner req 6: linked -> «Левый»/«Правый» unavailable
+  return [
+    { id: 'both', label: t('audio.waveformChannelsBoth'), disable: false },
+    { id: 0, label: t('audio.waveformChannelsLeft'), disable: locked },
+    { id: 1, label: t('audio.waveformChannelsRight'), disable: locked },
+  ]
+})
+// The guard must be OURS: QItem's :disable drops its own click handling, but it does not set
+// inheritAttrs:false, so a fallthrough @click still lands on the root element and Vue runs it
+// alongside QItem's — and Quasar's `.disabled` rule (visibility.sass) only sets opacity/cursor, not
+// pointer-events. Without this, a locked tab would still open on click (owner req 6).
+function selectWaveformSettingsTab(aTab: WaveformSettingsTabItem): void {
+  if (aTab.disable) return
+  waveformSettingsTab.value = aTab.id
+}
+// WS-D3: with the toggle OFF the «Оба канала» form has no scope of its own — the per-channel tabs
+// own the values — so its controls go inert; only the toggle itself stays live. Mono never gets
+// here: there is no toggle to turn off (WS-D4).
+const wfDlgControlsDisabled = computed(
+  () => waveformSettingsTab.value === 'both' && isSpectrogramStereo.value && !waveformLinkChannels.value,
 )
+// R4: a file switch can turn stereo into mono under an open dialog — coerce the scope back rather
+// than leave it on a channel that no longer exists (or on a tab the toggle has since locked).
+watch([isSpectrogramStereo, waveformLinkChannels], ([stereo, link]) => {
+  if (waveformSettingsTab.value !== 'both' && (!stereo || link)) waveformSettingsTab.value = 'both'
+})
+const wfDlgChannel = computed(() => (waveformSettingsTab.value === 'both' ? 0 : waveformSettingsTab.value))
+// The channels an edit on the current tab writes. 'both' means every channel that EXISTS: in mono
+// that is channel 0 alone — writing ch 1 there would silently overwrite the R preference that a
+// later stereo file will load (WS-D4).
+function wfDlgTargets(): readonly number[] {
+  if (waveformSettingsTab.value !== 'both') return [waveformSettingsTab.value]
+  return isSpectrogramStereo.value ? [0, 1] : [0]
+}
+function wfDlgWrite<T>(aList: Ref<T[]>, aValue: T): void {
+  const next = aList.value.slice()
+  for (const ch of wfDlgTargets()) next[ch] = aValue
+  aList.value = next
+}
 const wfDlgScale = computed<WaveformScale>({
   get: () => wfScale(wfDlgChannel.value),
-  set: (v) => {
-    const a = waveformScales.value.slice()
-    a[wfDlgChannel.value] = v
-    waveformScales.value = a
-  },
+  set: (v) => wfDlgWrite(waveformScales, v),
 })
 const wfDlgColor = computed<string>({
   get: () => wfColor(wfDlgChannel.value),
-  set: (v) => {
-    const a = waveformColors.value.slice()
-    a[wfDlgChannel.value] = v
-    waveformColors.value = a
-  },
+  set: (v) => wfDlgWrite(waveformColors, v),
 })
 const wfDlgOpacity = computed<number>({
   get: () => wfOpacity(wfDlgChannel.value),
-  set: (v) => {
-    const a = waveformOpacities.value.slice()
-    a[wfDlgChannel.value] = v
-    waveformOpacities.value = a
-  },
+  set: (v) => wfDlgWrite(waveformOpacities, v),
 })
 const minimapMode = ref<MinimapMode>(
   MINIMAP_MODES.includes(wfPrefs.minimap as MinimapMode) ? (wfPrefs.minimap as MinimapMode) : 'spectrogram',
@@ -2212,7 +2287,7 @@ function onOverallChannelHide(kind: TrackKind, channel: number, ev: Event): void
   }
   hideTrack(kind, channel)
 }
-watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode], () => {
+watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode, waveformLinkChannels], () => {
   try {
     localStorage.setItem(
       STORAGE_TRACKS_WAVEFORM,
@@ -2222,6 +2297,7 @@ watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode]
         colors: waveformColors.value,
         opacities: waveformOpacities.value,
         minimap: minimapMode.value,
+        link: waveformLinkChannels.value, // WS1.1 (WS-D7)
       }),
     )
   } catch {
@@ -2893,6 +2969,36 @@ onBeforeUnmount(() => {
 
 .audio-page__minimap-dialog {
   min-width: 300px;
+}
+
+/* WS1.1 (WS-D2): the two-pane waveform settings dialog — same shape as the GT10.29 settings dialog
+   (AudioPage.vue:1948-1975), sized for its three short scope items: body scrolls, header (X) and
+   footer (Close) stay put. */
+.tracks-panel__wf-settings {
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  max-width: 560px;
+  width: 92vw;
+}
+.tracks-panel__wf-settings-body {
+  min-height: 220px;
+  overflow: hidden;
+}
+.tracks-panel__wf-settings-nav {
+  flex: 0 0 160px;
+  overflow: auto;
+  padding: 4px 0;
+}
+.tracks-panel__wf-settings-nav--active {
+  background: rgba(25, 118, 210, 0.12);
+  color: var(--q-primary);
+  font-weight: 600;
+}
+.tracks-panel__wf-settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
 }
 
 /* SF22: waveform tracks above the spectrogram. */
