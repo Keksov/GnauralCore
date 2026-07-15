@@ -125,10 +125,12 @@ import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
 import {
+  axisWithRange,
   gtrackAxis,
   pointValue,
   unitToValue,
   valueToUnit,
+  zoomAxisRange,
   type GTrackMode,
 } from '../composables/gtrack-render'
 import { formatTimeSec, timeAxisTicksWithMinor } from '../composables/spectrogram-axes'
@@ -294,7 +296,13 @@ const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 // GT10.34-followup: the freq axes gain headroom so a vertex can be dragged past the current data
 // range (otherwise the max/min point sits on the edge and clamps to itself). Active in point-edit
 // mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
-const axis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand))
+const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand))
+
+// GT11.13 (owner 2026-07-15): a MANUAL value-axis range set by Alt+wheel, overriding the auto-fit
+// above. null = auto (the default). Per-lane and in-memory: it is a view control, so it resets when
+// the lane unmounts (e.g. leaving the Треки tab), like any other transient zoom.
+const yZoom = ref<{ min: number; max: number } | null>(null)
+const axis = computed(() => (yZoom.value === null ? autoAxis.value : axisWithRange(autoAxis.value, yZoom.value.min, yZoom.value.max)))
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
 const view = computed<TimeWindow>({
@@ -580,9 +588,28 @@ function xFraction(aEvent: { offsetX: number }): number | null {
 
 function onWheel(aEvent: WheelEvent): void {
   if (!hasData.value) return
+  const zoomIn = aEvent.deltaY < 0
+  // GT11.13 (owner 2026-07-15): Alt+wheel zooms the VALUE (Y) axis instead of time, anchored on the
+  // value under the cursor. Zooming back OUT to (or past) the auto-fit range snaps to auto — that is
+  // the way back, so no extra control is needed.
+  if (aEvent.altKey) {
+    const rect = plotRect()
+    if (rect === null) return
+    const focusUnit = yToValueUnit(rect.plotY, rect.plotH, aEvent.offsetY)
+    const next = zoomAxisRange(axis.value, zoomIn ? 0.8 : 1.25, focusUnit)
+    const auto = autoAxis.value
+    if (next.min <= auto.min && next.max >= auto.max) {
+      yZoom.value = null
+    } else {
+      // A log axis (base freq) must stay positive — match gtrackAxis's >= 1 Hz floor.
+      const min = axis.value.scale === 'log' ? Math.max(1, next.min) : next.min
+      if (next.max > min) yZoom.value = { min, max: next.max }
+    }
+    scheduleDraw()
+    return
+  }
   const f = xFraction(aEvent)
   const anchor = f ?? 0.5
-  const zoomIn = aEvent.deltaY < 0
   if (aEvent.shiftKey) {
     const width = view.value.endSec - view.value.startSec
     view.value = panWindow(view.value, (zoomIn ? -1 : 1) * 0.15 * width, props.durationSec)
@@ -1168,17 +1195,23 @@ onBeforeUnmount(() => {
   row-gap: 1px;
 }
 
-/* TT2.3 follow-up (owner 2026-07-15): the labels were #94a3b8, a slate grey picked back when this
-   tooltip had its own near-black box. AppTooltip's shared box is Quasar's $grey-7, against which that
-   hex sank to ~2.4:1 contrast. Dim the INHERITED tooltip colour instead of naming a new one: it
-   tracks the shared palette, so it cannot rot again if the tooltip theme changes, and it keeps the
-   label/value hierarchy while landing near 4.5:1. */
+/* TT2.3 follow-up (owner 2026-07-15 — grey box stays): the label/value split must NOT be paid for in
+   luminance. On AppTooltip's shared $grey-7 box there is only ~6:1 of range in total and readability
+   needs nearly all of it, so anything dim enough to read as "secondary" also reads as unreadable.
+   Both earlier attempts died exactly there: #94a3b8 (a hex inherited from this tooltip's old
+   near-black plate) at 2.4:1 — unreadable; then opacity .8 at 4.5:1 — legible, but no longer told
+   labels from numbers.
+   So separate them on axes that cost no contrast — weight and digit treatment — and spend luminance
+   only on staying readable. Labels ~4.8:1 (AA at this size), values the full 5.9:1 and visibly
+   heavier. tabular-nums also stops the value column jittering as digits change under the cursor. */
 .gtrack-view__tooltip-label {
-  opacity: 0.8;
+  opacity: 0.85;
   text-align: left;
 }
 
 .gtrack-view__tooltip-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   text-align: left;
 }
 </style>
