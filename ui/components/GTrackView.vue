@@ -7,10 +7,8 @@
       :aria-label="t('audio.gtrackCanvasLabel')"
       :class="{
         'gtrack-view__canvas--seekable': seekable || pointMode,
-        'gtrack-view__canvas--point': pointMode && pointTool === 'select' && hoverPoint !== null,
-        'gtrack-view__canvas--add': pointMode && pointTool === 'add',
-        'gtrack-view__canvas--delete': pointMode && pointTool === 'delete',
-        'gtrack-view__canvas--beat-edge': pointMode && pointTool === 'select' && hoverEdge !== null,
+        'gtrack-view__canvas--point': pointMode && hoverPoint !== null,
+        'gtrack-view__canvas--beat-edge': pointMode && hoverEdge !== null,
       }"
       @wheel.prevent="onWheel"
       @click="onClick"
@@ -180,8 +178,6 @@ interface Props {
   pointMode?: boolean
   /** GT3.1: the currently-selected vertex in THIS lane (null = none). */
   selection?: GTrackPointRef | null
-  /** GT3.14: the active point-mode cursor tool (Select/Add/Delete), shared across all lanes. */
-  pointTool?: 'select' | 'add' | 'delete'
   /** GT3.15: Ctrl/Shift-accumulated multi-selection, keyed "voiceId:pointIndex" (shared, spans lanes). */
   multiSelected?: ReadonlySet<string> | null
   /** GT3.18 (GT-D20): per-voice accent colour for single-voice lanes — a left stripe + tinted title
@@ -207,7 +203,6 @@ const props = withDefaults(defineProps<Props>(), {
   showTimeAxisBottom: false,
   pointMode: false,
   selection: null,
-  pointTool: 'select',
   multiSelected: null,
   accentColor: null,
   inlineUnderlay: false,
@@ -235,8 +230,6 @@ const emit = defineEmits<{
   (event: 'drag-end'): void
   /** GT3.3: double-click on a vertex — open the point parameters dialog. */
   (event: 'edit-point', point: GTrackPointRef): void
-  /** GT3.14: a click with the Delete tool active hit this vertex. */
-  (event: 'delete-point-at', point: GTrackPointRef): void
   /** GT3.6: double-click on a curve — add an interpolated point there. */
   (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
   /** GT3.15: Ctrl/Shift+click on a vertex — toggle it in the multi-selection. */
@@ -763,29 +756,26 @@ function onPointerDown(aEvent: PointerEvent): void {
     return
   }
 
-  // GT3.14 (owner req. 24): the Add/Delete tools act on a single click and skip select+drag.
-  if (props.pointTool === 'add') {
-    const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
-    if (curve !== null) emit('add-point', curve)
-    return
-  }
-  if (props.pointTool === 'delete') {
-    const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-    if (hit !== null) emit('delete-point-at', hit)
-    return
-  }
-
+  // GT11.14 (owner 2026-07-15): the Select/Add/Delete tools are gone — point mode always behaves as
+  // Select (a plain drag moves a vertex). Add/Delete live on their keyboard/mouse gestures instead.
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
 
   // GT3.15 (owner req. 30): Ctrl/Shift+click on a vertex accumulates the multi-selection instead
-  // of selecting/dragging (a modifier-click on empty space is a no-op — nothing to add).
+  // of selecting/dragging.
   if ((aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) && hit !== null) {
     emit('toggle-multi-select', hit)
     return
   }
 
   if (hit === null) {
-    // GT11.4: a plain drag of a beat-band edge (in select mode) resizes the beat, before deselecting.
+    // GT11.14: Ctrl+click on a CURVE adds a node — now in point mode too, not just normal mode
+    // (GT10.10), so dropping the Add tool costs no workflow. A modifier-click never deselects.
+    if (aEvent.ctrlKey || aEvent.metaKey) {
+      const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
+      if (curve !== null) emit('add-point', curve)
+      return
+    }
+    // GT11.4: a plain drag of a beat-band edge resizes the beat, before deselecting.
     const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
     if (beatEdge !== null) {
       beginBeatEdgeDrag(aEvent, beatEdge)
@@ -1088,15 +1078,6 @@ onBeforeUnmount(() => {
    covered it). */
 .gtrack-view__canvas--point {
   cursor: pointer;
-}
-
-/* GT3.14: Add/Delete point-mode tools. */
-.gtrack-view__canvas--add {
-  cursor: copy;
-}
-
-.gtrack-view__canvas--delete {
-  cursor: no-drop;
 }
 
 /* GT11.4: over a draggable beat-band edge (base ± beat/2) in Base mode — vertical resize. */

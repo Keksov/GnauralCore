@@ -81,14 +81,6 @@ export interface GTrackAddPoint {
   readonly timeSec: number
 }
 
-/**
- * GT3.14 (owner req. 24): the active point-mode cursor tool. 'select' is the normal
- * select+drag behaviour (a motionless click on a vertex opens its dialog — GT10.25); 'add' inserts a
- * point on every click on a curve; 'delete' removes a point on every click on a vertex. One global
- * tool, shared across all lanes.
- */
-export type GTrackPointTool = 'select' | 'add' | 'delete'
-
 export interface ResolvedGTrackLane {
   readonly id: number
   readonly mode: GTrackMode
@@ -905,24 +897,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     try { localStorage.setItem(STORAGE_POINT_AUTOSAVE_KEY, v ? '1' : '0') } catch { /* ignore */ }
   }
 
-  // GT3.14 (owner req. 24): the active point-mode cursor tool (Select/Add/Delete). One global
-  // tool applies across every lane; persisted editor property, same pattern as pointDragMode.
-  const STORAGE_POINT_TOOL_KEY = 'mindwave-gtrack-point-tool'
-  function loadPointTool(): GTrackPointTool {
-    try {
-      const v = localStorage.getItem(STORAGE_POINT_TOOL_KEY)
-      return v === 'add' || v === 'delete' ? v : 'select'
-    } catch {
-      return 'select'
-    }
-  }
-  const pointTool = ref<GTrackPointTool>(loadPointTool())
-  function setPointTool(toolValue: GTrackPointTool): void {
-    pointTool.value = toolValue
-    try { localStorage.setItem(STORAGE_POINT_TOOL_KEY, toolValue) } catch { /* ignore */ }
-  }
+  // GT11.14 (owner 2026-07-15): the point-tool state (Select/Add/Delete + its persisted
+  // 'mindwave-gtrack-point-tool' key) was REMOVED — the tools duplicated existing gestures, and a
+  // tool persisted as 'add' silently disabled vertex dragging across restarts (GT11.12).
   /**
-   * GT3.14: delete a point by direct reference (Delete-tool single click). Does NOT touch the
+   * GT3.14: delete a point by direct reference. Does NOT touch the
    * global selection unless it already pointed at this exact vertex — so using the Delete tool
    * doesn't hijack an unrelated point that's currently selected/inspected elsewhere.
    */
@@ -1173,8 +1152,6 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setPointDragMode,
     pointAutosave,
     setPointAutosave,
-    pointTool,
-    setPointTool,
     deletePointAt,
     multiSelection,
     isMultiSelected,

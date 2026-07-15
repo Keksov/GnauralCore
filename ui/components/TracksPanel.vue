@@ -105,37 +105,9 @@
           >
             <q-tooltip>{{ gtracks.dirty.value ? t('audio.gtrackSaveDirty') : t('audio.gtrackSave') }}</q-tooltip>
           </q-btn>
-          <!-- GT3.14: point-mode tool switcher (owner req. 24) — Select (default) / Add / Delete.
-               One global tool, applies in every lane currently in point mode. -->
-          <template v-if="audio.displayMode === 'gnaural'">
-            <q-btn
-              dense flat round size="sm"
-              icon="near_me"
-              :color="gtracks.pointTool.value === 'select' ? 'primary' : undefined"
-              :aria-label="t('audio.gtrackToolSelect')"
-              @click="gtracks.setPointTool('select')"
-            >
-              <q-tooltip>{{ t('audio.gtrackToolSelect') }}</q-tooltip>
-            </q-btn>
-            <q-btn
-              dense flat round size="sm"
-              icon="add_circle"
-              :color="gtracks.pointTool.value === 'add' ? 'primary' : undefined"
-              :aria-label="t('audio.gtrackToolAdd')"
-              @click="gtracks.setPointTool('add')"
-            >
-              <q-tooltip>{{ t('audio.gtrackToolAdd') }}</q-tooltip>
-            </q-btn>
-            <q-btn
-              dense flat round size="sm"
-              icon="remove_circle"
-              :color="gtracks.pointTool.value === 'delete' ? 'primary' : undefined"
-              :aria-label="t('audio.gtrackToolDelete')"
-              @click="gtracks.setPointTool('delete')"
-            >
-              <q-tooltip>{{ t('audio.gtrackToolDelete') }}</q-tooltip>
-            </q-btn>
-          </template>
+          <!-- GT11.14 (owner 2026-07-15): the Select/Add/Delete tool switcher was REMOVED — it
+               duplicated gestures already available: Select = the default (plain drag moves a vertex),
+               Add = Ctrl+click a curve, Delete = the Delete/Backspace hotkey on the selection. -->
           <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
           <q-btn
             dense flat round size="sm"
@@ -262,7 +234,6 @@
                 :show-time-axis-bottom="false"
                 :point-mode="gtracks.isLanePointMode(lane.id)"
                 :selection="gtracks.selectionForLane(lane.id)"
-                :point-tool="gtracks.pointTool.value"
                 :multi-selected="gtracks.multiSelection.value"
                 :accent-color="laneAccentColor(lane)"
                 :muted="laneMuted(lane)"
@@ -285,7 +256,6 @@
                 @drag-cancel="gtracks.cancelPointDrag()"
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
                 @add-point="(e: GTrackAddPoint) => onAddPoint(lane.id, e)"
-                @delete-point-at="(p: GTrackPointRef) => gtracks.deletePointAt(lane.id, p)"
                 @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
               />
             </div>
