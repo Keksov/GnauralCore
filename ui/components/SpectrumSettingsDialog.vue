@@ -11,26 +11,46 @@
     icon="tune"
     :allow-detach="false"
   >
+    <!-- SS2.3 (SS-D6 rev. 2, owner 2026-07-16): presets are no longer a block in the body — a
+         title-bar icon opens them as a separate modal dialog. -->
+    <template #titlebar-actions>
+      <q-btn
+        flat dense round size="sm"
+        icon="bookmarks"
+        :color="presetsOpen ? 'primary' : undefined"
+        :aria-label="t('audio.spectrogramPresets')"
+        @click="openPresets"
+      >
+        <app-tooltip>{{ t('audio.spectrogramPresets') }}</app-tooltip>
+      </q-btn>
+    </template>
+
     <div class="spectrum-settings-dialog__body">
       <SpectrogramSettingsPanel />
     </div>
 
-    <!-- SS2.1 (SS-D6, owner req 5): «Сброс» sits «сам по себе» in the window footer — NOT inside the
-         «Пресеты» block, so collapsing that block in the accordion never hides Reset. It stays out of
-         the scrolling body, always visible. -->
+    <!-- SS2.1 (SS-D6, owner req 5): «Сброс» sits «сам по себе» in the window footer — NOT inside a
+         block, so collapsing every accordion block never hides Reset. It stays out of the scrolling
+         body, always visible. -->
     <template #footer>
       <div class="spectrum-settings-dialog__footer">
         <q-btn flat dense no-caps :label="t('audio.spectrogramReset')" icon="restart_alt" @click="store.reset()" />
       </div>
     </template>
+
+    <!-- The presets modal (teleported to body by q-dialog). Mounted lazily on first open so the
+         preset manager it pulls in stays out of the eager AudioPage chunk (as it was when the panel
+         itself carried the presets). Once mounted it stays, so the close animation is preserved. -->
+    <SpectrogramPresetsDialog v-if="presetsEverOpened" v-model="presetsOpen" />
   </PanelWindow>
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, defineComponent, h } from 'vue'
+import { defineAsyncComponent, defineComponent, h, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { QSpinnerHourglass } from 'quasar'
 import PanelWindow from '@panel/PanelWindow.vue'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
@@ -61,6 +81,16 @@ const SpectrogramSettingsPanel = defineAsyncComponent({
 const { t } = useI18n()
 const panel = useSpectrumSettingsPanelState()
 const store = useSpectrogramStore()
+
+// The presets dialog (+ its manager) is only needed once the user asks for it — keep it lazy and
+// out of the eager AudioPage chunk until first open.
+const SpectrogramPresetsDialog = defineAsyncComponent(() => import('./SpectrogramPresetsDialog.vue'))
+const presetsOpen = ref(false)
+const presetsEverOpened = ref(false)
+function openPresets(): void {
+  presetsEverOpened.value = true
+  presetsOpen.value = true
+}
 </script>
 
 <style scoped>

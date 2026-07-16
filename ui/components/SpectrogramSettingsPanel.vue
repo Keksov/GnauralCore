@@ -19,16 +19,14 @@
         @update:model-value="(v: boolean) => setOpen(block.key, v)"
       >
         <div class="spectrogram-settings__acc-body">
-          <spectrogram-settings-presets v-if="block.kind === 'presets'" />
-          <spectrogram-settings-fields v-else :fields="block.fields!" />
+          <spectrogram-settings-fields :fields="block.fields" />
         </div>
       </q-expansion-item>
 
       <!-- Tiles: a non-collapsing titled card; the CSS grid packs two+ across (SS-D4). -->
       <section v-else class="spectrogram-settings__block spectrogram-settings__tile">
         <div class="spectrogram-settings__title">{{ block.title }}</div>
-        <spectrogram-settings-presets v-if="block.kind === 'presets'" />
-        <spectrogram-settings-fields v-else :fields="block.fields!" />
+        <spectrogram-settings-fields :fields="block.fields" />
       </section>
     </template>
   </div>
@@ -39,7 +37,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import SpectrogramSettingsFields from './SpectrogramSettingsFields.vue'
-import SpectrogramSettingsPresets from './SpectrogramSettingsPresets.vue'
 import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
@@ -136,17 +133,9 @@ const groups = computed<Group[]>(() => [
   },
 ])
 
-// SS-D6: «Пресеты» is block #1, then the four parameter groups. `kind` selects the block body.
-interface Block {
-  readonly key: string
-  readonly title: string
-  readonly kind: 'presets' | 'fields'
-  readonly fields?: Field[]
-}
-const blocks = computed<Block[]>(() => [
-  { key: 'presets', title: t('audio.spectrogramPresets'), kind: 'presets' },
-  ...groups.value.map((g): Block => ({ key: g.key, title: g.title, kind: 'fields', fields: g.fields })),
-])
+// SS-D6 rev. 2 (owner 2026-07-16): presets are NOT a block — they moved to a title-bar modal
+// (SpectrogramPresetsDialog). The blocks are exactly the four parameter groups.
+const blocks = computed<Group[]>(() => groups.value)
 
 // ---- Layout: tiles vs accordion, driven by the panel's own width (SS-D4) --------------------------
 const rootEl = ref<HTMLElement | null>(null)
@@ -187,8 +176,8 @@ function loadOpenSet(): Set<string> {
   } catch {
     // best-effort, like the @panel state persistence
   }
-  // Default: the first block open (SS-D5).
-  return new Set(['presets'])
+  // Default: the first block open (SS-D5). After SS-D6 rev. 2 the first block is «Масштаб».
+  return new Set(['scale'])
 }
 const openSet = ref<Set<string>>(loadOpenSet())
 
