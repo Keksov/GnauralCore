@@ -474,7 +474,7 @@
             <q-btn
               dense flat round size="xs"
               class="tracks-panel__gtrack-header-gear"
-              icon="tune"
+              icon="settings"
               :color="spectrumSettingsPanel.open ? 'primary' : undefined"
               :aria-label="t('audio.spectrogramSettingsTitle')"
               @click="spectrumSettingsPanel.open = !spectrumSettingsPanel.open"

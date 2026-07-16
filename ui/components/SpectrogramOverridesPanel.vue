@@ -8,14 +8,6 @@
        the IN-WINDOW adapter (dock/float); the detached child reuses the same view via a remote. -->
   <div class="spectrum-overrides">
     <div class="spectrum-overrides__bar">
-      <q-btn-toggle
-        :model-value="scope"
-        dense no-caps unelevated
-        toggle-color="primary"
-        :options="scopeOptions"
-        @update:model-value="onScopeChange"
-      />
-      <q-space />
       <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
         <q-list dense style="min-width: 200px">
           <q-item
@@ -32,6 +24,15 @@
           </q-item>
         </q-list>
       </q-btn-dropdown>
+      <q-space />
+      <!-- Scope «закладки» on the RIGHT, named like the overall-waveform settings form (owner). -->
+      <q-btn-toggle
+        :model-value="scope"
+        dense no-caps unelevated
+        toggle-color="primary"
+        :options="scopeOptions"
+        @update:model-value="onScopeChange"
+      />
     </div>
 
     <div class="spectrum-overrides__scope-row">
@@ -78,10 +79,11 @@ const store = useSpectrogramStore()
 const overrides = useOverallSpectrumOverridesStore()
 
 const scope = ref<Scope>('both')
+// Named like the overall-waveform settings form (owner): «Оба канала» / «Левый» / «Правый».
 const scopeOptions = computed(() => [
-  { label: t('audio.spectrumScopeBoth'), value: 'both' as const },
-  { label: t('audio.spectrumScopeLeft'), value: 0 as const },
-  { label: t('audio.spectrumScopeRight'), value: 1 as const },
+  { label: t('audio.waveformChannelsBoth'), value: 'both' as const },
+  { label: t('audio.waveformChannelsLeft'), value: 0 as const },
+  { label: t('audio.waveformChannelsRight'), value: 1 as const },
 ])
 
 // The channel(s) the active scope touches: «Оба» = both, else the one channel.
