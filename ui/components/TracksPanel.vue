@@ -119,17 +119,6 @@
                duplicated gestures already available: Select = the default (plain drag moves a vertex),
                Add = Ctrl+click a curve, Delete = the Delete/Backspace hotkey on the selection. -->
           <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
-          <!-- SS1.1 (SS-D1): the button stays here (SF-D5), but now toggles the shared @panel state
-               of the «Параметры» PanelWindow, which AudioPage hosts. usePanelWindowState is a
-               module-level singleton, so this reaches the same object with no props. -->
-          <q-btn
-            dense flat round size="sm"
-            icon="tune"
-            :color="spectrumSettingsPanel.open ? 'primary' : undefined"
-            :aria-label="t('audio.spectrogramSettingsTitle')"
-            :aria-expanded="spectrumSettingsPanel.open"
-            @click="spectrumSettingsPanel.open = !spectrumSettingsPanel.open"
-          />
           <!-- PW5.3: «Список треков» toggle — RIGHTMOST in the toolbar, always visible (incl. wav/flac). -->
           <q-btn
             dense flat round size="sm"
@@ -1165,7 +1154,6 @@ import GTrackView from './GTrackView.vue'
 import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
-import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
@@ -2607,13 +2595,6 @@ function spectrogramZoomOut(): void {
 function spectrogramFit(): void {
   spectrogramShared.view.value = fullWindow(spectrogramDuration.value)
 }
-
-// SS1.1 (SS-D1): «Параметры» is no longer a local overlay ref (SF3.1) — it is a PanelWindow hosted
-// by AudioPage. This is the SHARED window state (a module-level singleton, not Pinia), which is why
-// the toolbar button here and the host there need no plumbing between them. Escape no longer closes
-// it and it no longer counts as an overlay: a docked/floating panel owns its own chrome and
-// positioning — the same conclusion PW5.2 reached for «Список треков».
-const spectrumSettingsPanel = useSpectrumSettingsPanelState()
 
 // SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
