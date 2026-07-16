@@ -7,26 +7,35 @@
        not here. -->
   <div ref="rootEl" class="spectrogram-settings" :class="`spectrogram-settings--${layout}`">
     <template v-for="block in blocks" :key="block.key">
-      <!-- Accordion: a collapsible q-expansion-item per block (SS-D5, modelled on
-           GTrackSpectrumSettings). Independent v-model per block -> several can be open at once. -->
+      <!-- Accordion: a collapsible card per block (SS-D5). The header (title + chevron) gets a
+           horizontal rule under it WHEN OPEN (matching the tile header); collapsed blocks show just
+           the title + chevron. Independent v-model -> several open at once. -->
       <q-expansion-item
         v-if="layout === 'accordion'"
         :model-value="openSet.has(block.key)"
         :label="block.title"
         dense
-        header-class="spectrogram-settings__acc-header"
-        class="spectrogram-settings__block spectrogram-settings__acc"
+        :header-class="openSet.has(block.key)
+          ? 'spectrogram-settings__block-header spectrogram-settings__block-header--ruled'
+          : 'spectrogram-settings__block-header'"
+        class="spectrogram-settings__card"
         @update:model-value="(v: boolean) => setOpen(block.key, v)"
       >
-        <div class="spectrogram-settings__acc-body">
+        <div class="spectrogram-settings__card-body">
           <spectrogram-settings-fields :fields="block.fields" />
         </div>
       </q-expansion-item>
 
-      <!-- Tiles: a non-collapsing titled card; the CSS grid packs two+ across (SS-D4). -->
-      <section v-else class="spectrogram-settings__block spectrogram-settings__tile">
-        <div class="spectrogram-settings__title">{{ block.title }}</div>
-        <spectrogram-settings-fields :fields="block.fields" />
+      <!-- Tiles (window mode): the SAME card, but static — the title reads like the accordion header
+           (uppercase + a horizontal rule under it) WITHOUT the collapse chevron (SS2.8). Each card
+           carries its own 1px border so masonry has no ragged seams (SS2.8); no gap between cards. -->
+      <section v-else class="spectrogram-settings__card">
+        <div class="spectrogram-settings__block-header spectrogram-settings__block-header--ruled spectrogram-settings__block-header--static">
+          {{ block.title }}
+        </div>
+        <div class="spectrogram-settings__card-body">
+          <spectrogram-settings-fields :fields="block.fields" />
+        </div>
       </section>
     </template>
   </div>
@@ -211,60 +220,61 @@ watch(openSet, (v) => {
   flex-direction: column;
 }
 
-/* SS2.7 (owner: unequal-height blocks left big empty cells in a regular grid — a short block was
-   stretched to its tall row-mate). Tiles are now MASONRY via CSS multicol: blocks flow into balanced
-   columns by their NATURAL height, so nothing stretches and no empty space is left. Still one frame,
-   flush (SS2.6): the container draws the outer border, each block its right+bottom, so touching
-   blocks share a single line (ragged where heights differ — inherent to masonry). column-width ==
-   SPECTRUM_BLOCK_MIN_PX so the column count matches the tiles threshold; column-gap 0 = no gaps. */
+/* SS2.7 (owner): unequal-height blocks left big empty cells in a regular grid, so tiles are MASONRY
+   via CSS multicol — blocks pack into balanced columns by natural height, no empty space.
+   SS2.8 (owner): each block is a self-contained 1px-bordered CARD, so masonry has no ragged seams;
+   no gap between cards. column-width == SPECTRUM_BLOCK_MIN_PX so the column count matches the tiles
+   threshold. display:block (not the base flex) is required for multicol to apply. */
 .spectrogram-settings--tiles {
-  /* display:block (not the base flex) so CSS multicol actually applies. */
   display: block;
   column-width: 280px;
   column-gap: 0;
-  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
-.spectrogram-settings__tile {
-  break-inside: avoid;
-  border-right: 1px solid rgba(148, 163, 184, 0.18);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+/* Accordion: single-column stack of the same cards (each collapsible). */
+.spectrogram-settings--accordion {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 10px;
 }
 
-.spectrogram-settings__title {
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.7;
-  text-transform: uppercase;
-}
-
-/* Accordion: the same idea vertically — one frame, a single shared divider between stacked blocks
-   (the last one drops its divider so it doesn't double the frame's bottom). */
-.spectrogram-settings--accordion {
-  /* SS2.6: square frame flush with the window edges (no radius). */
+/* SS2.8: one card style for both modes — own 1px border, no radius (flush, square), no gap. Adjacent
+   cards touch (a 2px seam); masonry stays clean because every card is a complete rectangle. */
+.spectrogram-settings__card {
+  break-inside: avoid;
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
-.spectrogram-settings__acc {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.spectrogram-settings__acc:last-child {
-  border-bottom: none;
-}
-
-.spectrogram-settings__acc :deep(.spectrogram-settings__acc-header) {
+/* SS2.8: the block header — uppercase title. `--ruled` adds the horizontal line under it (shown
+   always in tiles; only when open in the accordion). `--static` is the tile header (a plain div, so
+   it needs its own padding; the accordion header is a q-item that brings its own). */
+.spectrogram-settings__block-header {
   font-size: 12px;
   font-weight: 600;
   opacity: 0.8;
   text-transform: uppercase;
 }
 
-.spectrogram-settings__acc-body {
-  padding: 2px 12px 10px;
+.spectrogram-settings__block-header--static {
+  padding: 7px 12px;
+}
+
+.spectrogram-settings__block-header--ruled {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+/* The accordion header is rendered by q-expansion-item, so reach it through :deep. */
+.spectrogram-settings__card :deep(.spectrogram-settings__block-header) {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+
+.spectrogram-settings__card :deep(.spectrogram-settings__block-header--ruled) {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.spectrogram-settings__card-body {
+  padding: 8px 12px 10px;
 }
 </style>
