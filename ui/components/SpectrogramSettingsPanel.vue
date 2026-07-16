@@ -1,120 +1,45 @@
 <template>
-  <div class="spectrogram-settings">
-    <div class="spectrogram-settings__presets">
-      <!-- SF18: quick-apply dropdown (active ✓ + "modified" *) + Save as… / Manage…. -->
-      <q-btn-dropdown dense flat no-caps icon="tune" :label="presetLabel" class="spectrogram-settings__field">
-        <q-list dense style="min-width: 220px">
-          <q-item
-            v-for="p in store.allPresets"
-            :key="p.id"
-            clickable
-            v-close-popup
-            @click="store.applyPresetById(p.id)"
-          >
-            <q-item-section avatar style="min-width: 26px">
-              <q-icon v-if="p.id === store.activePresetId" name="check" size="18px" />
-            </q-item-section>
-            <q-item-section>{{ p.name }}</q-item-section>
-            <q-item-section side v-if="p.builtin">
-              <q-badge outline color="grey">{{ t('audio.spectrogramPresetBuiltinTag') }}</q-badge>
-            </q-item-section>
-          </q-item>
-          <q-separator />
-          <q-item clickable v-close-popup @click="onSaveAs">
-            <q-item-section avatar style="min-width: 26px"><q-icon name="save" size="18px" /></q-item-section>
-            <q-item-section>{{ t('audio.spectrogramPresetSaveAs') }}</q-item-section>
-          </q-item>
-          <q-item clickable v-close-popup @click="managerOpen = true">
-            <q-item-section avatar style="min-width: 26px"><q-icon name="settings" size="18px" /></q-item-section>
-            <q-item-section>{{ t('audio.spectrogramPresetManage') }}</q-item-section>
-          </q-item>
-        </q-list>
-      </q-btn-dropdown>
-      <spectrogram-preset-manager v-model="managerOpen" />
-    </div>
-
-    <!-- SF13.1: Audacity-style groups (Масштаб / Цвет / FFT-фильтр). -->
-    <div v-for="group in groups" :key="group.key" class="spectrogram-settings__group">
-      <div class="spectrogram-settings__title">{{ group.title }}</div>
-
-      <div v-for="field in group.fields" :key="field.key" class="spectrogram-settings__field">
-        <div class="spectrogram-settings__label-row">
-          <span class="spectrogram-settings__label">{{ field.label }}</span>
-          <!-- SF13.3: per-parameter help. -->
-          <q-icon
-            name="help_outline"
-            size="15px"
-            class="spectrogram-settings__help"
-            :aria-label="t('audio.spectrogramHelpFor', { field: field.label })"
-            tabindex="0"
-          >
-            <q-menu anchor="bottom right" self="top right" max-width="280px">
-              <div class="spectrogram-settings__help-text">{{ field.help }}</div>
-            </q-menu>
-          </q-icon>
+  <!-- SS2.1 (SS-D5/SS-D6, owner req 2-4): each parameter group is a BLOCK. «Пресеты» is block #1.
+       When two blocks fit side by side (content width >= threshold) the blocks are TILES; otherwise
+       the panel is a single-column ACCORDION (multi-open, remembered). The layout switch is
+       structural (accordion collapses, tiles don't), so it can't be pure CSS — a ResizeObserver on
+       the panel root drives it (SS-D4). «Сброс» lives in the window footer (SpectrumSettingsDialog),
+       not here. -->
+  <div ref="rootEl" class="spectrogram-settings" :class="`spectrogram-settings--${layout}`">
+    <template v-for="block in blocks" :key="block.key">
+      <!-- Accordion: a collapsible q-expansion-item per block (SS-D5, modelled on
+           GTrackSpectrumSettings). Independent v-model per block -> several can be open at once. -->
+      <q-expansion-item
+        v-if="layout === 'accordion'"
+        :model-value="openSet.has(block.key)"
+        :label="block.title"
+        dense
+        header-class="spectrogram-settings__acc-header"
+        class="spectrogram-settings__block spectrogram-settings__acc"
+        @update:model-value="(v: boolean) => setOpen(block.key, v)"
+      >
+        <div class="spectrogram-settings__acc-body">
+          <spectrogram-settings-presets v-if="block.kind === 'presets'" />
+          <spectrogram-settings-fields v-else :fields="block.fields!" />
         </div>
+      </q-expansion-item>
 
-        <q-select
-          v-if="field.kind === 'select'"
-          v-model="sVal[field.key]"
-          :options="field.options"
-          dense outlined emit-value map-options
-          class="spectrogram-settings__control"
-        />
-        <q-input
-          v-else-if="field.kind === 'number'"
-          v-model.number="sNum[field.key]"
-          type="number"
-          dense outlined
-          class="spectrogram-settings__control"
-        />
-        <!-- SF16.1: numeric spinbox with -/+ steppers for the render dials. -->
-        <q-input
-          v-else-if="field.kind === 'spin'"
-          v-model.number="sNum[field.key]"
-          type="number"
-          :min="field.spin!.min"
-          :max="field.spin!.max"
-          :step="field.spin!.step"
-          dense outlined
-          class="spectrogram-settings__control"
-          @blur="clampField(field)"
-        >
-          <template #prepend>
-            <q-btn dense flat round size="sm" icon="remove" :aria-label="'−'" @click="stepField(field, -1)" />
-          </template>
-          <template #append>
-            <q-btn dense flat round size="sm" icon="add" :aria-label="'+'" @click="stepField(field, 1)" />
-          </template>
-        </q-input>
-        <template v-else>
-          <div class="spectrogram-settings__slider-value text-grey-7">
-            {{ Number(sNum[field.key]).toFixed(field.slider!.decimals) }}
-          </div>
-          <q-slider
-            v-model="sNum[field.key]"
-            :min="field.slider!.min"
-            :max="field.slider!.max"
-            :step="field.slider!.step"
-            dense
-          />
-        </template>
-      </div>
-    </div>
-
-    <div class="spectrogram-settings__actions">
-      <q-btn flat dense no-caps :label="t('audio.spectrogramReset')" icon="restart_alt" @click="store.reset()" />
-    </div>
+      <!-- Tiles: a non-collapsing titled card; the CSS grid packs two+ across (SS-D4). -->
+      <section v-else class="spectrogram-settings__block spectrogram-settings__tile">
+        <div class="spectrogram-settings__title">{{ block.title }}</div>
+        <spectrogram-settings-presets v-if="block.kind === 'presets'" />
+        <spectrogram-settings-fields v-else :fields="block.fields!" />
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useQuasar } from 'quasar'
 
-import { useSpectrogramStore } from '../stores/spectrogram'
-import SpectrogramPresetManager from './SpectrogramPresetManager.vue'
+import SpectrogramSettingsFields from './SpectrogramSettingsFields.vue'
+import SpectrogramSettingsPresets from './SpectrogramSettingsPresets.vue'
 import {
   SPECTROGRAM_DATA_MODES,
   SPECTROGRAM_FSCALES,
@@ -125,77 +50,26 @@ import {
   SPECTROGRAM_WINDOW_SIZES,
   SPECTROGRAM_WIN_FUNCS,
   SPECTROGRAM_ZERO_PADDING,
-  type SpectrogramSettings,
 } from '../composables/spectrogram-settings'
+import {
+  layoutForWidth,
+  type Field,
+  type Group,
+  type SelectableKey,
+  type SliderSpec,
+  type SpectrumLayout,
+  type SpinSpec,
+} from '../composables/spectrogram-settings-fields'
 
 const { t } = useI18n()
-const $q = useQuasar()
-const store = useSpectrogramStore()
-const s = store.settings
-// Same reactive object, loosely typed for the data-driven v-models (the field kind
-// guarantees the runtime type; TS can't narrow s[field.key] from a dynamic key).
-const sNum = s as unknown as Record<string, number>
-const sVal = s as unknown as Record<string, string | number>
 
-// SF18: preset dropdown label = active preset name + "*" when settings diverge.
-const managerOpen = ref(false)
-const presetLabel = computed(() => {
-  const active = store.activePreset
-  if (active === null) return t('audio.spectrogramPresets')
-  return store.isModified ? `${active.name} *` : active.name
-})
-function onSaveAs(): void {
-  $q.dialog({
-    title: t('audio.spectrogramPresetSaveAs'),
-    message: t('audio.spectrogramPresetNamePrompt'),
-    prompt: { model: store.activePreset?.name ?? '', type: 'text' },
-    cancel: { label: t('audio.spectrogramPresetCancel'), flat: true },
-    ok: { label: t('audio.spectrogramPresetOk'), flat: true },
-    persistent: false,
-  }).onOk((aName: string) => {
-    if (aName.trim() !== '') store.saveAsPreset(aName)
-  })
-}
-
-type SelectableKey = keyof SpectrogramSettings
-
-interface SliderSpec {
-  readonly min: number
-  readonly max: number
-  readonly step: number
-  readonly decimals: number
-}
-
-// SF16.1: numeric spinbox spec (min/max/step + rounding decimals for the -/+ steppers).
-interface SpinSpec {
-  readonly min: number
-  readonly max: number
-  readonly step: number
-  readonly decimals: number
-}
-
-// SF13.2: enum -> localized option {label,value}. `optionsKey` is the i18n namespace
-// holding one label per enum value (e.g. audio.spectrogramWinFuncOpt.hann).
+// SF13.2: enum -> localized option {label,value}. `optionsKey` is the i18n namespace holding one
+// label per enum value (e.g. audio.spectrogramWinFuncOpt.hann).
 function enumOptions(aList: readonly string[], aOptionsKey: string): { label: string; value: string }[] {
   return aList.map((v) => ({ label: t(`audio.${aOptionsKey}.${v}`), value: v }))
 }
 function numberOptions(aList: readonly number[], aSuffix = ''): { label: string; value: number }[] {
   return aList.map((v) => ({ label: `${v}${aSuffix}`, value: v }))
-}
-
-interface Field {
-  readonly key: SelectableKey
-  readonly kind: 'select' | 'number' | 'slider' | 'spin'
-  readonly label: string
-  readonly help: string
-  readonly options?: { label: string; value: string | number }[]
-  readonly slider?: SliderSpec
-  readonly spin?: SpinSpec
-}
-interface Group {
-  readonly key: string
-  readonly title: string
-  readonly fields: Field[]
 }
 
 // helpers building a field with its localized label + help.
@@ -207,23 +81,6 @@ const sld = (key: SelectableKey, labelKey: string, slider: SliderSpec): Field =>
   ({ key, kind: 'slider', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), slider })
 const spn = (key: SelectableKey, labelKey: string, spin: SpinSpec): Field =>
   ({ key, kind: 'spin', label: t(`audio.${labelKey}`), help: t(`audio.${labelKey}Help`), spin })
-
-// SF16.1: -/+ stepper + clamp for spinbox fields (rounds to the spec step to avoid FP drift).
-function clamp(aValue: number, aSpec: SpinSpec): number {
-  const stepped = Math.round(aValue / aSpec.step) * aSpec.step
-  const bounded = Math.min(aSpec.max, Math.max(aSpec.min, stepped))
-  return Number(bounded.toFixed(aSpec.decimals))
-}
-function stepField(aField: Field, aDir: number): void {
-  const spec = aField.spin!
-  const cur = Number(sNum[aField.key])
-  sNum[aField.key] = clamp((Number.isFinite(cur) ? cur : 0) + aDir * spec.step, spec)
-}
-function clampField(aField: Field): void {
-  const spec = aField.spin!
-  const cur = Number(sNum[aField.key])
-  sNum[aField.key] = clamp(Number.isFinite(cur) ? cur : spec.min, spec)
-}
 
 // SF13.1 + SF13.2: grouped, localized (reactive to locale via t()).
 const groups = computed<Group[]>(() => [
@@ -278,6 +135,76 @@ const groups = computed<Group[]>(() => [
     ],
   },
 ])
+
+// SS-D6: «Пресеты» is block #1, then the four parameter groups. `kind` selects the block body.
+interface Block {
+  readonly key: string
+  readonly title: string
+  readonly kind: 'presets' | 'fields'
+  readonly fields?: Field[]
+}
+const blocks = computed<Block[]>(() => [
+  { key: 'presets', title: t('audio.spectrogramPresets'), kind: 'presets' },
+  ...groups.value.map((g): Block => ({ key: g.key, title: g.title, kind: 'fields', fields: g.fields })),
+])
+
+// ---- Layout: tiles vs accordion, driven by the panel's own width (SS-D4) --------------------------
+const rootEl = ref<HTMLElement | null>(null)
+// Default to accordion: it is the safe single-column layout, and it is what a fresh floating window
+// (minFloatW 460 < threshold) or a left/right dock (320) shows anyway.
+const layout = ref<SpectrumLayout>('accordion')
+let ro: ResizeObserver | null = null
+
+function measure(): void {
+  const el = rootEl.value
+  if (el === null) return
+  layout.value = layoutForWidth(el.clientWidth)
+}
+
+onMounted(() => {
+  measure()
+  // Guarded like every other ResizeObserver in this codebase; without it we stay in accordion.
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => measure())
+    if (rootEl.value !== null) ro.observe(rootEl.value)
+  }
+})
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
+})
+
+// ---- Accordion open-set (SS-D5): multi-open, persisted ------------------------------------------
+const OPEN_KEY = 'mindwave-panel-spectrum-settings-groups'
+
+function loadOpenSet(): Set<string> {
+  try {
+    const raw = localStorage.getItem(OPEN_KEY)
+    if (raw !== null) {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) return new Set(parsed.filter((k): k is string => typeof k === 'string'))
+    }
+  } catch {
+    // best-effort, like the @panel state persistence
+  }
+  // Default: the first block open (SS-D5).
+  return new Set(['presets'])
+}
+const openSet = ref<Set<string>>(loadOpenSet())
+
+function setOpen(aKey: string, aOpen: boolean): void {
+  const next = new Set(openSet.value)
+  if (aOpen) next.add(aKey)
+  else next.delete(aKey)
+  openSet.value = next
+}
+watch(openSet, (v) => {
+  try {
+    localStorage.setItem(OPEN_KEY, JSON.stringify([...v]))
+  } catch {
+    // best-effort
+  }
+}, { deep: true })
 </script>
 
 <style scoped>
@@ -287,10 +214,22 @@ const groups = computed<Group[]>(() => [
   gap: 14px;
 }
 
-.spectrogram-settings__group {
+/* SS-D4: tiles = a grid that packs two+ blocks across; align-items:start so unequal-height blocks
+   sit at their natural height instead of stretching (R2). minmax min == SPECTRUM_BLOCK_MIN_PX. */
+.spectrogram-settings--tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.spectrogram-settings__tile {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 12px;
 }
 
 .spectrogram-settings__title {
@@ -300,47 +239,20 @@ const groups = computed<Group[]>(() => [
   text-transform: uppercase;
 }
 
-.spectrogram-settings__field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* Accordion blocks read as a bordered stack (SS-D5). */
+.spectrogram-settings__acc {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
 }
 
-.spectrogram-settings__label-row {
-  align-items: center;
-  display: flex;
+.spectrogram-settings__acc :deep(.spectrogram-settings__acc-header) {
   font-size: 12px;
-  gap: 4px;
-  justify-content: space-between;
+  font-weight: 600;
+  opacity: 0.8;
+  text-transform: uppercase;
 }
 
-.spectrogram-settings__label {
-  min-width: 0;
-}
-
-.spectrogram-settings__help {
-  cursor: help;
-  flex: 0 0 auto;
-  opacity: 0.6;
-}
-
-.spectrogram-settings__help:hover {
-  opacity: 1;
-}
-
-.spectrogram-settings__help-text {
-  font-size: 12px;
-  line-height: 1.4;
-  padding: 10px 12px;
-}
-
-.spectrogram-settings__slider-value {
-  font-size: 12px;
-  text-align: right;
-}
-
-.spectrogram-settings__actions {
-  display: flex;
-  justify-content: flex-end;
+.spectrogram-settings__acc-body {
+  padding: 4px 12px 12px;
 }
 </style>

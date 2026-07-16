@@ -14,6 +14,15 @@
     <div class="spectrum-settings-dialog__body">
       <SpectrogramSettingsPanel />
     </div>
+
+    <!-- SS2.1 (SS-D6, owner req 5): «Сброс» sits «сам по себе» in the window footer — NOT inside the
+         «Пресеты» block, so collapsing that block in the accordion never hides Reset. It stays out of
+         the scrolling body, always visible. -->
+    <template #footer>
+      <div class="spectrum-settings-dialog__footer">
+        <q-btn flat dense no-caps :label="t('audio.spectrogramReset')" icon="restart_alt" @click="store.reset()" />
+      </div>
+    </template>
   </PanelWindow>
 </template>
 
@@ -23,6 +32,7 @@ import { useI18n } from 'vue-i18n'
 import { QSpinnerHourglass } from 'quasar'
 import PanelWindow from '@panel/PanelWindow.vue'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
+import { useSpectrogramStore } from '../stores/spectrogram'
 
 // SS-D3: detach is OFF until the SS3.x remote exists, and this prop is passed EXPLICITLY rather
 // than omitted — an absent type-only Boolean casts to false, which happens to be what we want here,
@@ -50,14 +60,26 @@ const SpectrogramSettingsPanel = defineAsyncComponent({
 
 const { t } = useI18n()
 const panel = useSpectrumSettingsPanelState()
+const store = useSpectrogramStore()
 </script>
 
 <style scoped>
-/* The panel content scrolls inside the window chrome; PanelWindow owns the outer geometry. */
+/* The panel content scrolls inside the window chrome; PanelWindow owns the outer geometry.
+   SS2.1/R1: reserve the scrollbar gutter so the content width does NOT change when the scrollbar
+   appears — that width change is the feedback loop that would flap the tiles<->accordion switch. */
 .spectrum-settings-dialog__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  padding: 12px;
+  scrollbar-gutter: stable;
+}
+
+.spectrum-settings-dialog__footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 12px;
 }
 
 .spectrum-settings-dialog__placeholder {
