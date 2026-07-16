@@ -3,10 +3,10 @@
        (SpectrumSettingsDialog), opened from the overall spectrogram group-header gear. It edits the
        overall spectrogram's per-CHANNEL overrides (overall-spectrum-overrides store), NOT the program
        level. The channel «закладки» are a vertical LEFT nav — «Оба канала | Левый | Правый» — exactly
-       like the overall-waveform settings form (owner screenshot); the right pane holds the
-       «Индивидуальные» toggle + presets + the settings form. The toggle turns the scope's override on
-       (seeded from the program level) or off (inherit); editing a field while inheriting auto-enables
-       individual (SG-D8); applying a preset writes the active scope. This is the IN-WINDOW adapter
+       like the overall-waveform settings form (owner screenshot); the right pane holds the presets +
+       the settings form. No individual/inherit toggle (owner): the spectrum shows the program level by
+       default, editing a field auto-creates the scope's override (SG-D8), «Сброс» drops it back to the
+       program level, and applying a preset writes the active scope. This is the IN-WINDOW adapter
        (dock/float); the detached child reuses the same view via a remote. -->
   <div class="spectrum-overrides">
     <div class="spectrum-overrides__body row no-wrap">
@@ -27,12 +27,6 @@
 
       <div class="spectrum-overrides__content">
         <div class="spectrum-overrides__content-head">
-          <q-toggle
-            :model-value="individualActive"
-            dense
-            :label="t('audio.spectrumScopeIndividual')"
-            @update:model-value="onIndividualToggle"
-          />
           <q-space />
           <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
             <q-list dense style="min-width: 200px">
@@ -52,10 +46,6 @@
           </q-btn-dropdown>
         </div>
 
-        <div v-if="!individualActive" class="spectrum-overrides__hint text-caption text-grey">
-          {{ t('audio.spectrumScopeInheritHint') }}
-        </div>
-
         <div class="spectrum-overrides__form">
           <SpectrogramSettingsView :snapshot="snapshot" @action="onFieldAction" />
         </div>
@@ -66,8 +56,8 @@
       <q-btn
         flat dense no-caps
         icon="restart_alt"
-        :label="t('audio.spectrumScopeReset')"
-        :disable="!individualActive"
+        :label="t('audio.spectrogramReset')"
+        :disable="!scopeHasOverride"
         @click="revertScope"
       />
     </div>
@@ -108,8 +98,10 @@ const displayedSettings = computed<SpectrogramSettings>(() => {
   return overrides.getChannel(ch) ?? store.settings
 })
 
-// The active scope is «individual» only when EVERY channel it covers has its own override.
-const individualActive = computed<boolean>(() => channels.value.every((ch) => overrides.isIndividual(ch)))
+// «Сброс» is enabled when the active scope has anything to clear (any covered channel is overridden).
+// There is no explicit individual/inherit toggle (owner): the spectrum shows the program level by
+// default, editing a field auto-creates the override (SG-D8), and «Сброс» drops it back.
+const scopeHasOverride = computed<boolean>(() => channels.value.some((ch) => overrides.isIndividual(ch)))
 
 const presets = computed(() => store.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })))
 
@@ -143,14 +135,6 @@ function applyPreset(id: string): void {
 
 function onScopeChange(next: Scope): void {
   scope.value = next
-}
-
-function onIndividualToggle(on: boolean): void {
-  if (on) {
-    for (const ch of channels.value) overrides.ensureChannel(ch, { ...store.settings })
-  } else {
-    revertScope()
-  }
 }
 
 function revertScope(): void {
@@ -201,11 +185,6 @@ function revertScope(): void {
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
-  padding: 4px 8px;
-}
-
-.spectrum-overrides__hint {
-  flex: 0 0 auto;
   padding: 4px 8px;
 }
 
