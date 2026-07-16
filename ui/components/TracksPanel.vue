@@ -183,6 +183,28 @@
                 class="tracks-panel__gtrack-header-title"
                 :style="laneTitleStyle(lane)"
               >{{ gtrackLaneLabel(lane) }}</span>
+              <!-- VS1.1 (owner req. 1): point-mode + the settings gear moved here from the graph
+                   overlay (GTrackView) — the title's flex:1 pushes them to the right edge, matching
+                   the wave/spectrum group-header gears (WS1.2/SG3.2a). -->
+              <q-btn
+                dense flat round size="xs"
+                icon="edit_location_alt"
+                :color="gtracks.isLanePointMode(lane.id) ? 'primary' : undefined"
+                :aria-label="t('audio.gtrackPointMode')"
+                :aria-pressed="gtracks.isLanePointMode(lane.id)"
+                @click="gtracks.toggleLanePointMode(lane.id)"
+              >
+                <app-tooltip>{{ t('audio.gtrackPointMode') }}</app-tooltip>
+              </q-btn>
+              <q-btn
+                dense flat round size="xs"
+                class="tracks-panel__gtrack-header-gear"
+                icon="settings"
+                :aria-label="t('audio.gtrackSettings')"
+                @click="gtrackSettingsId = lane.id"
+              >
+                <app-tooltip>{{ t('audio.gtrackSettings') }}</app-tooltip>
+              </q-btn>
             </div>
             <!-- GT4.2 (GT-D17): a curve lane sits over an optional inline solo-audio underlay -->
             <div
@@ -242,13 +264,11 @@
                 :show-beat-band="lane.beatBand"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
-                @open-settings="gtrackSettingsId = lane.id"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
                 @toggle-mute="onToggleLaneMuted(lane)"
                 @toggle-in-mix="onToggleLaneInMix(lane)"
                 @remove-lane="onRemoveLane(lane.id)"
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
-                @toggle-point-mode="gtracks.toggleLanePointMode(lane.id)"
                 @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
                 @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
                 @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"

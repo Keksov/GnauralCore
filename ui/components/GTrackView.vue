@@ -80,27 +80,8 @@
         <app-tooltip>{{ t('audio.gtrackRemoveLane') }}</app-tooltip>
       </q-btn>
     </div>
-    <!-- GT3.1: point-edit mode toggle + the lane settings gear. -->
-    <div class="gtrack-view__actions">
-      <q-btn
-        dense flat round size="xs"
-        icon="edit_location_alt"
-        :color="pointMode ? 'primary' : undefined"
-        :aria-label="t('audio.gtrackPointMode')"
-        :aria-pressed="pointMode"
-        @click.stop="emit('toggle-point-mode')"
-      >
-        <app-tooltip>{{ t('audio.gtrackPointMode') }}</app-tooltip>
-      </q-btn>
-      <q-btn
-        dense flat round size="xs"
-        icon="settings"
-        :aria-label="t('audio.gtrackSettings')"
-        @click.stop="emit('open-settings')"
-      >
-        <app-tooltip>{{ t('audio.gtrackSettings') }}</app-tooltip>
-      </q-btn>
-    </div>
+    <!-- VS1.1: the point-mode toggle + settings gear moved OUT of the canvas into the track's
+         header bar (TracksPanel) — the header is visible even when the track is folded. -->
     <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging.
          TT2.3 (owner req. 1/3): the box, its teleport and its placement now belong to AppTooltip —
          this component only says WHERE the pointer is and WHAT to show. That is what moved the
@@ -219,7 +200,6 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
-  (event: 'open-settings'): void
   (event: 'hide'): void
   /** BK8a: toggle playback mute for this lane's voice(s) (mirror of the voices-panel mute). */
   (event: 'toggle-mute'): void
@@ -228,7 +208,6 @@ const emit = defineEmits<{
   /** GT10.44: remove this lane (trash icon under the hide/eye icon). */
   (event: 'remove-lane'): void
   (event: 'reorder-grip', ev: PointerEvent): void
-  (event: 'toggle-point-mode'): void
   (event: 'select-point', point: GTrackPointRef | null): void
   (event: 'drag-start', point: GTrackPointRef): void
   (event: 'drag-move', payload: { point: GTrackPointRef; timeSec: number; value: number }): void
@@ -1201,15 +1180,6 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-.gtrack-view__actions {
-  display: flex;
-  gap: 2px;
-  position: absolute;
-  right: 4px;
-  top: 2px;
-  z-index: 5;
-}
-
 .gtrack-view__side-actions {
   align-items: center;
   display: flex;
@@ -1221,13 +1191,11 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
-.gtrack-view__actions .q-btn,
 .gtrack-view__side-actions .q-btn {
   color: #cbd5e1;
   opacity: 0.6;
 }
 
-.gtrack-view__actions .q-btn:hover,
 .gtrack-view__side-actions .q-btn:hover {
   opacity: 1;
 }
