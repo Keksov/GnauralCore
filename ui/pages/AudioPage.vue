@@ -150,6 +150,12 @@
         />
       </Teleport>
 
+      <!-- SS1.1 (SS-D1): «Параметры» — same wrap again. It needs nothing from this page: the panel
+           talks to the global spectrogram Pinia store directly, so there is no state to plumb. -->
+      <Teleport to="body" :disabled="!spectrumSettingsFloating">
+        <SpectrumSettingsDialog v-if="spectrumSettingsPanel.open" />
+      </Teleport>
+
       <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
@@ -452,6 +458,8 @@ import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import TrackListDialog from '../components/TrackListDialog.vue'
+import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
+import SpectrumSettingsDialog from '../components/SpectrumSettingsDialog.vue'
 import AppMenuList from '../components/app-menu/AppMenuList.vue'
 import type { MenuNode } from '../components/app-menu/menu-node'
 import { menuNodeDisabled } from '../components/app-menu/menu-node'
@@ -612,10 +620,16 @@ const fsFloating = computed<boolean>(() => filePanel.mode === 'floating')
 // FULL editor height and persists across tabs (its toggle button lives in the Треки tab header).
 const tracksListPanel = useTracksListPanelState()
 const tracksListFloating = computed<boolean>(() => tracksListPanel.mode === 'floating')
+// SS1.1 (SS-D1): «Параметры» joins the same dock-wrap for the same reasons — full editor height,
+// one dock shared with the other two, and survival across tab switches (the q-tab-panels have no
+// keep-alive, so TracksPanel — where its toolbar button lives — is destroyed on every switch).
+const spectrumSettingsPanel = useSpectrumSettingsPanelState()
+const spectrumSettingsFloating = computed<boolean>(() => spectrumSettingsPanel.mode === 'floating')
 const dockWrapClass = computed<string>(() => {
   const anyVertical =
     filePanel.mode === 'top' || filePanel.mode === 'bottom' ||
-    tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom'
+    tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom' ||
+    spectrumSettingsPanel.mode === 'top' || spectrumSettingsPanel.mode === 'bottom'
   return anyVertical ? 'audio-page__dock-wrap--col' : 'audio-page__dock-wrap--row'
 })
 
@@ -997,13 +1011,6 @@ watch(() => audio.displayFilePath, () => {
 
 // v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
 
-// SF3.1 (SF-D4/D5): the settings panel is a toggleable overlay over the plot (no
-// main-content resize), opened from the common header; default closed.
-const spectrogramSettingsOpen = ref(false)
-function closeSpectrogramSettings(): void {
-  spectrogramSettingsOpen.value = false
-}
-
 // SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
 // SF28.1: ordered + hidden-filtered per the unified layout model. The first VISIBLE track is
@@ -1151,12 +1158,6 @@ function handlePlayerKeyDown(event: KeyboardEvent): void {
   // GT2.4 (GT-D10): while the Треки tab is active, TracksPanel owns the player hotkeys
   // (its own window listener); skip entirely so the two handlers never double-act.
   if (activePlayerViewTab.value === 'tracks') {
-    return
-  }
-  // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
-  if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
-    event.preventDefault()
-    closeSpectrogramSettings()
     return
   }
   if (shouldIgnorePlayerHotkey(event)) {
@@ -1684,71 +1685,6 @@ watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
 .audio-page__output-section--spectrogram {
   overflow: auto;
   position: relative;
-}
-
-/* SF3.1 (SF-D4): settings overlay "Параметры" over the plot (no main-content resize). */
-.audio-page__spectrogram-settings-backdrop {
-  background: rgba(2, 6, 23, 0.45);
-  inset: 0;
-  position: absolute;
-  z-index: 20;
-}
-
-.audio-page__spectrogram-settings-panel {
-  background: #0f172a;
-  border-left: 1px solid rgba(148, 163, 184, 0.24);
-  bottom: 0;
-  box-shadow: -18px 0 40px rgba(2, 6, 23, 0.45);
-  display: flex;
-  flex-direction: column;
-  max-width: calc(100% - 56px);
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 300px;
-  z-index: 30;
-}
-
-.audio-page__spectrogram-settings-header {
-  align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 10px 8px 10px 16px;
-}
-
-.audio-page__spectrogram-settings-title {
-  color: #e2e8f0;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.audio-page__spectrogram-settings-body {
-  flex: 1 1 auto;
-  overflow: auto;
-  padding: 12px;
-}
-
-.spectrogram-settings-backdrop-enter-active,
-.spectrogram-settings-backdrop-leave-active {
-  transition: opacity 0.18s ease;
-}
-
-.spectrogram-settings-backdrop-enter-from,
-.spectrogram-settings-backdrop-leave-to {
-  opacity: 0;
-}
-
-.spectrogram-settings-panel-enter-active,
-.spectrogram-settings-panel-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-
-.spectrogram-settings-panel-enter-from,
-.spectrogram-settings-panel-leave-to {
-  opacity: 0;
-  transform: translateX(24px);
 }
 
 .audio-page__schedule-view {

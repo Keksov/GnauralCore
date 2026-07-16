@@ -119,14 +119,16 @@
                duplicated gestures already available: Select = the default (plain drag moves a vertex),
                Add = Ctrl+click a curve, Delete = the Delete/Backspace hotkey on the selection. -->
           <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
+          <!-- SS1.1 (SS-D1): the button stays here (SF-D5), but now toggles the shared @panel state
+               of the «Параметры» PanelWindow, which AudioPage hosts. usePanelWindowState is a
+               module-level singleton, so this reaches the same object with no props. -->
           <q-btn
             dense flat round size="sm"
             icon="tune"
-            :color="spectrogramSettingsOpen ? 'primary' : undefined"
+            :color="spectrumSettingsPanel.open ? 'primary' : undefined"
             :aria-label="t('audio.spectrogramSettingsTitle')"
-            aria-controls="tracks-panel-settings"
-            :aria-expanded="spectrogramSettingsOpen"
-            @click="toggleSpectrogramSettings"
+            :aria-expanded="spectrumSettingsPanel.open"
+            @click="spectrumSettingsPanel.open = !spectrumSettingsPanel.open"
           />
           <!-- PW5.3: «Список треков» toggle — RIGHTMOST in the toolbar, always visible (incl. wav/flac). -->
           <q-btn
@@ -1130,38 +1132,10 @@
       </aside>
     </transition>
 
-    <!-- SF3.1 (SF-D4/D5): settings panel as a toggleable overlay "Параметры" -->
-    <transition name="spectrogram-settings-backdrop">
-      <div
-        v-if="spectrogramSettingsOpen"
-        class="audio-page__spectrogram-settings-backdrop"
-        aria-hidden="true"
-        @click="closeSpectrogramSettings"
-      />
-    </transition>
-    <transition name="spectrogram-settings-panel">
-      <aside
-        v-if="spectrogramSettingsOpen"
-        id="tracks-panel-settings"
-        class="audio-page__spectrogram-settings-panel"
-        role="dialog"
-        aria-modal="false"
-        :aria-label="t('audio.spectrogramSettingsTitle')"
-      >
-        <div class="audio-page__spectrogram-settings-header">
-          <div class="audio-page__spectrogram-settings-title">{{ t('audio.spectrogramSettingsTitle') }}</div>
-          <q-btn
-            flat round dense
-            icon="close"
-            :aria-label="t('audio.spectrogramSettingsClose')"
-            @click="closeSpectrogramSettings"
-          />
-        </div>
-        <div class="audio-page__spectrogram-settings-body">
-          <spectrogram-settings-panel />
-        </div>
-      </aside>
-    </transition>
+    <!-- SS1.1 (SS-D1): the "Параметры" fixed flyout that used to live here is now a PanelWindow
+         (@panel) hosted by AudioPage — dockable/floating, and it survives tab switches. Its toolbar
+         button above toggles the shared panel state; the chrome (title, close, dock menu) is the
+         control's. -->
   </div>
 </template>
 
@@ -1173,8 +1147,8 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type AsyncComponentLoader, type Component, type Ref } from 'vue'
-import { QSpinnerHourglass, useQuasar } from 'quasar'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
+import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
 import type { SpectrogramAnalysisParams } from '@protocol'
@@ -1187,6 +1161,7 @@ import GTrackView from './GTrackView.vue'
 import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
+import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
@@ -1274,24 +1249,9 @@ const SPECTROGRAM_TRACK_HEIGHT_DEFAULT = 260
 const SPECTROGRAM_TRACK_HEIGHT_MIN = 120
 const SPECTROGRAM_TRACK_HEIGHT_MAX = 1200
 
-const AsyncPanelLoading = defineComponent({
-  name: 'AsyncTracksPanelLoading',
-  setup() {
-    return () => h('div', { class: 'audio-page__async-placeholder' }, [
-      h(QSpinnerHourglass, { color: 'primary', size: '28px' }),
-    ])
-  },
-})
-
-function createAsyncPanel(loader: AsyncComponentLoader<Component>) {
-  return defineAsyncComponent({
-    loader,
-    delay: 120,
-    loadingComponent: AsyncPanelLoading,
-  })
-}
-
-const SpectrogramSettingsPanel = createAsyncPanel(() => import('./SpectrogramSettingsPanel.vue'))
+// SS1.1: the async-panel machinery (AsyncPanelLoading + createAsyncPanel) went with the
+// «Параметры» flyout — SpectrogramSettingsPanel was its only user. The panel stays lazily loaded,
+// now by SpectrumSettingsDialog, so nothing about its loading behaviour changed.
 
 function clampTrackHeight(aValue: number): number {
   return Math.max(SPECTROGRAM_TRACK_HEIGHT_MIN, Math.min(SPECTROGRAM_TRACK_HEIGHT_MAX, Math.round(aValue)))
@@ -2644,15 +2604,12 @@ function spectrogramFit(): void {
   spectrogramShared.view.value = fullWindow(spectrogramDuration.value)
 }
 
-// SF3.1 (SF-D4/D5): the settings panel is a toggleable overlay over the plot (no
-// main-content resize), opened from the common header; default closed.
-const spectrogramSettingsOpen = ref(false)
-function toggleSpectrogramSettings(): void {
-  spectrogramSettingsOpen.value = !spectrogramSettingsOpen.value
-}
-function closeSpectrogramSettings(): void {
-  spectrogramSettingsOpen.value = false
-}
+// SS1.1 (SS-D1): «Параметры» is no longer a local overlay ref (SF3.1) — it is a PanelWindow hosted
+// by AudioPage. This is the SHARED window state (a module-level singleton, not Pinia), which is why
+// the toolbar button here and the host there need no plumbing between them. Escape no longer closes
+// it and it no longer counts as an overlay: a docked/floating panel owns its own chrome and
+// positioning — the same conclusion PW5.2 reached for «Список треков».
+const spectrumSettingsPanel = useSpectrumSettingsPanelState()
 
 // SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
 // stack render (each track + a divider between adjacent tracks + a bottom handle).
@@ -2824,12 +2781,6 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     diagnosticsOpen.value = false
     return
   }
-  // SF3.1: Escape closes the spectrogram settings overlay (before other hotkey guards).
-  if (event.key === 'Escape' && spectrogramSettingsOpen.value) {
-    event.preventDefault()
-    closeSpectrogramSettings()
-    return
-  }
   // GT3.16 (review #2): Escape also closes the point inspector (single or table), matching the
   // other overlays' behaviour.
   if (event.key === 'Escape' && inspectorMode.value !== 'none') {
@@ -2920,7 +2871,8 @@ const overlayFrame = ref<Record<string, string>>({})
 // GT10.30 (owner req. 79): the point inspector is pinned to the same frame, so measure while it is open too.
 // PW5.2: the «Список треков» panel is a PanelWindow (owns its own positioning), so it no longer
 // uses the scroll-frame pinning (--tp-*) that the remaining fixed flyouts still need.
-const anyOverlayOpen = computed(() => diagnosticsOpen.value || spectrogramSettingsOpen.value || inspectorMode.value !== 'none')
+// SS1.1: «Параметры» left for the same reason — the fixed flyouts are now diagnostics + inspector.
+const anyOverlayOpen = computed(() => diagnosticsOpen.value || inspectorMode.value !== 'none')
 function measureOverlayFrame(): void {
   const el = rootEl.value
   if (el === null) return
@@ -3028,14 +2980,6 @@ onBeforeUnmount(() => {
   justify-content: center;
   min-height: 120px;
   text-align: center;
-}
-
-.audio-page__async-placeholder {
-  align-items: center;
-  display: flex;
-  height: 100%;
-  justify-content: center;
-  min-height: 160px;
 }
 
 /* SF10.1: common header above the whole spectrogram stack (all control buttons here). */
@@ -3266,23 +3210,9 @@ onBeforeUnmount(() => {
   z-index: 50;
 }
 
-.audio-page__spectrogram-settings-panel {
-  background: #0f172a;
-  border-left: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: -18px 0 40px rgba(2, 6, 23, 0.45);
-  display: flex;
-  flex-direction: column;
-  max-width: calc(100vw - 56px);
-  /* GT10.27 (owner req. 76): pinned to the editor frame (see backdrop). */
-  position: fixed;
-  right: var(--tp-right, 0px);
-  top: var(--tp-top, 0px);
-  bottom: var(--tp-bottom, 0px);
-  width: 300px;
-  /* GT10.19 (owner req. 68): above the sticky header (z-index 40). */
-  z-index: 60;
-}
-
+/* SS1.1: .audio-page__spectrogram-settings-panel (the fixed 300px flyout) is gone with the flyout —
+   PanelWindow owns the geometry now. The -backdrop/-header/-title/-body rules below STAY: the
+   diagnostics and point-inspector overlays reuse them (they are still fixed flyouts, hence --tp-*). */
 .audio-page__spectrogram-settings-header {
   align-items: center;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
@@ -3314,16 +3244,6 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-.spectrogram-settings-panel-enter-active,
-.spectrogram-settings-panel-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-
-.spectrogram-settings-panel-enter-from,
-.spectrogram-settings-panel-leave-to {
-  opacity: 0;
-  transform: translateX(24px);
-}
 
 /* GT3.9 (GT-D15): the schedule's voice panel — slides in over the tracks from the LEFT. */
 .tracks-panel__voices-panel {
