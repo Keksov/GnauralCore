@@ -13,6 +13,11 @@ const SECTION_PUT_DEBOUNCE_MS = 500
 
 const currentProject = ref<ProjectInfo | null>(null)
 const openError = ref<string | null>(null)
+let currentOpen: { readonly path: string; readonly promise: Promise<ProjectInfo | null> } | null = null
+
+// Same-file check across path spellings (case, slash direction). POSIX dev paths contain no
+// backslashes, so the transform is a no-op there and plain lowercase comparison remains correct.
+const pathKey = (path: string): string => path.replace(/\//g, '\\').toLowerCase()
 
 interface PendingSectionWrite {
   readonly projectId: string
@@ -41,18 +46,45 @@ export function flushPendingProjectWrites(): void {
 /** Called from the audio store on file selection: flushes writes belonging to the previous file,
  *  then find-or-creates the project server-side. Never throws — a project failure must not break
  *  file opening; the error is kept in openError for the UI. */
-export async function openProjectForFile(path: string): Promise<ProjectInfo | null> {
+export function openProjectForFile(path: string): Promise<ProjectInfo | null> {
   flushPendingProjectWrites()
 
+  const promise = (async (): Promise<ProjectInfo | null> => {
+    try {
+      const info = await projectApi.openProject(path)
+      currentProject.value = info
+      openError.value = null
+      return info
+    } catch (error) {
+      currentProject.value = null
+      openError.value = error instanceof Error ? error.message : 'Failed to open the project'
+      console.warn('[use-project] openProject failed:', openError.value)
+      return null
+    }
+  })()
+
+  currentOpen = { path, promise }
+  return promise
+}
+
+/** Project info for a SPECIFIC file path (PR2.1): reuses the current project or the in-flight open
+ *  when the path matches, otherwise find-or-creates directly (openProject is idempotent). Lets
+ *  per-file subsystems (lanes, undo, view) resolve their project without racing the store's open. */
+export async function getProjectForPath(path: string): Promise<ProjectInfo | null> {
+  const key = pathKey(path)
+  const current = currentProject.value
+  if (current !== null && pathKey(current.source.path) === key) {
+    return current
+  }
+
+  if (currentOpen !== null && pathKey(currentOpen.path) === key) {
+    return currentOpen.promise
+  }
+
   try {
-    const info = await projectApi.openProject(path)
-    currentProject.value = info
-    openError.value = null
-    return info
+    return await projectApi.openProject(path)
   } catch (error) {
-    currentProject.value = null
-    openError.value = error instanceof Error ? error.message : 'Failed to open the project'
-    console.warn('[use-project] openProject failed:', openError.value)
+    console.warn('[use-project] openProject failed:', error instanceof Error ? error.message : error)
     return null
   }
 }
@@ -85,6 +117,24 @@ export async function readProjectSection<T>(name: string): Promise<T | null> {
   }
 }
 
+function queueSectionWrite(projectId: string, name: string, value: unknown): void {
+  const key = `${projectId}|${name}`
+  const existing = pendingWrites.get(key)
+  if (existing !== undefined) {
+    clearTimeout(existing.timer)
+  }
+
+  pendingWrites.set(key, {
+    projectId,
+    name,
+    value,
+    timer: setTimeout(() => {
+      pendingWrites.delete(key)
+      sendSection(projectId, name, value)
+    }, SECTION_PUT_DEBOUNCE_MS),
+  })
+}
+
 /** Debounced write of a subsystem's section (null removes it). No-op without an open project. */
 export function writeProjectSection(name: string, value: unknown): void {
   const project = currentProject.value
@@ -92,20 +142,35 @@ export function writeProjectSection(name: string, value: unknown): void {
     return
   }
 
-  const key = `${project.id}|${name}`
-  const existing = pendingWrites.get(key)
-  if (existing !== undefined) {
-    clearTimeout(existing.timer)
+  queueSectionWrite(project.id, name, value)
+}
+
+/** Path-addressed variants (PR2.1) for subsystems keyed by filePath rather than "the current file". */
+export async function readProjectSectionFor<T>(path: string, name: string): Promise<T | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
   }
 
-  pendingWrites.set(key, {
-    projectId: project.id,
-    name,
-    value,
-    timer: setTimeout(() => {
-      pendingWrites.delete(key)
-      sendSection(project.id, name, value)
-    }, SECTION_PUT_DEBOUNCE_MS),
+  const pending = pendingWrites.get(`${project.id}|${name}`)
+  if (pending !== undefined) {
+    return (pending.value ?? null) as T | null
+  }
+
+  try {
+    const response = await projectApi.fetchSection(project.id, name)
+    return (response.value ?? null) as T | null
+  } catch (error) {
+    console.warn('[use-project] fetchSection failed:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
+export function writeProjectSectionFor(path: string, name: string, value: unknown): void {
+  void getProjectForPath(path).then((project) => {
+    if (project !== null) {
+      queueSectionWrite(project.id, name, value)
+    }
   })
 }
 

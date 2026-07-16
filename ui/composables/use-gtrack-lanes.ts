@@ -14,6 +14,7 @@ import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-rende
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
+import { readProjectSectionFor, writeProjectSectionFor } from './use-project'
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -124,6 +125,11 @@ const STORAGE_KEY = 'mindwave-gtrack-lanes'
 const STORAGE_SPECTRUM_KEY = 'mindwave-gtrack-lane-spectrum'
 const STORAGE_HEIGHT_KEY = 'mindwave-gtrack-lane-height'
 const STORAGE_MIX_KEY = 'mindwave-gtrack-mix-excluded'
+// project-store PR2.1 (PR-D11): the per-file lane state now lives in project sections; the
+// localStorage keys above stay as a transition safety net + one-time migration seed.
+const SECTION_LANES = 'gtrackLanes'
+const SECTION_LANE_SPECTRUM = 'laneSpectrum'
+const SECTION_MIX_EXCLUDED = 'mixExcluded'
 const LANE_HEIGHT_DEFAULT = 120
 const LANE_HEIGHT_MIN = 60
 const LANE_HEIGHT_MAX = 600
@@ -229,16 +235,22 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
 
   // --- persistence ---
+  function storedLanesSnapshot(): StoredLane[] {
+    return lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
+  }
   function persist(): void {
     const key = filePath.value
     if (key === null) return
+    const snapshot = storedLanesSnapshot()
     try {
       const all = loadAllStored()
-      all[key] = lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
+      all[key] = snapshot
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
     } catch {
       // ignore
     }
+    // PR2.1: the project section is the source of truth; localStorage above is the safety net.
+    writeProjectSectionFor(key, SECTION_LANES, snapshot)
   }
 
   // GT8.1 (GT-D19): per-lane spectrum-settings override, persisted per file. Absent -> the lane's
@@ -272,6 +284,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     } catch {
       // ignore
     }
+    writeProjectSectionFor(key, SECTION_LANE_SPECTRUM, laneSpectrum.value)
   }
   function getLaneSpectrum(laneId: number): SpectrogramSettings | null {
     return laneSpectrum.value[laneId] ?? null
@@ -325,6 +338,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     } catch {
       // ignore
     }
+    writeProjectSectionFor(key, SECTION_MIX_EXCLUDED, [...excludedFromMix.value])
   }
   function isVoiceInMix(voiceId: number): boolean {
     return !excludedFromMix.value.has(voiceId)
@@ -374,34 +388,79 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false }]
   }
 
+  /** Sanitize a persisted lane list (project section or localStorage) into live lanes; null when
+   *  the input holds nothing usable. Also advances nextLaneId past the restored ids. */
+  function mapStoredLanes(stored: unknown): GTrackLane[] | null {
+    if (!Array.isArray(stored) || stored.length === 0) return null
+    const validIds = new Set(voices.value.map((v) => v.id))
+    const restored = (stored as StoredLane[]).map((s) => ({
+      id: s.id,
+      voiceIds: (Array.isArray(s.voiceIds) ? s.voiceIds : []).filter((id) => validIds.has(id)),
+      mode: toMode(s.mode),
+      hidden: s.hidden === true,
+      soloMode: (SOLO_MODES.includes(s.soloMode as GTrackSoloMode) ? s.soloMode : 'off') as GTrackSoloMode,
+      soloInline: s.soloInline === true,
+      soloWaveColor: typeof s.soloWaveColor === 'string' ? s.soloWaveColor : undefined,
+      soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
+      beatBand: s.beatBand === true,
+      folded: s.folded === true,
+      soloWaveHidden: s.soloWaveHidden === true,
+      soloSpectrumHidden: s.soloSpectrumHidden === true,
+      curveHeight: typeof s.curveHeight === 'number' ? s.curveHeight : undefined,
+      soloWaveHeight: typeof s.soloWaveHeight === 'number' ? s.soloWaveHeight : undefined,
+      soloSpectrumHeight: typeof s.soloSpectrumHeight === 'number' ? s.soloSpectrumHeight : undefined,
+    }))
+    nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
+    return restored
+  }
+
   function restoreOrDefault(): void {
     const key = filePath.value
-    const validIds = new Set(voices.value.map((v) => v.id))
-    let restored: GTrackLane[] | null = null
-    if (key !== null) {
-      const stored = loadAllStored()[key]
-      if (Array.isArray(stored) && stored.length > 0) {
-        restored = stored.map((s) => ({
-          id: s.id,
-          voiceIds: (Array.isArray(s.voiceIds) ? s.voiceIds : []).filter((id) => validIds.has(id)),
-          mode: toMode(s.mode),
-          hidden: s.hidden === true,
-          soloMode: (SOLO_MODES.includes(s.soloMode as GTrackSoloMode) ? s.soloMode : 'off') as GTrackSoloMode,
-          soloInline: s.soloInline === true,
-          soloWaveColor: typeof s.soloWaveColor === 'string' ? s.soloWaveColor : undefined,
-          soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
-          beatBand: s.beatBand === true,
-          folded: s.folded === true,
-          soloWaveHidden: s.soloWaveHidden === true,
-          soloSpectrumHidden: s.soloSpectrumHidden === true,
-          curveHeight: typeof s.curveHeight === 'number' ? s.curveHeight : undefined,
-          soloWaveHeight: typeof s.soloWaveHeight === 'number' ? s.soloWaveHeight : undefined,
-          soloSpectrumHeight: typeof s.soloSpectrumHeight === 'number' ? s.soloSpectrumHeight : undefined,
-        }))
-        nextLaneId = Math.max(nextLaneId, ...restored.map((l) => l.id + 1))
+    const restored = key === null ? null : mapStoredLanes(loadAllStored()[key])
+    lanes.value = restored !== null ? restored : defaultLanes()
+  }
+
+  // PR2.1 (PR-D11): the project section wins over the synchronous localStorage restore; a file whose
+  // project has no section yet gets a one-time migration seeded from localStorage. Guarded by a
+  // request id so a fast file switch never applies a stale response.
+  let projectRestoreReqId = 0
+  async function restoreFromProject(reqId: number): Promise<void> {
+    const key = filePath.value
+    if (key === null) return
+    const [storedLanes, storedSpectrum, storedMix] = await Promise.all([
+      readProjectSectionFor<unknown>(key, SECTION_LANES),
+      readProjectSectionFor<Record<string, unknown>>(key, SECTION_LANE_SPECTRUM),
+      readProjectSectionFor<unknown>(key, SECTION_MIX_EXCLUDED),
+    ])
+    if (reqId !== projectRestoreReqId || key !== filePath.value) return
+
+    if (storedLanes === null) {
+      // No section yet -> one-time migration seeded from localStorage (already applied on screen).
+      const local = loadAllStored()[key]
+      if (Array.isArray(local) && local.length > 0) writeProjectSectionFor(key, SECTION_LANES, local)
+    } else {
+      const mappedLanes = mapStoredLanes(storedLanes)
+      if (mappedLanes !== null) lanes.value = mappedLanes
+      // An existing-but-empty section means "no lanes stored": keep the defaults, do NOT reseed.
+    }
+
+    if (storedSpectrum !== null && typeof storedSpectrum === 'object') {
+      const out: Record<number, SpectrogramSettings> = {}
+      for (const [idStr, raw] of Object.entries(storedSpectrum)) out[Number(idStr)] = mergeStoredSettings(raw)
+      laneSpectrum.value = out
+    } else {
+      const local = loadAllSpectrum()[key]
+      if (local !== undefined && local !== null && Object.keys(local).length > 0) {
+        writeProjectSectionFor(key, SECTION_LANE_SPECTRUM, local)
       }
     }
-    lanes.value = restored !== null ? restored : defaultLanes()
+
+    if (storedMix === null) {
+      const local = loadAllMix()[key]
+      if (Array.isArray(local) && local.length > 0) writeProjectSectionFor(key, SECTION_MIX_EXCLUDED, local)
+    } else if (Array.isArray(storedMix)) {
+      excludedFromMix.value = new Set(storedMix.filter((n): n is number => typeof n === 'number'))
+    }
   }
 
   // Edit state (dirty / undo / redo). Declared BEFORE the immediate schedule watch so that watch can
@@ -429,11 +488,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
     restoreSpectrum() // GT8.1: per-lane spectrum overrides are per file
     restoreMix() // owner 2026-07-13: per-voice overall-mix exclusions are per file
+    const reqId = ++projectRestoreReqId
     if (model.value === null) {
       lanes.value = []
       return
     }
     restoreOrDefault()
+    // PR2.1: localStorage above gives the instant first paint; the project section then wins.
+    void restoreFromProject(reqId)
   }
 
   // Rebuild the model + lane config whenever the schedule (file) changes.
