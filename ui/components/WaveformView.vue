@@ -11,6 +11,9 @@
       @pointermove="onPointerMove"
       @pointerleave="onPointerLeave"
     />
+    <!-- Playhead overlay (2026-07-16): the moving cursor lives on its own canvas so playback repaints
+         only a thin line, never the waveform body. pointer-events:none so clicks reach the body. -->
+    <canvas ref="overlayEl" class="waveform-view__overlay" aria-hidden="true" />
     <span v-if="label" class="waveform-view__label-overlay">{{ label }}</span>
     <!-- SF28.4: drag grip + hide stacked in a column on the LEFT of the track. -->
     <div class="waveform-view__side-actions">
@@ -144,6 +147,7 @@ const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const overlayEl = ref<HTMLCanvasElement | null>(null)
 // SF24.1: the waveform opens its own (lazy) backend analysis just to pull peaks; the decode is
 // shared with the spectrogram's analysis (SF11.7), so this only adds a peak query, not a decode.
 const spec = useSpectrogram({ refetchDebounceMs: 200 })
@@ -171,7 +175,19 @@ const rootStyle = computed(() =>
 )
 
 let renderFrameId = 0
+let overlayFrameId = 0
 let resizeObserver: ResizeObserver | null = null
+
+// One source of truth for the plot rect + time window, shared by the body draw() and the playhead
+// overlay so the two stacked canvases stay aligned.
+function plotGeometry(cssW: number, cssH: number) {
+  const plotX = AXIS_MARGIN.left
+  const plotY = marginTop()
+  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  const win = view.value
+  return { plotX, plotY, plotW, plotH, win }
+}
 
 function plotWidthPx(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
@@ -235,10 +251,7 @@ function draw(): void {
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, cssW, cssH)
 
-  const plotX = AXIS_MARGIN.left
-  const plotY = marginTop()
-  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
-  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  const { plotX, plotY, plotW, plotH, win } = plotGeometry(cssW, cssH)
   const centerY = plotY + plotH / 2
   const halfH = plotH / 2
 
@@ -246,8 +259,6 @@ function draw(): void {
     drawAxes(ctx, plotX, plotY, plotW, plotH)
     return
   }
-
-  const win = view.value
 
   // Shared time-range selection (draw the overlap with the current window).
   const sel = shared?.selection.value ?? null
@@ -294,18 +305,38 @@ function draw(): void {
     ctx.stroke()
   }
 
-  // playhead
-  const playhead = props.playheadSec
-  if (playhead !== null && playhead >= win.startSec && playhead <= win.endSec) {
-    const px = plotX + timeToFraction(playhead, win) * plotW
-    ctx.strokeStyle = '#f59e0b'
-    ctx.beginPath()
-    ctx.moveTo(px, plotY)
-    ctx.lineTo(px, plotY + plotH)
-    ctx.stroke()
-  }
-
+  // Playhead is drawn on the overlay canvas (drawPlayhead), not here.
   drawAxes(ctx, plotX, plotY, plotW, plotH)
+}
+
+// The playhead, on its own transparent canvas above the body. Redrawn on playback / view / resize
+// only — the waveform body is never touched by a moving cursor.
+function drawPlayhead(): void {
+  const canvas = overlayEl.value
+  if (canvas === null) return
+  const ctx = canvas.getContext('2d')
+  if (ctx === null) return
+
+  const cssW = Math.max(1, Math.floor(canvas.clientWidth))
+  const cssH = Math.max(1, Math.floor(canvas.clientHeight))
+  const dpr = window.devicePixelRatio || 1
+  const wPx = Math.max(1, Math.floor(cssW * dpr))
+  const hPx = Math.max(1, Math.floor(cssH * dpr))
+  if (canvas.width !== wPx) canvas.width = wPx
+  if (canvas.height !== hPx) canvas.height = hPx
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, cssW, cssH)
+
+  const playhead = props.playheadSec
+  if (playhead === null || !hasAudio.value) return
+  const { plotX, plotY, plotW, plotH, win } = plotGeometry(cssW, cssH)
+  if (playhead < win.startSec || playhead > win.endSec) return
+  const px = plotX + timeToFraction(playhead, win) * plotW
+  ctx.strokeStyle = '#f59e0b'
+  ctx.beginPath()
+  ctx.moveTo(px, plotY)
+  ctx.lineTo(px, plotY + plotH)
+  ctx.stroke()
 }
 
 function drawAxes(
@@ -357,6 +388,14 @@ function drawAxes(
   }
   if (props.showTimeAxisBottom) drawRuler(plotY + plotH, 1, 'top')
   if (props.showTimeAxisTop) drawRuler(plotY, -1, 'bottom')
+}
+
+function scheduleDrawPlayhead(): void {
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
+  overlayFrameId = requestAnimationFrame(() => {
+    overlayFrameId = 0
+    drawPlayhead()
+  })
 }
 
 function scheduleDraw(): void {
@@ -513,7 +552,7 @@ watch(durationSec, (dur) => {
   if (dur > 0 && (shared === null || shared.view.value === null)) view.value = fullWindow(dur)
   scheduleFetch()
 })
-watch(view, () => { scheduleFetch(); scheduleDraw() }, { deep: true })
+watch(view, () => { scheduleFetch(); scheduleDraw(); scheduleDrawPlayhead() }, { deep: true })
 watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.scale, () => { void fetchColumns(); scheduleDraw() })
 watch(() => props.color, () => scheduleDraw())
@@ -521,7 +560,7 @@ watch(() => props.channel, () => { void openForFile(props.filePath) })
 // owner 2026-07-13: the overall waveform is scoped to the in-mix voice set (soloVoiceIds); re-open when
 // it changes so including/excluding a voice redraws. (The solo sub-lanes pass a static set — no-op.)
 watch(() => (props.soloVoiceIds ?? []).join(','), () => { void openForFile(props.filePath) })
-watch(() => props.playheadSec, () => scheduleDraw())
+watch(() => props.playheadSec, () => scheduleDrawPlayhead())
 watch(() => props.filePath, (v) => { void openForFile(v) })
 // GT4.1/GT4.3: changing the solo voice set switches the source render -> re-open on the same path.
 watch(() => (props.soloVoiceIds ?? []).join(','), () => { void openForFile(props.filePath) })
@@ -532,15 +571,17 @@ watch(() => props.analysis, () => { void openForFile(props.filePath) }, { deep: 
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
-    resizeObserver = new ResizeObserver(() => { scheduleFetch(); scheduleDraw() })
+    resizeObserver = new ResizeObserver(() => { scheduleFetch(); scheduleDraw(); scheduleDrawPlayhead() })
     resizeObserver.observe(canvasEl.value)
   }
   void openForFile(props.filePath)
   scheduleDraw()
+  scheduleDrawPlayhead()
 })
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
   if (fetchTimer !== null) clearTimeout(fetchTimer)
   resizeObserver?.disconnect()
   void spec.close()
@@ -555,6 +596,17 @@ onBeforeUnmount(() => {
   min-height: 60px;
   overflow: hidden;
   position: relative;
+  width: 100%;
+}
+
+/* Playhead overlay: same rect as the body canvas (sole in-flow child of the relative root),
+   transparent, click-through to the body canvas. */
+.waveform-view__overlay {
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
   width: 100%;
 }
 

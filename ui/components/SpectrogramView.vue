@@ -15,6 +15,10 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
+    <!-- Playhead overlay (2026-07-16): the moving cursor lives on its own canvas so playback repaints
+         only a thin line, never the (heavy) tile image — draw() recomputes every tile's RGBA per
+         call. pointer-events:none so clicks still reach the body canvas. -->
+    <canvas ref="overlayEl" class="spectrogram-view__overlay" aria-hidden="true" />
     <!-- SF16.3 + SF17.1: right-click zoom popover — presets ×1..×16 + a live % field. -->
     <q-menu context-menu touch-position v-model="zoomMenuOpen">
       <!-- SF17.1: close on Esc. keydown + .stop.prevent so Escape closes ONLY this popover
@@ -254,6 +258,7 @@ const { t } = useI18n()
 // SF9: track resize (mutual divider + uniform bottom handle) now lives in the AudioPage
 // stack (SF-D19/D20); this view just takes `height` as a plain prop.
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const overlayEl = ref<HTMLCanvasElement | null>(null)
 // SF19.2: longer idle debounce so a fast scroll/zoom burst coalesces to the settled view
 // (intermediate frames the user scrolls past are never fetched); the SF11.9 cross-zoom
 // fallback keeps the plot responsive meanwhile.
@@ -339,7 +344,19 @@ const AXIS_PLAIN_MARGIN = 6
 const marginTop = (): number => (props.showTimeAxisTop ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 const marginBottom = (): number => (props.showTimeAxisBottom ? AXIS_TIME_MARGIN : AXIS_PLAIN_MARGIN)
 let renderFrameId = 0
+let overlayFrameId = 0
 let resizeObserver: ResizeObserver | null = null
+
+// One source of truth for the plot rect + time window, shared by the body draw() and the playhead
+// overlay so the two stacked canvases stay aligned.
+function plotGeometry(cssWidth: number, cssHeight: number) {
+  const plotX = AXIS_MARGIN.left
+  const plotY = marginTop()
+  const plotW = Math.max(1, cssWidth - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const plotH = Math.max(1, cssHeight - marginTop() - marginBottom())
+  const win = view.value
+  return { plotX, plotY, plotW, plotH, win }
+}
 let offscreen: HTMLCanvasElement | null = null
 
 const internalView = ref<TimeWindow>({ startSec: 0, endSec: 0 })
@@ -419,12 +436,7 @@ function draw(): void {
   const tiles = spec.tiles.value
   if (analysis === null || analysis.frameCount <= 0) return
 
-  const plotX = AXIS_MARGIN.left
-  const plotY = marginTop()
-  const plotW = Math.max(1, cssWidth - AXIS_MARGIN.left - AXIS_MARGIN.right)
-  const plotH = Math.max(1, cssHeight - marginTop() - marginBottom())
-
-  const win = view.value
+  const { plotX, plotY, plotW, plotH, win } = plotGeometry(cssWidth, cssHeight)
   const winStart = win.startSec
   const winWidth = Math.max(MIN_WINDOW_SEC, win.endSec - win.startSec)
   const secPerFrame = analysis.durationSec / analysis.frameCount
@@ -464,20 +476,7 @@ function draw(): void {
 
   drawAxes(ctx, plotX, plotY, plotW, plotH, sliceFreq(tiles[0]?.binFrequenciesHz ?? [], fv), win.startSec, win.endSec)
 
-  // playhead overlay (U3.3) when the transport position is inside the window
-  const playhead = props.playheadSec
-  if (playhead !== null && playhead !== undefined) {
-    const fraction = timeToFraction(playhead, win)
-    if (fraction >= 0 && fraction <= 1) {
-      const px = Math.round(plotX + fraction * plotW) + 0.5
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(px, plotY)
-      ctx.lineTo(px, plotY + plotH)
-      ctx.stroke()
-    }
-  }
+  // Playhead is drawn on the overlay canvas (drawPlayhead), not here.
 
   // area selection rectangle (U5.2), mapped to the current view + display bins
   const sel = selection.value
@@ -557,6 +556,47 @@ function drawAxes(
   }
   if (props.showTimeAxisBottom) drawTimeRuler(plotY + plotH, 1, 'top')
   if (props.showTimeAxisTop) drawTimeRuler(plotY, -1, 'bottom')
+}
+
+// The playhead, on its own transparent canvas above the body. Redrawn on playback / view / resize
+// only — the body (which recomputes every visible tile's RGBA) is never touched by a moving cursor.
+function drawPlayhead(): void {
+  const canvas = overlayEl.value
+  if (canvas === null) return
+  const ctx = canvas.getContext('2d')
+  if (ctx === null) return
+
+  const cssWidth = Math.max(1, Math.floor(canvas.clientWidth))
+  const cssHeight = Math.max(1, Math.floor(canvas.clientHeight))
+  const dpr = window.devicePixelRatio || 1
+  const wPx = Math.max(1, Math.floor(cssWidth * dpr))
+  const hPx = Math.max(1, Math.floor(cssHeight * dpr))
+  if (canvas.width !== wPx) canvas.width = wPx
+  if (canvas.height !== hPx) canvas.height = hPx
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, cssWidth, cssHeight)
+
+  const playhead = props.playheadSec
+  const analysis = spec.analysis.value
+  if (playhead === null || playhead === undefined || analysis === null || analysis.frameCount <= 0) return
+  const { plotX, plotY, plotW, plotH, win } = plotGeometry(cssWidth, cssHeight)
+  const fraction = timeToFraction(playhead, win)
+  if (fraction < 0 || fraction > 1) return
+  const px = Math.round(plotX + fraction * plotW) + 0.5
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(px, plotY)
+  ctx.lineTo(px, plotY + plotH)
+  ctx.stroke()
+}
+
+function scheduleDrawPlayhead(): void {
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
+  overlayFrameId = requestAnimationFrame(() => {
+    overlayFrameId = 0
+    drawPlayhead()
+  })
 }
 
 function scheduleDraw(): void {
@@ -959,6 +999,7 @@ watch(view, () => {
   applyView()
   scheduleWaveformFetch() // GT7.3: refetch overlay peaks for the new range
   scheduleDraw()
+  scheduleDrawPlayhead() // the playhead's x moves with the window
 }, { deep: true })
 
 // shared selection changed (from any track) -> redraw the rect on this track (SF8.1).
@@ -992,9 +1033,10 @@ watch(() => props.render, () => {
   scheduleDraw()
 }, { deep: true })
 
-// playhead position moves during playback -> redraw the overlay only (no refetch).
+// playhead position moves during playback -> redraw the overlay canvas ONLY (a thin line), never
+// the body (which would recompute every tile's RGBA).
 watch(() => props.playheadSec, () => {
-  scheduleDraw()
+  scheduleDrawPlayhead()
 })
 
 // SF17.4: high-zoom window override changed -> re-apply the view so the composable
@@ -1025,14 +1067,17 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => {
       applyView()
       scheduleDraw()
+      scheduleDrawPlayhead()
     })
     resizeObserver.observe(canvasEl.value)
   }
   void openForPath(props.filePath)
+  scheduleDrawPlayhead()
 })
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
   if (wfFetchTimer !== null) { clearTimeout(wfFetchTimer); wfFetchTimer = null }
   if (reconfigureTimer !== null) {
     clearTimeout(reconfigureTimer)
@@ -1169,6 +1214,17 @@ onBeforeUnmount(() => {
   display: block;
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
+}
+
+/* Playhead overlay: same rect as the body canvas (sole in-flow child of the relative root),
+   transparent, click-through to the body canvas. */
+.spectrogram-view__overlay {
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
   width: 100%;
 }
 

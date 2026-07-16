@@ -17,6 +17,10 @@
       @pointerup="onPointerUp"
       @pointerleave="onPointerLeave"
     />
+    <!-- Playhead overlay (2026-07-16): the moving cursor lives on its own canvas so playback (up to
+         ~10 Hz) repaints only a thin line, never the body — draw() used to reallocate + repaint the
+         whole lane on every tick. pointer-events:none so clicks still reach the body canvas. -->
+    <canvas ref="overlayEl" class="gtrack-view__overlay" aria-hidden="true" />
     <!-- GT3.18 (GT-D20): per-voice accent stripe on the left edge to group a voice's lanes. -->
     <span v-if="accentColor" class="gtrack-view__accent" :style="{ background: accentColor }" />
     <span
@@ -250,6 +254,7 @@ const shared = inject<SpectrogramSharedState | null>('spectrogramShared', null)
 const { t } = useI18n()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const overlayEl = ref<HTMLCanvasElement | null>(null)
 // GT3.1: the vertex under the cursor (null = none). GT3.17: tracked regardless of point mode.
 const hoverPoint = ref<GTrackPointRef | null>(null)
 // GT11.4: the beat-band edge (base ± beat/2 at a point) under the cursor, or null. Vertex hover wins.
@@ -329,7 +334,20 @@ const rootStyle = computed(() =>
 )
 
 let renderFrameId = 0
+let overlayFrameId = 0
 let resizeObserver: ResizeObserver | null = null
+
+// One source of truth for the plot rect + time->x mapping, shared by the body draw() and the
+// playhead overlay so the two stacked canvases can never drift out of alignment.
+function plotGeometry(cssW: number, cssH: number) {
+  const plotX = AXIS_MARGIN.left
+  const plotY = marginTop()
+  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
+  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  const win = view.value
+  const timeToX = (sec: number): number => plotX + timeToFraction(sec, win) * plotW
+  return { plotX, plotY, plotW, plotH, win, timeToX }
+}
 
 function plotWidthPx(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
@@ -351,10 +369,7 @@ function draw(): void {
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, cssW, cssH)
 
-  const plotX = AXIS_MARGIN.left
-  const plotY = marginTop()
-  const plotW = Math.max(1, cssW - AXIS_MARGIN.left - AXIS_MARGIN.right)
-  const plotH = Math.max(1, cssH - marginTop() - marginBottom())
+  const { plotX, plotY, plotW, plotH, win, timeToX } = plotGeometry(cssW, cssH)
 
   // GT4.2 (GT-D17): inline underlay — punch a transparent hole in the plot area so a solo
   // waveform/spectrogram layer positioned BEHIND this lane shows through under the curves. The
@@ -369,9 +384,7 @@ function draw(): void {
     return
   }
 
-  const win = view.value
   const ax = axis.value
-  const timeToX = (sec: number): number => plotX + timeToFraction(sec, win) * plotW
   const valueToY = (value: number): number => valueUnitToY(plotY, plotH, valueToUnit(value, ax))
 
   // Shared time-range selection.
@@ -518,19 +531,40 @@ function draw(): void {
   })
   ctx.restore()
 
-  // Playhead.
-  const playhead = props.playheadSec
-  if (playhead !== null && playhead >= win.startSec && playhead <= win.endSec) {
-    const px = timeToX(playhead)
-    ctx.strokeStyle = '#f59e0b'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(px, plotY)
-    ctx.lineTo(px, plotY + plotH)
-    ctx.stroke()
-  }
-
+  // Playhead is drawn on the overlay canvas (drawPlayhead), not here.
   drawAxes(ctx, plotX, plotY, plotW, plotH)
+}
+
+// The playhead, on its own transparent canvas above the body. Redrawn on playback / view / resize
+// only — the body is never touched by a moving cursor.
+function drawPlayhead(): void {
+  const canvas = overlayEl.value
+  if (canvas === null) return
+  const ctx = canvas.getContext('2d')
+  if (ctx === null) return
+
+  const cssW = Math.max(1, Math.floor(canvas.clientWidth))
+  const cssH = Math.max(1, Math.floor(canvas.clientHeight))
+  const dpr = window.devicePixelRatio || 1
+  const wPx = Math.max(1, Math.floor(cssW * dpr))
+  const hPx = Math.max(1, Math.floor(cssH * dpr))
+  // Only reallocate the backing store on an actual size change; a plain playback tick just clears.
+  if (canvas.width !== wPx) canvas.width = wPx
+  if (canvas.height !== hPx) canvas.height = hPx
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, cssW, cssH)
+
+  const playhead = props.playheadSec
+  if (playhead === null || !hasData.value) return
+  const { plotY, plotH, win, timeToX } = plotGeometry(cssW, cssH)
+  if (playhead < win.startSec || playhead > win.endSec) return
+  const px = timeToX(playhead)
+  ctx.strokeStyle = '#f59e0b'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(px, plotY)
+  ctx.lineTo(px, plotY + plotH)
+  ctx.stroke()
 }
 
 function drawAxes(
@@ -587,6 +621,20 @@ function scheduleDraw(): void {
     renderFrameId = 0
     draw()
   })
+}
+
+function scheduleDrawPlayhead(): void {
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
+  overlayFrameId = requestAnimationFrame(() => {
+    overlayFrameId = 0
+    drawPlayhead()
+  })
+}
+
+// The view (zoom/pan) and a resize move the playhead's x and reflow the body — redraw both layers.
+function scheduleDrawAll(): void {
+  scheduleDraw()
+  scheduleDrawPlayhead()
 }
 
 function xFraction(aEvent: { offsetX: number }): number | null {
@@ -1016,11 +1064,11 @@ watch(() => props.durationSec, (dur) => {
   if (dur > 0 && (shared === null || shared.view.value === null)) view.value = fullWindow(dur)
   scheduleDraw()
 })
-watch(view, () => scheduleDraw(), { deep: true })
+watch(view, () => scheduleDrawAll(), { deep: true })
 watch(() => shared?.selection.value, () => scheduleDraw(), { deep: true })
 watch(() => props.mode, () => scheduleDraw())
 watch(() => props.voices, () => scheduleDraw(), { deep: true })
-watch(() => props.playheadSec, () => scheduleDraw())
+watch(() => props.playheadSec, () => scheduleDrawPlayhead())
 watch(() => props.selection, (sel) => {
   // GT3.10 crossover: while dragging, the composable re-homes the point (new index) and updates
   // the selection — keep the local drag reference following the same point.
@@ -1038,17 +1086,18 @@ watch(() => props.inlineUnderlay, () => scheduleDraw())
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
-    resizeObserver = new ResizeObserver(() => scheduleDraw())
+    resizeObserver = new ResizeObserver(() => scheduleDrawAll())
     resizeObserver.observe(canvasEl.value)
   }
   if (props.durationSec > 0 && (shared === null || shared.view.value === null)) {
     view.value = fullWindow(props.durationSec)
   }
-  scheduleDraw()
+  scheduleDrawAll()
 })
 
 onBeforeUnmount(() => {
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
   resizeObserver?.disconnect()
 })
 </script>
@@ -1079,6 +1128,17 @@ onBeforeUnmount(() => {
      width:100% + the curve render are unaffected. */
   flex: 1 1 0;
   min-height: 0;
+  width: 100%;
+}
+
+/* Playhead overlay: same rect as the body canvas (the canvas is the only in-flow child, so inset:0
+   of the position:relative root matches it), transparent, and click-through to the body canvas. */
+.gtrack-view__overlay {
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
   width: 100%;
 }
 
