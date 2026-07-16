@@ -177,7 +177,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     scheduleRef.value = model.value !== null ? model.value.schedule : null
   }
   const voices = computed<readonly GTrackVoice[]>(() => scheduleRef.value?.voices ?? [])
+  // durationSec is ONE loop (totalTimeSec) — the width of the Tracks axis; the whole stack (curves,
+  // wave, spectrum) is drawn one loop wide, since every loop is identical. loopCount/fullDurationSec
+  // describe the actual playback session (TP2.1): the server plays totalTimeSec x max(1, loopCount),
+  // so the transport position runs 0..fullDurationSec while the axis stays one loop. TP2.2/TP2.3 use
+  // these for a cyclic playhead + the status bar; the axis itself does NOT change.
   const durationSec = computed(() => schedule.value?.totalTimeSec ?? 0)
+  const loopCount = computed(() => Math.max(1, Math.floor(schedule.value?.loopCount ?? 1)))
+  const fullDurationSec = computed(() => durationSec.value * loopCount.value)
   // GT9.1/GT9.2 (owner req. 42): live schedule lint — re-runs on every edit (scheduleRef changes).
   const diagnostics = computed<GTrackDiagnostic[]>(() =>
     scheduleRef.value === null ? [] : lintSchedule(scheduleRef.value),
@@ -1190,6 +1197,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes,
     voices,
     durationSec,
+    loopCount,
+    fullDurationSec,
     diagnostics,
     laneHeight,
     setLaneHeight,
