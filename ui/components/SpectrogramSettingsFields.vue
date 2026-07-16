@@ -31,7 +31,9 @@
         dense outlined
         class="spectrogram-fields__control"
       />
-      <!-- SF16.1: numeric spinbox with -/+ steppers for the render dials. -->
+      <!-- SF16.1 + SS2.6: numeric field with min/max/step. The native number-input arrows are the
+           only stepper now — the owner had the +/- prepend/append buttons removed as duplicating
+           (and confusing next to) the arrows. @blur re-clamps to the step grid + bounds. -->
       <q-input
         v-else-if="field.kind === 'spin'"
         v-model.number="sNum[field.key]"
@@ -42,14 +44,7 @@
         dense outlined
         class="spectrogram-fields__control"
         @blur="clampField(field)"
-      >
-        <template #prepend>
-          <q-btn dense flat round size="sm" icon="remove" :aria-label="'−'" @click="stepField(field, -1)" />
-        </template>
-        <template #append>
-          <q-btn dense flat round size="sm" icon="add" :aria-label="'+'" @click="stepField(field, 1)" />
-        </template>
-      </q-input>
+      />
       <template v-else>
         <div class="spectrogram-fields__slider-value text-grey-7">
           {{ Number(sNum[field.key]).toFixed(field.slider!.decimals) }}
@@ -85,11 +80,6 @@ const s = store.settings
 const sNum = s as unknown as Record<string, number>
 const sVal = s as unknown as Record<string, string | number>
 
-function stepField(aField: Field, aDir: number): void {
-  const spec = aField.spin!
-  const cur = Number(sNum[aField.key])
-  sNum[aField.key] = clamp((Number.isFinite(cur) ? cur : 0) + aDir * spec.step, spec)
-}
 function clampField(aField: Field): void {
   const spec = aField.spin!
   const cur = Number(sNum[aField.key])

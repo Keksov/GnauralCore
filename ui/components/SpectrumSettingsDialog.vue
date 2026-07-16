@@ -95,14 +95,13 @@ function openPresets(): void {
 
 <style scoped>
 /* The panel content scrolls inside the window chrome; PanelWindow owns the outer geometry.
-   SS2.1/R1: reserve the scrollbar gutter so the content width does NOT change when the scrollbar
-   appears — that width change is the feedback loop that would flap the tiles<->accordion switch. */
+   SS2.6 (owner): NO padding — the block frame sits flush with the window edge (no gap), in every
+   dock/float mode. The scrollbar gutter is not reserved (it would be a right-side gap); the flap it
+   used to guard against is instead handled by hysteresis in the panel's ResizeObserver. */
 .spectrum-settings-dialog__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px;
-  scrollbar-gutter: stable;
 }
 
 .spectrum-settings-dialog__footer {

@@ -49,7 +49,7 @@ import {
   SPECTROGRAM_ZERO_PADDING,
 } from '../composables/spectrogram-settings'
 import {
-  layoutForWidth,
+  SPECTRUM_TILES_THRESHOLD_PX,
   type Field,
   type Group,
   type SelectableKey,
@@ -144,10 +144,19 @@ const rootEl = ref<HTMLElement | null>(null)
 const layout = ref<SpectrumLayout>('accordion')
 let ro: ResizeObserver | null = null
 
+// SS2.6: hysteresis around the threshold. The scrollbar gutter is no longer reserved (the owner
+// wants the block frame flush with the window on all sides), so a scrollbar appearing/disappearing
+// changes clientWidth by ~15px; a band keeps that from ping-ponging the tiles<->accordion switch.
+const LAYOUT_HYSTERESIS_PX = 24
 function measure(): void {
   const el = rootEl.value
   if (el === null) return
-  layout.value = layoutForWidth(el.clientWidth)
+  const w = el.clientWidth
+  if (layout.value === 'accordion') {
+    if (w >= SPECTRUM_TILES_THRESHOLD_PX) layout.value = 'tiles'
+  } else if (w < SPECTRUM_TILES_THRESHOLD_PX - LAYOUT_HYSTERESIS_PX) {
+    layout.value = 'accordion'
+  }
 }
 
 onMounted(() => {
@@ -209,9 +218,10 @@ watch(openSet, (v) => {
 .spectrogram-settings--tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* SS2.6: square frame flush with the window edges (no radius -> no corner gaps). Container draws
+     the outer frame (all sides, so a non-full last row still closes on the right/bottom); each tile
+     draws only right+bottom, so any two adjacent blocks share one interior line. */
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
 .spectrogram-settings__tile {
@@ -233,9 +243,8 @@ watch(openSet, (v) => {
 /* Accordion: the same idea vertically — one frame, a single shared divider between stacked blocks
    (the last one drops its divider so it doesn't double the frame's bottom). */
 .spectrogram-settings--accordion {
+  /* SS2.6: square frame flush with the window edges (no radius). */
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
 .spectrogram-settings__acc {
