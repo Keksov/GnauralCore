@@ -210,6 +210,21 @@ export const audioApi = {
     })
   },
 
+  // project-store PR2.4: live mute for the RUNNING engine only — persistence lives in the
+  // project's voiceState section, the .gnaural file is not touched (owner req 9).
+  applyLiveVoiceMute(
+    filePath: string,
+    items: readonly { readonly voiceIndex: number; readonly muted: boolean }[],
+    signal?: AbortSignal,
+  ): Promise<{ readonly applied: number }> {
+    return requestJson<{ readonly applied: number }>('/api/audio/voice-mute', {
+      method: 'POST',
+      body: JSON.stringify({ path: filePath, items }),
+      signal,
+    })
+  },
+
+  /** @deprecated project-store PR2.4: the UI no longer writes voice state into the .gnaural. */
   patchScheduleVoiceState(request: AudioScheduleVoicePatchRequest, signal?: AbortSignal): Promise<AudioScheduleVoicePatchResponse> {
     return requestJson<AudioScheduleVoicePatchResponse>('/api/audio/schedule/voice-state', {
       method: 'POST',

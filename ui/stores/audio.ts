@@ -16,6 +16,7 @@ import type {
 } from '@protocol'
 import { audioApi } from '../audio-api'
 import { closeCurrentProject, openProjectForFile } from '../composables/use-project'
+import { applyProjectVoiceState } from '../composables/use-voice-state'
 
 // SF20: recent files (most-recent first, cap 5) for the toolbar quick-pick dropdown.
 // Replaces the old single "restore last selected path" (which auto-loaded on tab open).
@@ -351,6 +352,38 @@ export const useAudioStore = defineStore('audio', () => {
       gnauralScheduleErrorPath.value = null
       gnauralScheduleErrorMessage.value = null
     }
+
+    // project-store PR2.4 (owner req 9): the project's voiceState section is the source of truth
+    // for colour/hidden/muted — overlay it asynchronously (and seed it on a file's first open).
+    // The raw dump above stays visible for the few ms the read takes; the guard keeps a stale
+    // merge from clobbering a newer schedule.
+    void applyProjectVoiceState(filePath, schedule).then((merged) => {
+      if (merged !== schedule && gnauralScheduleCache.value[filePath] === schedule) {
+        gnauralScheduleCache.value = { ...gnauralScheduleCache.value, [filePath]: merged }
+      }
+    }).catch(() => undefined)
+  }
+
+  /** project-store PR2.4: reflect a voice-state patch in the cached schedule immediately (the
+   *  persisted copy goes to the project section; the .gnaural file is not rewritten). */
+  function applyVoiceStateLocally(
+    filePath: string,
+    patches: readonly { readonly voiceId: number; readonly color?: string; readonly hidden?: boolean; readonly muted?: boolean }[],
+  ): void {
+    const current = gnauralScheduleCache.value[filePath]
+    if (current === undefined) return
+    const byId = new Map(patches.map((p) => [p.voiceId, p]))
+    const voices = current.voices.map((voice) => {
+      const patch = byId.get(voice.id)
+      if (patch === undefined) return voice
+      return {
+        ...voice,
+        color: patch.color !== undefined ? patch.color : voice.color,
+        hidden: patch.hidden ?? voice.hidden,
+        muted: patch.muted ?? voice.muted,
+      }
+    })
+    gnauralScheduleCache.value = { ...gnauralScheduleCache.value, [filePath]: { ...current, voices } }
   }
 
   async function loadGnauralSchedule(filePath: string, force = false): Promise<void> {
@@ -954,6 +987,7 @@ export const useAudioStore = defineStore('audio', () => {
     saveSettings,
     refreshPresets,
     loadGnauralSchedule,
+    applyVoiceStateLocally,
     selectPath,
     selectExternalPath,
     setClientError,

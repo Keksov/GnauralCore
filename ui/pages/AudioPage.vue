@@ -456,6 +456,7 @@ import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { bindProjectViewState } from '../composables/use-project-view-state'
+import { writeVoiceStatePatches } from '../composables/use-voice-state'
 import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
@@ -1143,9 +1144,9 @@ async function applyScheduleVoiceStatePatches(aPatches: readonly ScheduleVoiceSt
     return
   }
 
-  // PW5.6: a voice-state patch reloads the schedule, which rebuilds the gtrack editor model and would
-  // drop unsaved curve edits. Persist them first — the extracted «Список треков» panel no longer saves
-  // before muting, so this central guard covers every voice-patch caller.
+  // PW5.6: updating the cached schedule rebuilds the gtrack editor model and would drop unsaved
+  // curve edits. Persist them first — the extracted «Список треков» panel no longer saves before
+  // muting, so this central guard covers every voice-patch caller.
   if (gtracks.dirty.value) {
     try {
       await gtracks.saveEdits()
@@ -1155,41 +1156,30 @@ async function applyScheduleVoiceStatePatches(aPatches: readonly ScheduleVoiceSt
     }
   }
 
-  if (editorPanelRef.value !== null) {
-    const canProceed = await editorPanelRef.value.prepareForExternalMutation(filePath)
-    if (!canProceed) {
-      return
-    }
-  }
-
   trackStateBusy.value = true
-  let shouldReload = false
 
   try {
-    if (normalizedPatches.length === 1) {
-      const patch = normalizedPatches[0]
-      await audioApi.patchScheduleVoiceState({
-        path: filePath,
-        voiceId: patch.voiceId,
-        hidden: patch.hidden,
-        muted: patch.muted,
-        color: patch.color,
-      })
-      shouldReload = true
-    } else {
-      await audioApi.patchScheduleVoiceStates(filePath, normalizedPatches)
-      shouldReload = true
+    // project-store PR2.4 (owner req 9): colour/hidden/muted go to the project's voiceState
+    // section — the .gnaural file itself is no longer rewritten for view state, so there is no
+    // editor-panel mutation guard and no reload-from-disk here anymore.
+    const currentSchedule = audio.gnauralSchedule
+    await writeVoiceStatePatches(filePath, normalizedPatches, currentSchedule)
+    audio.applyVoiceStateLocally(filePath, normalizedPatches)
+
+    // Live playback: mute changes are pushed into the running engine by voice INDEX (dump order).
+    const voices = currentSchedule?.voices ?? []
+    const muteItems = normalizedPatches
+      .filter((patch) => patch.muted !== undefined)
+      .map((patch) => ({ voiceIndex: voices.findIndex((v) => v.id === patch.voiceId), muted: patch.muted === true }))
+      .filter((item) => item.voiceIndex >= 0)
+    if (muteItems.length > 0) {
+      await audioApi.applyLiveVoiceMute(filePath, muteItems).catch(() => undefined)
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('audio.scheduleTrackPatchFailed')
     audio.setClientError(message)
     $q.notify({ type: 'negative', message })
   } finally {
-    if (shouldReload) {
-      await audio.loadGnauralSchedule(filePath, true)
-      await editorPanelRef.value?.reloadCurrentDocumentFromDisk(filePath)
-    }
-
     trackStateBusy.value = false
   }
 }

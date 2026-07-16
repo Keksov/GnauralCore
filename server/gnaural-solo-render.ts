@@ -24,3 +24,24 @@ export function muteNonSoloVoices(xml: string, soloVoiceIds: readonly number[]):
     return block.replace(/<\/voice>/, `  <voice_mute>${value}</voice_mute>\n  </voice>`)
   })
 }
+
+/**
+ * project-store PR2.4 (PR-D11, owner req 9): stamp explicit `<voice_mute>` values from the
+ * project's voiceState section onto the XML before a render — the file's own (possibly stale)
+ * tags are overridden for voices present in the map and left untouched otherwise. Same mechanics
+ * as muteNonSoloVoices; pure string transform.
+ */
+export function applyVoiceMuteMap(xml: string, muteById: ReadonlyMap<number, boolean>): string {
+  if (muteById.size === 0) return xml
+  return xml.replace(VOICE_BLOCK, (block) => {
+    const idMatch = VOICE_ID.exec(block)
+    if (idMatch === null) return block
+    const muted = muteById.get(Number(idMatch[1]))
+    if (muted === undefined) return block
+    const value = muted ? "1" : "0"
+    if (VOICE_MUTE.test(block)) {
+      return block.replace(VOICE_MUTE, `<voice_mute>${value}</voice_mute>`)
+    }
+    return block.replace(/<\/voice>/, `  <voice_mute>${value}</voice_mute>\n  </voice>`)
+  })
+}
