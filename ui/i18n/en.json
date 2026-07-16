@@ -87,6 +87,7 @@
     "gtrackSoloUnder": "Under curves",
     "gtrackSpectrumCustom": "Custom spectrum settings for this lane",
     "gtrackSpectrumTitle": "Track spectrum settings",
+    "gtrackWaveTitle": "Track wave settings",
     "gtrackSpectrumHint": "Editing creates this track's individual settings; \"Reset\" returns to the program-level ones.",
     "cancel": "Cancel",
     "lint_end_click": "Voice \"{name}\" ends at volume {vol} (no fade to zero) — likely a click at the end.",

@@ -307,7 +307,7 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @seek="handleSeek"
-                @open-settings="gtrackSettingsId = lane.id"
+                @open-settings="gtrackWaveDialogId = lane.id"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'wave', true)"
               />
             </div>
@@ -761,6 +761,54 @@
                 @click="gtracks.clearLaneSpectrum(gtrackSpectrumDialogLane.id)"
               />
             </q-card-actions>
+          </q-card>
+        </q-dialog>
+
+        <!-- VS2.2 (VS-D4): per-track solo-wave style (colour + opacity) behind the wave graph's gear. -->
+        <q-dialog v-model="gtrackWaveDialogOpen">
+          <q-card v-if="gtrackWaveDialogLane !== null" class="audio-page__gtrack-dialog">
+            <q-card-section class="row items-center q-pb-sm">
+              <div class="text-subtitle1">{{ t('audio.gtrackWaveTitle') }}</div>
+              <q-space />
+              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
+            </q-card-section>
+            <q-separator />
+            <q-card-section>
+              <div class="row items-center q-col-gutter-sm">
+                <div class="col-5">
+                  <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloWaveColor') }}</div>
+                  <div
+                    class="tracks-panel__color-swatch"
+                    :style="{ background: gtrackWaveDialogLane.soloWaveColor ?? '#f59e0b' }"
+                    role="button" tabindex="0"
+                    :aria-label="t('audio.gtrackSoloWaveColor')"
+                  >
+                    <q-popup-proxy anchor="top right" self="top left" :offset="[8, 0]" transition-show="scale" transition-hide="scale">
+                      <div class="tracks-panel__color-popup">
+                        <div class="row justify-end">
+                          <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
+                        </div>
+                        <q-color
+                          :model-value="gtrackWaveDialogLane.soloWaveColor ?? '#f59e0b'"
+                          format-model="hex" no-header-tabs default-view="palette"
+                          @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackWaveDialogLane!.id, String(v ?? '#f59e0b'), gtrackWaveDialogLane!.soloWaveOpacity ?? 0.6)"
+                        />
+                      </div>
+                    </q-popup-proxy>
+                  </div>
+                </div>
+                <div class="col-7">
+                  <div class="text-caption text-grey">
+                    {{ t('audio.gtrackSoloWaveOpacity') }}: {{ (gtrackWaveDialogLane.soloWaveOpacity ?? 0.6).toFixed(2) }}
+                  </div>
+                  <q-slider
+                    dense :min="0.1" :max="1" :step="0.05"
+                    :model-value="gtrackWaveDialogLane.soloWaveOpacity ?? 0.6"
+                    @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackWaveDialogLane!.id, gtrackWaveDialogLane!.soloWaveColor ?? '#f59e0b', v ?? 0.6)"
+                  />
+                </div>
+              </div>
+            </q-card-section>
           </q-card>
         </q-dialog>
 
@@ -2260,6 +2308,13 @@ const gtrackSpectrumDialogOpen = computed<boolean>({
   set: (v) => { if (!v) gtrackSpectrumDialogId.value = null },
 })
 const gtrackSpectrumDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSpectrumDialogId.value) ?? null)
+// VS2.2 (VS-D4): the solo-wave graph's gear opens the wave style dialog (colour + opacity).
+const gtrackWaveDialogId = ref<number | null>(null)
+const gtrackWaveDialogOpen = computed<boolean>({
+  get: () => gtrackWaveDialogId.value !== null,
+  set: (v) => { if (!v) gtrackWaveDialogId.value = null },
+})
+const gtrackWaveDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackWaveDialogId.value) ?? null)
 const gtrackSettingsOpen = computed<boolean>({
   get: () => gtrackSettingsId.value !== null,
   set: (v) => { if (!v) gtrackSettingsId.value = null },
