@@ -455,6 +455,7 @@ import { useAudioTransport } from '../composables/use-audio-transport'
 import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import FileOpenDialog from '../components/FileOpenDialog.vue'
+import { bindProjectViewState } from '../composables/use-project-view-state'
 import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
@@ -955,6 +956,14 @@ watch(() => audio.displayFilePath, () => {
   spectrogramShared.view.value = null
   spectrogramShared.selection.value = null
   spectrogramShared.freqView.value = null
+})
+// project-store PR2.3 (PR-D13): the time/freq windows are per-file project state — restored on
+// open, written back debounced. Registered right after the reset watch (ordering contract).
+bindProjectViewState({
+  sectionName: 'viewAudio',
+  filePath: () => audio.displayFilePath,
+  view: spectrogramShared.view,
+  freqView: spectrogramShared.freqView,
 })
 
 const showEmbeddedScheduleView = computed(() => {

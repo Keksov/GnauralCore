@@ -1222,6 +1222,8 @@ const SpectrogramOverridesView = defineAsyncComponent(() => import('./Spectrogra
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
+import { bindProjectViewState } from '../composables/use-project-view-state'
+import { readProjectSectionFor, writeProjectSectionFor } from '../composables/use-project'
 import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackBeatDragMove, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
@@ -2469,26 +2471,66 @@ function onOverallChannelHide(kind: TrackKind, channel: number, ev: Event): void
   }
   hideTrack(kind, channel)
 }
+// project-store PR2.3 (PR-D13, owner req 12): waveform view settings are project property. The
+// localStorage value stays the EDITOR DEFAULT (a user edit updates both, keeping today's
+// behaviour for files without a project section); on file open the project's own 'waveform'
+// section is applied over it, and a file WITHOUT a section falls back to the defaults.
+let applyingWaveformPrefs = false
+function currentWaveformPrefsObject(): Record<string, unknown> {
+  return {
+    mode: viewMode.value,
+    scales: waveformScales.value,
+    colors: waveformColors.value,
+    opacities: waveformOpacities.value,
+    minimap: minimapMode.value,
+    link: waveformLinkChannels.value, // WS1.1 (WS-D7)
+    // WS1.4 (WS-D9): the «Оба канала» group persists beside the per-channel ones — it is a
+    // third independent setting, so it must survive a reload like they do.
+    both: { scale: waveformBothScale.value, color: waveformBothColor.value, opacity: waveformBothOpacity.value },
+  }
+}
+function applyWaveformPrefsObject(prefs: ReturnType<typeof loadWaveformPrefs>): void {
+  applyingWaveformPrefs = true
+  try {
+    viewMode.value = AUDIO_VIEW_MODES.includes(prefs.mode as AudioViewMode) ? (prefs.mode as AudioViewMode) : 'both'
+    waveformScales.value = seedArray<WaveformScale>(prefs.scales, prefs.scale === 'db' ? 'db' : 'linear', () => 'linear')
+    waveformColors.value = seedArray<string>(
+      prefs.colors,
+      typeof prefs.color === 'string' ? prefs.color : WAVEFORM_DEFAULT_COLORS[0],
+      (ch) => WAVEFORM_DEFAULT_COLORS[ch] ?? WAVEFORM_DEFAULT_COLORS[0]!,
+    )
+    waveformOpacities.value = seedArray<number>(prefs.opacities, typeof prefs.opacity === 'number' ? prefs.opacity : 0.55, () => 0.55)
+    minimapMode.value = MINIMAP_MODES.includes(prefs.minimap as MinimapMode) ? (prefs.minimap as MinimapMode) : 'spectrogram'
+    waveformLinkChannels.value = typeof prefs.link === 'boolean' ? prefs.link : true
+    const both: WaveformBothPrefs = typeof prefs.both === 'object' && prefs.both !== null ? (prefs.both as WaveformBothPrefs) : {}
+    waveformBothScale.value = both.scale === 'db' || both.scale === 'linear' ? both.scale : (waveformScales.value[0] ?? 'linear')
+    waveformBothColor.value = typeof both.color === 'string' ? both.color : (waveformColors.value[0] ?? WAVEFORM_DEFAULT_COLORS[0]!)
+    waveformBothOpacity.value = typeof both.opacity === 'number' ? both.opacity : (waveformOpacities.value[0] ?? 0.55)
+  } finally {
+    applyingWaveformPrefs = false
+  }
+}
+let waveformRestoreReqId = 0
+watch(() => audio.displayFilePath, (path) => {
+  const reqId = ++waveformRestoreReqId
+  if (path === null) return
+  void readProjectSectionFor<ReturnType<typeof loadWaveformPrefs>>(path, 'waveform').then((stored) => {
+    if (reqId !== waveformRestoreReqId || path !== audio.displayFilePath) return
+    // Section absent -> the editor defaults (PR-D13: absence means "no project override").
+    applyWaveformPrefsObject(stored !== null && typeof stored === 'object' ? stored : loadWaveformPrefs())
+  })
+})
 watch([viewMode, waveformScales, waveformColors, waveformOpacities, minimapMode, waveformLinkChannels,
   waveformBothScale, waveformBothColor, waveformBothOpacity], () => {
+  if (applyingWaveformPrefs) return
+  const prefs = currentWaveformPrefsObject()
   try {
-    localStorage.setItem(
-      STORAGE_TRACKS_WAVEFORM,
-      JSON.stringify({
-        mode: viewMode.value,
-        scales: waveformScales.value,
-        colors: waveformColors.value,
-        opacities: waveformOpacities.value,
-        minimap: minimapMode.value,
-        link: waveformLinkChannels.value, // WS1.1 (WS-D7)
-        // WS1.4 (WS-D9): the «Оба канала» group persists beside the per-channel ones — it is a
-        // third independent setting, so it must survive a reload like they do.
-        both: { scale: waveformBothScale.value, color: waveformBothColor.value, opacity: waveformBothOpacity.value },
-      }),
-    )
+    localStorage.setItem(STORAGE_TRACKS_WAVEFORM, JSON.stringify(prefs))
   } catch {
     // ignore
   }
+  const path = audio.displayFilePath
+  if (path !== null) writeProjectSectionFor(path, 'waveform', prefs)
 }, { deep: true })
 interface WaveformTrack {
   readonly key: string
@@ -2594,6 +2636,14 @@ watch(() => audio.displayFilePath, () => {
   spectrogramShared.view.value = null
   spectrogramShared.selection.value = null
   spectrogramShared.freqView.value = null
+})
+// project-store PR2.3 (PR-D13): the Tracks tab's time/freq windows are per-file project state —
+// restored on open, written back debounced. Registered right after the reset watch (ordering).
+bindProjectViewState({
+  sectionName: 'viewTracks',
+  filePath: () => audio.displayFilePath,
+  view: spectrogramShared.view,
+  freqView: spectrogramShared.freqView,
 })
 
 // SF10.1: the shared time window (provide/inject) is driven from the common header above
