@@ -109,13 +109,36 @@ async function loadProjectSettings(): Promise<void> {
   }
 }
 
-async function saveProjectSettings(): Promise<void> {
+function saveProjectSettings(): void {
+  // PR3.2: changing the folder offers to copy the existing projects tree over (the old folder is
+  // never deleted). Dismissing the dialog aborts the save entirely.
+  $q.dialog({
+    title: t('settings.projectsMigrateTitle'),
+    message: t('settings.projectsMigrateMessage'),
+    ok: { label: t('settings.projectsMigrateCopy') },
+    cancel: { label: t('settings.projectsMigrateSkip'), flat: true },
+  })
+    .onOk(() => {
+      void doSaveProjectSettings(true)
+    })
+    .onCancel(() => {
+      void doSaveProjectSettings(false)
+    })
+}
+
+async function doSaveProjectSettings(migrate: boolean): Promise<void> {
   projectsSaving.value = true
   projectsError.value = null
   try {
-    projectSettings.value = await projectApi.updateProjectSettings({ userDataRoot: userDataRoot.value.trim() })
+    projectSettings.value = await projectApi.updateProjectSettings({ userDataRoot: userDataRoot.value.trim(), migrate })
     userDataRoot.value = projectSettings.value.userDataRoot
-    $q.notify({ type: 'positive', message: t('settings.projectsRootSaved') })
+    const migrated = projectSettings.value.migrated
+    $q.notify({
+      type: 'positive',
+      message: migrated !== undefined
+        ? t('settings.projectsMigrated', { copied: migrated.copied, skipped: migrated.skipped })
+        : t('settings.projectsRootSaved'),
+    })
   } catch (error) {
     projectsError.value = error instanceof Error ? error.message : 'Failed to save the project settings.'
   } finally {
