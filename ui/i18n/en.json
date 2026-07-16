@@ -10,6 +10,7 @@
     "openSettings": "Settings",
     "close": "Close",
     "settingsSubsystemCache": "Cache",
+    "settingsSubsystemSpectrogram": "Spectrogram",
     "noPresets": "No presets found.",
     "sessionTitle": "Audio Session",
     "sessionSubtitle": "Gnaural transport is live for .gnaural files, and .wav/.flac playback runs locally in the browser.",
@@ -422,7 +423,6 @@
     "stageAnalysis": "Opening the spectrum analysis (backend)"
   },
   "settings": {
-    "spectrogramTab": "Spectrogram",
     "audioTab": "Audio",
     "audioTitle": "Audio presets",
     "audioSubtitle": "Configure the server-side presets root for the Audio tab.",

@@ -1,11 +1,12 @@
 <template>
-  <!-- SG1.1 (SG-D2/SG-D4): the PROGRAM-LEVEL spectrogram settings as a tab on the general Settings
-       page — the same CoreModuleSettingsTabContribution seam BodyMonitor's «Devices» uses. It reuses
-       the finished form (SpectrogramSettingsPanel talks to the global spectrogram store directly) and
-       re-provides «Сброс» + presets access, which used to live in the retired PanelWindow chrome
-       (SpectrumSettingsDialog: footer Reset + title-bar bookmarks), not inside the form itself.
-       This edits the program-level defaults applied to every spectrogram (SG-D4); per-graph
-       individual L/R settings are a separate surface (the dockable/detachable panel, SG-D6, phase 3). -->
+  <!-- SG1.1 (SG-D1 rev/SG-D2/SG-D4): the PROGRAM-LEVEL spectrogram settings as a SUBSYSTEM of the
+       Audio window's Меню→Настройки dialog (AudioPage's `settingsDialogOpen`, alongside «Кеш» /
+       GnauralSettingsTab). It reuses the finished form (SpectrogramSettingsPanel talks to the global
+       spectrogram store directly) and re-provides «Сброс» + presets access, which used to live in the
+       retired PanelWindow chrome (SpectrumSettingsDialog: footer Reset + title-bar bookmarks), not in
+       the form itself. This edits the program-level defaults applied to every spectrogram (SG-D4);
+       per-graph individual L/R settings are a separate surface (the dockable/detachable panel, SG-D6,
+       phase 3). Name mirrors the sibling GnauralSettingsTab (the dialog's «Кеш» pane). -->
   <div class="spectrogram-settings-tab">
     <div class="spectrogram-settings-tab__toolbar">
       <q-btn

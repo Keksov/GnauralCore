@@ -76,6 +76,7 @@
           <q-separator vertical />
           <div class="audio-page__settings-content">
             <GnauralSettingsTab v-if="settingsSubsystem === 'cache'" />
+            <SpectrogramSettingsTab v-if="settingsSubsystem === 'spectrogram'" />
           </div>
         </div>
         <q-separator />
@@ -1294,9 +1295,15 @@ function startPlayback() {
 // navigating to the general Settings page (the audio tab was removed from there).
 const settingsDialogOpen = ref(false)
 // GT10.45 (owner 2026-07-13): settings dialog is two-pane — a subsystem list on the left drives the
-// content on the right. Only "Cache" for now; the list is set up to grow.
-const settingsSubsystems = [{ id: 'cache' as const, icon: 'storage', labelKey: 'audio.settingsSubsystemCache' }]
-const settingsSubsystem = ref<'cache'>('cache')
+// content on the right. Subsystems: «Кеш» and «Спектрограмма» (SG1.1); the list is set up to grow.
+const settingsSubsystems = [
+  { id: 'cache' as const, icon: 'storage', labelKey: 'audio.settingsSubsystemCache' },
+  { id: 'spectrogram' as const, icon: 'tune', labelKey: 'audio.settingsSubsystemSpectrogram' },
+]
+const settingsSubsystem = ref<'cache' | 'spectrogram'>('cache')
+// SG1.1 (SG-D1 rev): the spectrogram subsystem pane, lazy so the 18-field form + preset manager
+// stay out of AudioPage's eager chunk until Меню→Настройки opens it.
+const SpectrogramSettingsTab = defineAsyncComponent(() => import('../components/SpectrogramSettingsTab.vue'))
 function goToSettings() {
   settingsDialogOpen.value = true
 }

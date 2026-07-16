@@ -10,6 +10,7 @@
     "openSettings": "Настройки",
     "close": "Закрыть",
     "settingsSubsystemCache": "Кеш",
+    "settingsSubsystemSpectrogram": "Спектрограмма",
     "noPresets": "Пресеты не найдены.",
     "sessionTitle": "Аудио-сессия",
     "sessionSubtitle": "Транспорт Gnaural уже работает для файлов .gnaural, а .wav/.flac воспроизводятся локально в браузере.",
@@ -422,7 +423,6 @@
     "stageAnalysis": "Открытие анализа спектра (бэкенд)"
   },
   "settings": {
-    "spectrogramTab": "Спектрограмма",
     "audioTab": "Аудио",
     "audioTitle": "Аудио-пресеты",
     "audioSubtitle": "Настройте серверный корневой каталог пресетов для вкладки Аудио.",

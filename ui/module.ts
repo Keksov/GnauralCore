@@ -1,9 +1,4 @@
-import { defineAsyncComponent } from 'vue'
 import messages from './i18n'
-
-// SG1.1 (SG-D2): the program-level spectrogram «Параметры» return to the general Settings
-// page as a tab (lazy — the form + its preset manager stay out of the eager module chunk).
-const SpectrogramSettingsTab = defineAsyncComponent(() => import('./components/SpectrogramSettingsTab.vue'))
 
 export const gnauralModule = {
   id: 'gnaural',
@@ -16,16 +11,9 @@ export const gnauralModule = {
       component: () => import('./pages/AudioPage.vue'),
     },
   ],
-  // GT10.17 / SG1.1: the audio-DEVICE settings moved into the Audio tab (dialog). SG1.1 brings the
-  // program-level spectrogram «Параметры» back here as a tab (SG-D2/SG-D4) — a different concern.
-  settingsTabs: [
-    {
-      name: 'spectrogram',
-      icon: 'tune',
-      labelKey: 'settings.spectrogramTab',
-      component: SpectrogramSettingsTab,
-    },
-  ],
+  // GT10.17 (owner req. 66): the audio settings moved INTO the Audio tab (dialog); the general
+  // Settings page no longer hosts them.
+  settingsTabs: [],
   // PW2.1 (PW-D4): panels this module can show in a detached child window. The content component
   // is the same one PanelWindow hosts in the main window; 'open' events are forwarded over the
   // panel bridge back to the main window (PW2.2).
