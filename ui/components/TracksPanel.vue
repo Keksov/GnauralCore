@@ -218,6 +218,7 @@
                 v-if="laneInlineKind(lane) === 'wave'"
                 class="tracks-panel__gtrack-underlay"
                 :style="{ opacity: lane.soloWaveOpacity }"
+                :scale="lane.soloWaveScale"
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
@@ -300,6 +301,7 @@
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
+                :scale="lane.soloWaveScale"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="true"
                 :label="''"
@@ -307,7 +309,7 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @seek="handleSeek"
-                @open-settings="gtrackWaveDialogId = lane.id"
+                @open-settings="openLaneWaveSettings(lane.id)"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'wave', true)"
               />
             </div>
@@ -736,79 +738,21 @@
           </q-card>
         </q-dialog>
 
-        <!-- VS2.1 (VS-D3): per-track solo-spectrum settings behind the spectrum graph's own gear. -->
+        <!-- VS2.4 (VS-D3 rev 2, owner): the solo-spectrum gear opens the SAME standard spectrum form
+             as the program settings and the overall-spectrum panel (SpectrogramOverridesView), in
+             MONO mode — no L/R nav; the adapter maps every scope onto the lane's single override.
+             Presets-apply and «Сброс» (= revert to the program level) are the view's own chrome. -->
         <q-dialog v-model="gtrackSpectrumDialogOpen">
-          <q-card v-if="gtrackSpectrumDialogLane !== null" class="audio-page__gtrack-dialog">
-            <q-card-section class="row items-center q-pb-sm">
+          <q-card v-if="gtrackSpectrumSnapshot !== null" class="tracks-panel__lane-spectrum-dialog column no-wrap">
+            <q-card-section class="row items-center q-py-sm">
               <div class="text-subtitle1">{{ t('audio.gtrackSpectrumTitle') }}</div>
               <q-space />
               <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
             </q-card-section>
             <q-separator />
-            <q-card-section>
-              <GTrackSpectrumSettings
-                :model-value="gtracks.getLaneSpectrum(gtrackSpectrumDialogLane.id) ?? spectrogramStore.settings"
-                @update:model-value="(s) => gtracks.setLaneSpectrum(gtrackSpectrumDialogLane!.id, s)"
-              />
-              <div class="text-caption text-grey q-mt-sm">{{ t('audio.gtrackSpectrumHint') }}</div>
-            </q-card-section>
-            <q-separator />
-            <q-card-actions align="right">
-              <q-btn
-                flat no-caps
-                :disable="gtracks.getLaneSpectrum(gtrackSpectrumDialogLane.id) === null"
-                :label="t('audio.spectrogramReset')"
-                @click="gtracks.clearLaneSpectrum(gtrackSpectrumDialogLane.id)"
-              />
-            </q-card-actions>
-          </q-card>
-        </q-dialog>
-
-        <!-- VS2.2 (VS-D4): per-track solo-wave style (colour + opacity) behind the wave graph's gear. -->
-        <q-dialog v-model="gtrackWaveDialogOpen">
-          <q-card v-if="gtrackWaveDialogLane !== null" class="audio-page__gtrack-dialog">
-            <q-card-section class="row items-center q-pb-sm">
-              <div class="text-subtitle1">{{ t('audio.gtrackWaveTitle') }}</div>
-              <q-space />
-              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
-            </q-card-section>
-            <q-separator />
-            <q-card-section>
-              <div class="row items-center q-col-gutter-sm">
-                <div class="col-5">
-                  <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloWaveColor') }}</div>
-                  <div
-                    class="tracks-panel__color-swatch"
-                    :style="{ background: gtrackWaveDialogLane.soloWaveColor ?? '#f59e0b' }"
-                    role="button" tabindex="0"
-                    :aria-label="t('audio.gtrackSoloWaveColor')"
-                  >
-                    <q-popup-proxy anchor="top right" self="top left" :offset="[8, 0]" transition-show="scale" transition-hide="scale">
-                      <div class="tracks-panel__color-popup">
-                        <div class="row justify-end">
-                          <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
-                        </div>
-                        <q-color
-                          :model-value="gtrackWaveDialogLane.soloWaveColor ?? '#f59e0b'"
-                          format-model="hex" no-header-tabs default-view="palette"
-                          @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackWaveDialogLane!.id, String(v ?? '#f59e0b'), gtrackWaveDialogLane!.soloWaveOpacity ?? 0.6)"
-                        />
-                      </div>
-                    </q-popup-proxy>
-                  </div>
-                </div>
-                <div class="col-7">
-                  <div class="text-caption text-grey">
-                    {{ t('audio.gtrackSoloWaveOpacity') }}: {{ (gtrackWaveDialogLane.soloWaveOpacity ?? 0.6).toFixed(2) }}
-                  </div>
-                  <q-slider
-                    dense :min="0.1" :max="1" :step="0.05"
-                    :model-value="gtrackWaveDialogLane.soloWaveOpacity ?? 0.6"
-                    @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackWaveDialogLane!.id, gtrackWaveDialogLane!.soloWaveColor ?? '#f59e0b', v ?? 0.6)"
-                  />
-                </div>
-              </div>
-            </q-card-section>
+            <div class="tracks-panel__lane-spectrum-body">
+              <SpectrogramOverridesView mono :snapshot="gtrackSpectrumSnapshot" @action="applyLaneSpectrumAction" />
+            </div>
           </q-card>
         </q-dialog>
 
@@ -844,7 +788,7 @@
                        the per-channel items are locked (waveformSettingsTabs) so the channels
                        cannot diverge. Hidden for mono — one channel, nothing to apply to (WS-D4). -->
                   <q-toggle
-                    v-if="waveformSettingsTab === 'both' && isSpectrogramStereo"
+                    v-if="wfDlgLane === null && waveformSettingsTab === 'both' && isSpectrogramStereo"
                     v-model="waveformLinkChannels"
                     dense
                     :label="t('audio.waveformApplyBoth')"
@@ -891,7 +835,8 @@
                       :options="[{ label: 'lin', value: 'linear' }, { label: 'dB', value: 'db' }]"
                     />
                   </div>
-                  <div v-if="viewMode === 'overlay'">
+                  <!-- VS2.5: a lane's opacity always matters — it drives the inline («Под кривыми») underlay. -->
+                  <div v-if="viewMode === 'overlay' || wfDlgLane !== null">
                     <div class="text-body2 q-mb-xs">{{ t('audio.waveformOpacity') }}: {{ Math.round(wfDlgOpacity * 100) }}%</div>
                     <q-slider v-model="wfDlgOpacity" :min="0.1" :max="1" :step="0.05" dense :disable="wfDlgControlsDisabled" />
                   </div>
@@ -1248,7 +1193,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -1266,6 +1211,14 @@ import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-ove
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
+// VS2.4 (VS-D3 rev 2): the lane solo-spectrum dialog hosts the SAME form as the program settings and
+// the overall-spectrum panel. Lazy like SpectrumSettingsDialog's host — it pulls the full form chunk.
+import {
+  applyOverridesAction,
+  type OverridesAction,
+  type OverridesSnapshot,
+} from '../composables/overall-spectrum-overrides-model'
+const SpectrogramOverridesView = defineAsyncComponent(() => import('./SpectrogramOverridesView.vue'))
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
@@ -2034,10 +1987,24 @@ type WaveformSettingsTab = 'both' | 0 | 1
 const waveformSettingsOpen = ref(false)
 const waveformSettingsTab = ref<WaveformSettingsTab>('both')
 const waveformLinkChannels = ref<boolean>(typeof wfPrefs.link === 'boolean' ? wfPrefs.link : true)
+// VS2.5 (VS-D4 rev 2, owner): a lane's solo-wave gear opens THIS SAME dialog in its mono mode —
+// non-null = the dialog edits that lane's solo-wave style (colour/scale/opacity) instead of the
+// overall channels. Cleared on close so the next overall open is untainted.
+const waveformSettingsLaneId = ref<number | null>(null)
+const wfDlgLane = computed(() => gtracks.lanes.value.find((l) => l.id === waveformSettingsLaneId.value) ?? null)
+function openLaneWaveSettings(laneId: number): void {
+  waveformSettingsLaneId.value = laneId
+  waveformSettingsTab.value = 'both'
+  waveformSettingsOpen.value = true
+}
+watch(waveformSettingsOpen, (open) => {
+  if (!open) waveformSettingsLaneId.value = null
+})
 // WS-D5: a per-channel entry point (the overlay spectrogram gear; the per-track gears until WS1.2
 // retires them) must never land on a tab the link toggle has locked -> fall back to «Оба канала»,
 // which is where a linked edit belongs anyway.
 function openWaveformSettings(ch: number): void {
+  waveformSettingsLaneId.value = null
   waveformSettingsTab.value =
     waveformLinkChannels.value || !isSpectrogramStereo.value ? 'both' : ch === 1 ? 1 : 0
   waveformSettingsOpen.value = true
@@ -2046,11 +2013,14 @@ function openWaveformSettings(ch: number): void {
 // shared scope (owner req 1). This is now the only entry point while the wave stack is visible; the
 // per-channel one above survives for the overlay mode, where this title bar does not exist (WS-D5).
 function openWaveformSettingsGroup(): void {
+  waveformSettingsLaneId.value = null
   waveformSettingsTab.value = 'both'
   waveformSettingsOpen.value = true
 }
 interface WaveformSettingsTabItem { readonly id: WaveformSettingsTab; readonly label: string; readonly disable: boolean }
 const waveformSettingsTabs = computed<WaveformSettingsTabItem[]>(() => {
+  // VS2.5: a lane's solo wave is always mono — same single «Моно» item as a mono file (WS-D4).
+  if (wfDlgLane.value !== null) return [{ id: 'both', label: t('audio.waveformChannelMono'), disable: false }]
   // WS-D4 (owner req 7): mono has ONE channel — a single «Моно» item, no L/R, no link toggle.
   if (!isSpectrogramStereo.value) return [{ id: 'both', label: t('audio.waveformChannelMono'), disable: false }]
   const locked = waveformLinkChannels.value // owner req 6: linked -> «Левый»/«Правый» unavailable
@@ -2072,7 +2042,7 @@ function selectWaveformSettingsTab(aTab: WaveformSettingsTabItem): void {
 // own the values — so its controls go inert; only the toggle itself stays live. Mono never gets
 // here: there is no toggle to turn off (WS-D4).
 const wfDlgControlsDisabled = computed(
-  () => waveformSettingsTab.value === 'both' && isSpectrogramStereo.value && !waveformLinkChannels.value,
+  () => wfDlgLane.value === null && waveformSettingsTab.value === 'both' && isSpectrogramStereo.value && !waveformLinkChannels.value,
 )
 // R4: a file switch can turn stereo into mono under an open dialog — coerce the scope back rather
 // than leave it on a channel that no longer exists (or on a tab the toggle has since locked).
@@ -2082,7 +2052,7 @@ watch([isSpectrogramStereo, waveformLinkChannels], ([stereo, link]) => {
 const wfDlgChannel = computed(() => (waveformSettingsTab.value === 'both' ? 0 : waveformSettingsTab.value))
 // WS1.4 (owner req 12): the dialog edits the group its ACTIVE TAB names, and only that one. In mono
 // the «Моно» tab is channel 0's group, not a «both» group (WS-D4).
-const wfDlgOnBothGroup = computed(() => waveformSettingsTab.value === 'both' && isSpectrogramStereo.value)
+const wfDlgOnBothGroup = computed(() => wfDlgLane.value === null && waveformSettingsTab.value === 'both' && isSpectrogramStereo.value)
 // Reads the RAW per-channel value, never wfScale/wfColor/wfOpacity: those answer «what does this
 // track DRAW», which while linked is the «Оба канала» group — a per-channel tab must show its own
 // stored setting, or the three groups would stop being independent on screen.
@@ -2091,33 +2061,46 @@ function wfDlgWriteChannel<T>(aList: Ref<T[]>, aValue: T): void {
   next[wfDlgChannel.value] = aValue
   aList.value = next
 }
+// VS2.5: with a lane target the three controls read/write THAT LANE's solo-wave style (persisted
+// with the lane config), leaving every overall-channel group untouched.
 const wfDlgScale = computed<WaveformScale>({
-  get: () =>
-    wfDlgOnBothGroup.value
+  get: () => {
+    if (wfDlgLane.value !== null) return wfDlgLane.value.soloWaveScale ?? 'linear'
+    return wfDlgOnBothGroup.value
       ? waveformBothScale.value
-      : (waveformScales.value[wfDlgChannel.value] ?? waveformScales.value[0] ?? 'linear'),
+      : (waveformScales.value[wfDlgChannel.value] ?? waveformScales.value[0] ?? 'linear')
+  },
   set: (v) => {
-    if (wfDlgOnBothGroup.value) waveformBothScale.value = v
+    if (wfDlgLane.value !== null) gtracks.setLaneSoloWaveScale(wfDlgLane.value.id, v)
+    else if (wfDlgOnBothGroup.value) waveformBothScale.value = v
     else wfDlgWriteChannel(waveformScales, v)
   },
 })
 const wfDlgColor = computed<string>({
-  get: () =>
-    wfDlgOnBothGroup.value
+  get: () => {
+    if (wfDlgLane.value !== null) return wfDlgLane.value.soloWaveColor ?? '#f59e0b'
+    return wfDlgOnBothGroup.value
       ? waveformBothColor.value
-      : (waveformColors.value[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[0]!),
+      : (waveformColors.value[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[wfDlgChannel.value] ?? WAVEFORM_DEFAULT_COLORS[0]!)
+  },
   set: (v) => {
-    if (wfDlgOnBothGroup.value) waveformBothColor.value = v
+    const lane = wfDlgLane.value
+    if (lane !== null) gtracks.setLaneSoloWaveStyle(lane.id, v, lane.soloWaveOpacity ?? 0.6)
+    else if (wfDlgOnBothGroup.value) waveformBothColor.value = v
     else wfDlgWriteChannel(waveformColors, v)
   },
 })
 const wfDlgOpacity = computed<number>({
-  get: () =>
-    wfDlgOnBothGroup.value
+  get: () => {
+    if (wfDlgLane.value !== null) return wfDlgLane.value.soloWaveOpacity ?? 0.6
+    return wfDlgOnBothGroup.value
       ? waveformBothOpacity.value
-      : (waveformOpacities.value[wfDlgChannel.value] ?? waveformOpacities.value[0] ?? 0.55),
+      : (waveformOpacities.value[wfDlgChannel.value] ?? waveformOpacities.value[0] ?? 0.55)
+  },
   set: (v) => {
-    if (wfDlgOnBothGroup.value) waveformBothOpacity.value = v
+    const lane = wfDlgLane.value
+    if (lane !== null) gtracks.setLaneSoloWaveStyle(lane.id, lane.soloWaveColor ?? '#f59e0b', v)
+    else if (wfDlgOnBothGroup.value) waveformBothOpacity.value = v
     else wfDlgWriteChannel(waveformOpacities, v)
   },
 })
@@ -2308,13 +2291,36 @@ const gtrackSpectrumDialogOpen = computed<boolean>({
   set: (v) => { if (!v) gtrackSpectrumDialogId.value = null },
 })
 const gtrackSpectrumDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSpectrumDialogId.value) ?? null)
-// VS2.2 (VS-D4): the solo-wave graph's gear opens the wave style dialog (colour + opacity).
-const gtrackWaveDialogId = ref<number | null>(null)
-const gtrackWaveDialogOpen = computed<boolean>({
-  get: () => gtrackWaveDialogId.value !== null,
-  set: (v) => { if (!v) gtrackWaveDialogId.value = null },
+// VS2.4 (VS-D3 rev 2): the OverridesSnapshot/ActionContext contract is channel-based, but a lane is
+// MONO — its single laneSpectrum override plays both "channels", so displayedForScope/scopeHasOverride
+// and the SG-D8 auto-individual seeding all work unchanged over the one entry.
+const gtrackSpectrumSnapshot = computed<OverridesSnapshot | null>(() => {
+  const lane = gtrackSpectrumDialogLane.value
+  if (lane === null) return null
+  const o = gtracks.getLaneSpectrum(lane.id)
+  const override = o === null ? null : { ...o }
+  return {
+    program: { ...spectrogramStore.settings },
+    channel0: override,
+    channel1: override,
+    presets: spectrogramStore.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
+  }
 })
-const gtrackWaveDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackWaveDialogId.value) ?? null)
+function applyLaneSpectrumAction(action: OverridesAction): void {
+  const laneId = gtrackSpectrumDialogId.value
+  if (laneId === null) return
+  applyOverridesAction(action, {
+    overrides: {
+      getChannel: () => gtracks.getLaneSpectrum(laneId),
+      setChannel: (_ch, s) => gtracks.setLaneSpectrum(laneId, s),
+      clearChannel: () => gtracks.clearLaneSpectrum(laneId),
+      setBoth: (s) => gtracks.setLaneSpectrum(laneId, s),
+      clearBoth: () => gtracks.clearLaneSpectrum(laneId),
+    },
+    program: spectrogramStore.settings,
+    findPreset: (id) => spectrogramStore.allPresets.find((p) => p.id === id)?.settings,
+  })
+}
 const gtrackSettingsOpen = computed<boolean>({
   get: () => gtrackSettingsId.value !== null,
   set: (v) => { if (!v) gtrackSettingsId.value = null },
@@ -3236,6 +3242,21 @@ onBeforeUnmount(() => {
 .tracks-panel__gtrack-inline {
   position: relative;
   width: 100%;
+}
+
+/* VS2.4: the lane solo-spectrum dialog — a fixed-size flex card so the hosted overrides view
+   (height:100%, its form scrolls internally) gets a real height to fill. */
+.tracks-panel__lane-spectrum-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 84vh;
+  max-width: 92vw;
+  width: 440px;
+}
+.tracks-panel__lane-spectrum-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 /* GT10.28 (owner req. 77): flash a highlight on a freshly added lane. */
 .tracks-panel__gtrack-inline--new {

@@ -6,10 +6,13 @@
        a vertical LEFT nav «Оба канала | Левый | Правый», exactly like the overall-waveform settings
        form; the right pane holds the presets + the settings form. No individual/inherit toggle (owner):
        the spectrum shows the program level by default, editing a field auto-creates the scope's
-       override (SG-D8), «Сброс» drops it back, applying a preset writes the active scope. -->
+       override (SG-D8), «Сброс» drops it back, applying a preset writes the active scope.
+       VS2.4 (VS-D3 rev 2): `mono` hides the scope nav — the per-lane solo-spectrum dialog reuses
+       this exact view over a single override (its adapter maps every scope to the one laneSpectrum
+       entry), so the lane dialog IS the program/overall form, just without L/R. -->
   <div class="spectrum-overrides">
     <div class="spectrum-overrides__body row no-wrap">
-      <q-list class="spectrum-overrides__nav">
+      <q-list v-if="!mono" class="spectrum-overrides__nav">
         <q-item
           v-for="opt in scopeOptions"
           :key="String(opt.value)"
@@ -22,7 +25,7 @@
         </q-item>
       </q-list>
 
-      <q-separator vertical />
+      <q-separator v-if="!mono" vertical />
 
       <div class="spectrum-overrides__content">
         <div class="spectrum-overrides__content-head">
@@ -76,7 +79,12 @@ import {
 } from '../composables/overall-spectrum-overrides-model'
 import type { SpectrumSettingsSnapshot, SpectrumSettingsAction } from '../composables/spectrum-settings-model'
 
-const props = defineProps<{ readonly snapshot: OverridesSnapshot }>()
+const props = defineProps<{
+  readonly snapshot: OverridesSnapshot
+  /** VS2.4: hide the L/R scope nav — a mono target (e.g. a lane's solo spectrum) has one override;
+   *  the scope stays 'both' and the host adapter maps it onto that single entry. */
+  readonly mono?: boolean
+}>()
 const emit = defineEmits<{ action: [action: OverridesAction] }>()
 
 const { t } = useI18n()
