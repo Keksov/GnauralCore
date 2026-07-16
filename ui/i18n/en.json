@@ -422,6 +422,7 @@
     "stageAnalysis": "Opening the spectrum analysis (backend)"
   },
   "settings": {
+    "spectrogramTab": "Spectrogram",
     "audioTab": "Audio",
     "audioTitle": "Audio presets",
     "audioSubtitle": "Configure the server-side presets root for the Audio tab.",
