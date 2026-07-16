@@ -832,6 +832,8 @@
       :position-sec="gtrackPlayheadSec ?? 0"
       :duration-sec="spectrogramDuration"
       :format="timeFormat"
+      :current-loop="audio.currentLoop"
+      :loop-count="gtracks.loopCount.value"
       :minimap-visible="minimapVisible"
       @update:position-sec="handleSeek"
       @update:format="setTimeFormat"

@@ -119,6 +119,9 @@ export const useAudioStore = defineStore('audio', () => {
   const remoteFilePath = ref<string | null>(null)
   const remoteFileKind = ref<AudioFileKind | null>(null)
   const remotePositionSec = ref(0)
+  // TP2.2: 1-based current loop reported by gnaural during multi-loop playback (null when idle or a
+  // single-loop / older cli). The position resets each loop, so the client cannot derive this.
+  const remoteCurrentLoop = ref<number | null>(null)
   const localPositionSec = ref(0)
   const remoteDurationSec = ref(0)
   const localDurationSec = ref(0)
@@ -851,12 +854,14 @@ export const useAudioStore = defineStore('audio', () => {
     }
 
     if (event.transportState === 'idle') {
+      remoteCurrentLoop.value = null // TP2.2: no current loop when playback stops
       void maybeStartQueuedLocalPlayback()
     }
   }
 
   function handleProgress(event: AudioProgressEvent): void {
     remotePositionSec.value = event.positionSec
+    remoteCurrentLoop.value = event.loop ?? null
     clearLocalError()
   }
 
@@ -885,6 +890,7 @@ export const useAudioStore = defineStore('audio', () => {
     if (event.role === 'playback') {
       remoteTransportState.value = 'idle'
       remotePositionSec.value = 0
+      remoteCurrentLoop.value = null
       void maybeStartQueuedLocalPlayback()
     }
   }
@@ -929,6 +935,7 @@ export const useAudioStore = defineStore('audio', () => {
     activeFilePath,
     activeFileKind,
     positionSec,
+    currentLoop: remoteCurrentLoop,
     durationSec,
     settingsLoading,
     presetsLoading,

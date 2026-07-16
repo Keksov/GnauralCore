@@ -82,6 +82,8 @@ const parsePlaybackProgressEvent = (value: unknown): AudioProgressEvent | null =
   return {
     type: "audio_progress",
     positionSec: value.pos,
+    // TP2.2: 1-based current loop (multi-loop playback); absent from an older cli.
+    loop: isNumber(value.loop) ? value.loop : undefined,
   }
 }
 

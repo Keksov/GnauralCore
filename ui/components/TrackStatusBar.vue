@@ -83,6 +83,13 @@
         <span class="track-status-bar__duration">{{ durationText }}</span>
       </div>
 
+      <!-- TP2.2: current loop / total, shown only for a multi-loop file (the transport position is
+           loop-local, so this is the only cue to which loop is playing). -->
+      <div v-if="loopCount > 1" class="track-status-bar__field">
+        <span class="track-status-bar__label">{{ t('audio.statusLoop') }}</span>
+        <span class="track-status-bar__duration">{{ currentLoop ?? '–' }} / {{ loopCount }}</span>
+      </div>
+
       <q-space />
 
       <!-- (feedback #2) show/hide the minimap — pinned to the right of the status bar. -->
@@ -122,8 +129,14 @@ const props = withDefaults(defineProps<{
   format: TimeFormat
   /** Whether the minimap row is shown (toggled from the right of the bar; owned by the host). */
   minimapVisible?: boolean
+  /** TP2.2: 1-based current loop during multi-loop playback (null when idle); with loopCount below. */
+  currentLoop?: number | null
+  /** TP2.2: total loops; the loop readout shows only when this is > 1. */
+  loopCount?: number
 }>(), {
   minimapVisible: true,
+  currentLoop: null,
+  loopCount: 1,
 })
 
 const emit = defineEmits<{

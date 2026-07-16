@@ -59,6 +59,7 @@ public
                     aBaseFreq, aBeatFreq, aVolL, aVolR: Double;
                     aTransitionTimeSec, aDurationSec: Double);
     function    getPlaybackPosition: Double;
+    function    getCurrentLoop: Integer;
     function    isCompleted: Boolean;
     function    getVoiceCount: Integer;
     end;
@@ -722,6 +723,19 @@ begin
         FvoiceStates[aVoiceIndex].FoverrideVolL := aVolL;
         FvoiceStates[aVoiceIndex].FoverrideVolR := aVolR;
     end;
+end;
+
+function TGnauralSynth.getCurrentLoop: Integer;
+begin
+    // FcurrentLoop counts DOWN from the schedule's LoopCount to 0 (0 => completed). Report the
+    // 1-based loop number counting UP (loop 1 = first pass). Clamped for the momentary boundary tick.
+    if Fschedule = nil then
+        Exit(1);
+    Result := Fschedule.LoopCount - FcurrentLoop + 1;
+    if Result < 1 then
+        Result := 1;
+    if Result > Fschedule.LoopCount then
+        Result := Fschedule.LoopCount;
 end;
 
 function TGnauralSynth.getPlaybackPosition: Double;

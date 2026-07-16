@@ -129,6 +129,7 @@
     "minimapMode_overlay": "Мини-карта: Волна поверх спектра",
     "statusPosition": "Позиция",
     "statusDuration": "Длительность",
+    "statusLoop": "Петля",
     "statusTimeFormat": "Формат времени",
     "statusStepUp": "Увеличить поле под курсором",
     "statusStepDown": "Уменьшить поле под курсором",

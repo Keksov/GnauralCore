@@ -21,13 +21,17 @@ private
     Fsynth                  : TGnauralSynth;
     FaudioOutput            : TAudioOutput;
     FloadedFileName         : string;
-    FlastProgressSecond     : Integer;
+    // TP3.1: progress is throttled by position advance, not whole seconds. FlastProgressPos is the
+    // position at the last emit (-1 = none yet); FprogressIntervalSec is the adaptive step, set per
+    // schedule so short loops still get ~PROGRESS_UPDATES_PER_LOOP updates.
+    FlastProgressPos        : Double;
+    FprogressIntervalSec    : Double;
     FoutputFileName         : string;
 
     procedure   clearLoadedSchedule;
     procedure   dumpSchedule;
     procedure   emitLoadedEvent;
-    procedure   emitPlaybackProgressEvent(aPositionSec: Double);
+    procedure   emitPlaybackProgressEvent(aPositionSec: Double; aLoop: Integer);
     procedure   emitPlaybackCompletedEvent;
     procedure   loadScheduleFile(const aFileName: string);
     procedure   printInfo;
@@ -51,6 +55,14 @@ uses
     LogCore,
     JsonLogWriter,
     GnauralControlProtocol;
+
+const
+    // TP3.1: aim for this many playback_progress updates per loop, clamped to [min, max] seconds.
+    // The control loop ticks every 100ms, so 0.1s (10Hz) is the finest achievable; 1s keeps the old
+    // rate for long loops (and single-loop files).
+    PROGRESS_UPDATES_PER_LOOP = 20;
+    PROGRESS_MIN_INTERVAL_SEC = 0.1;
+    PROGRESS_MAX_INTERVAL_SEC = 1.0;
 
 {*******************************************************************************
 * writeStdoutLine
@@ -184,7 +196,8 @@ begin
     Fsynth := nil;
     FaudioOutput := nil;
     FloadedFileName := '';
-    FlastProgressSecond := -1;
+    FlastProgressPos := -1;
+    FprogressIntervalSec := PROGRESS_MAX_INTERVAL_SEC;
     FoutputFileName := '';
 end;
 
@@ -205,7 +218,7 @@ begin
     FreeAndNil(Fsynth);
     FreeAndNil(Fschedule);
     FloadedFileName := '';
-    FlastProgressSecond := -1;
+    FlastProgressPos := -1;
 end;
 
 {*******************************************************************************
@@ -220,6 +233,14 @@ begin
         Exit;
 
     Fsynth := TGnauralSynth.Create(Fschedule);
+
+    // TP3.1: pick the progress-emit interval for this schedule. TotalTime is ONE loop, so a short
+    // loop (e.g. 0.79s) gets a small interval and thus a smooth cursor; a long loop keeps ~1s.
+    FprogressIntervalSec := Fschedule.TotalTime / PROGRESS_UPDATES_PER_LOOP;
+    if FprogressIntervalSec < PROGRESS_MIN_INTERVAL_SEC then
+        FprogressIntervalSec := PROGRESS_MIN_INTERVAL_SEC;
+    if FprogressIntervalSec > PROGRESS_MAX_INTERVAL_SEC then
+        FprogressIntervalSec := PROGRESS_MAX_INTERVAL_SEC;
 end;
 
 {*******************************************************************************
@@ -233,7 +254,7 @@ begin
         FreeAndNil(FaudioOutput);
     end;
 
-    FlastProgressSecond := -1;
+    FlastProgressPos := -1;
 
     if aResetToStart and (Fschedule <> nil) then
         rebuildSynth;
@@ -290,10 +311,11 @@ end;
     {*******************************************************************************
     * emitPlaybackProgressEvent
     *******************************************************************************}
-    procedure TGnauralApp.emitPlaybackProgressEvent(aPositionSec: Double);
+    procedure TGnauralApp.emitPlaybackProgressEvent(aPositionSec: Double; aLoop: Integer);
     begin
         writeStdoutLine('{"event":"playback_progress"' +
         ',"pos":' + jsonLogFloat3(aPositionSec) +
+        ',"loop":' + IntToStr(aLoop) +
         '}');
     end;
 
@@ -395,7 +417,6 @@ var
     line: string;
     eofReached: Boolean;
     positionSec: Double;
-    currentSecond: Integer;
 begin
     writeStdoutLine('{"event":"server_ready"}');
 
@@ -410,11 +431,13 @@ begin
         if (FaudioOutput <> nil) and (Fsynth <> nil) and (not Fsynth.isPaused) then
         begin
             positionSec := Fsynth.getPlaybackPosition;
-            currentSecond := Trunc(positionSec);
-            if currentSecond <> FlastProgressSecond then
+            // TP3.1: emit on the first tick, on a loop wrap (position dropped back near 0), or once
+            // the position has advanced by the adaptive interval — not only on whole-second changes.
+            if (FlastProgressPos < 0) or (positionSec < FlastProgressPos)
+               or (positionSec - FlastProgressPos >= FprogressIntervalSec) then
             begin
-                FlastProgressSecond := currentSecond;
-                emitPlaybackProgressEvent(positionSec);
+                FlastProgressPos := positionSec;
+                emitPlaybackProgressEvent(positionSec, Fsynth.getCurrentLoop);
             end;
         end;
 
@@ -460,7 +483,7 @@ begin
                         rebuildSynth;
 
                     Fsynth.resume;
-                    FlastProgressSecond := -1;
+                    FlastProgressPos := -1;
                     startAudioOutput;
                     emitCommandAck(gctStart, True);
                 end;
@@ -489,8 +512,8 @@ begin
                         raise Exception.Create('No schedule loaded.');
 
                     Fsynth.seek(cmd.PositionSec);
-                    FlastProgressSecond := Trunc(cmd.PositionSec);
-                    emitPlaybackProgressEvent(cmd.PositionSec);
+                    FlastProgressPos := cmd.PositionSec;
+                    emitPlaybackProgressEvent(cmd.PositionSec, Fsynth.getCurrentLoop);
                     emitCommandAck(gctSeek, True);
                 end;
 
