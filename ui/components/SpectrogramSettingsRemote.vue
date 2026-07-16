@@ -5,7 +5,8 @@
        no title-bar/footer chrome, so it hosts its own compact bar: presets (apply + «Сохранить как…»
        only — manage stays main-window-only, SS-D8) + «Сброс». Field edits come from the shared view. -->
   <div class="spectrum-remote">
-    <div class="spectrum-remote__bar">
+    <!-- Header (top): presets access (the main window has this as a title-bar icon) + close. -->
+    <div class="spectrum-remote__header">
       <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="presetLabel" class="spectrum-remote__presets">
         <q-list dense style="min-width: 220px">
           <q-item
@@ -33,12 +34,16 @@
         </q-list>
       </q-btn-dropdown>
       <q-space />
-      <q-btn flat dense no-caps icon="restart_alt" :label="t('audio.spectrogramReset')" @click="emit('action', { kind: 'reset' })" />
       <q-btn flat dense round icon="close" :aria-label="t('audio.spectrogramSettingsClose')" @click="emit('close')" />
     </div>
 
     <div class="spectrum-remote__body">
       <SpectrogramSettingsView :snapshot="snapshot" @action="(a) => emit('action', a)" />
+    </div>
+
+    <!-- Footer (bottom): «Сброс» — same place as the main window's footer (owner 2026-07-16). -->
+    <div class="spectrum-remote__footer">
+      <q-btn flat dense no-caps icon="restart_alt" :label="t('audio.spectrogramReset')" @click="emit('action', { kind: 'reset' })" />
     </div>
   </div>
 </template>
@@ -96,7 +101,7 @@ function onSaveAs(): void {
   height: 100%;
 }
 
-.spectrum-remote__bar {
+.spectrum-remote__header {
   align-items: center;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   display: flex;
@@ -110,5 +115,14 @@ function onSaveAs(): void {
   min-height: 0;
   overflow: auto;
   padding: 8px;
+}
+
+/* Mirrors the main window's footer (SpectrumSettingsDialog): Reset at the bottom, right-aligned. */
+.spectrum-remote__footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 6px 12px;
 }
 </style>
