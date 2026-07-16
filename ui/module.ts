@@ -35,5 +35,15 @@ export const gnauralModule = {
       component: () => import('./components/TrackListRemote.vue'),
       events: ['action'],
     },
+    // SS3.2 (SS-D2/SS-D3): «Параметры» detached content is the remote adapter — it renders the
+    // parent-pushed settings snapshot and bridges each gesture back as one serializable 'action' (no
+    // child-side spectrogram store, SS-D3). SpectrumSettingsDialog applies the action to the store.
+    {
+      id: 'spectrum-settings',
+      titleKey: 'audio.spectrogramSettingsTitle',
+      icon: 'tune',
+      component: () => import('./components/SpectrogramSettingsRemote.vue'),
+      events: ['action'],
+    },
   ],
 } as const

@@ -9,7 +9,8 @@
     :state="panel"
     :title="t('audio.spectrogramSettingsTitle')"
     icon="tune"
-    :allow-detach="false"
+    :bridge-state="snapshot"
+    @panel-event="onBridgedEvent"
   >
     <!-- SS2.3 (SS-D6 rev. 2, owner 2026-07-16): presets are no longer a block in the body — a
          title-bar icon opens them as a separate modal dialog. -->
@@ -53,14 +54,15 @@ import PanelWindow from '@panel/PanelWindow.vue'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useSpectrogramStore } from '../stores/spectrogram'
+import { useSpectrumSettingsSnapshot } from '../composables/use-spectrum-settings-snapshot'
+import { applySpectrumSettingsAction } from '../composables/spectrum-settings-actions'
+import type { SpectrumSettingsAction } from '../composables/spectrum-settings-model'
 
-// SS-D3: detach is OFF until the SS3.x remote exists, and this prop is passed EXPLICITLY rather
-// than omitted — an absent type-only Boolean casts to false, which happens to be what we want here,
-// but relying on that cast is exactly the PW5.7c trap that silently hid the mode from the other two
-// panels. Why it must be off: a detached child window runs its own Pinia, so it would edit its OWN
-// spectrogram store — never repainting THIS window's spectrogram (a silent no-op, since there is no
-// 'storage' listener anywhere) while racing this window's deep watches on the same three
-// localStorage keys. It is enabled in SS3.2 together with the snapshot/action remote.
+// SS3.2 (SS-D3): detach is now ON (allow-detach defaults to true). The detached child runs its own
+// Vue/Pinia and holds NO spectrogram store — instead PanelWindow pushes `snapshot` to it, and the
+// child (SpectrogramSettingsRemote) sends every gesture back as one `action` over the bridge, which
+// we apply HERE to the authoritative store. So editing in the separate window repaints THIS window's
+// spectrogram, and there is only one store writing the localStorage keys (no clobbering).
 
 // Kept lazy exactly as TracksPanel's flyout had it (createAsyncPanel): the panel body + its preset
 // manager stay out of AudioPage's chunk until the user actually opens «Параметры».
@@ -81,6 +83,14 @@ const SpectrogramSettingsPanel = defineAsyncComponent({
 const { t } = useI18n()
 const panel = useSpectrumSettingsPanelState()
 const store = useSpectrogramStore()
+
+// SS3.2: the snapshot pushed to the detached child, and the handler that applies the child's bridged
+// actions to the store. The store satisfies SpectrumSettingsActionContext structurally.
+const snapshot = useSpectrumSettingsSnapshot()
+function onBridgedEvent(name: string, payload: readonly unknown[]): void {
+  if (name !== 'action') return
+  applySpectrumSettingsAction(payload[0] as SpectrumSettingsAction, store)
+}
 
 // The presets dialog (+ its manager) is only needed once the user asks for it — keep it lazy and
 // out of the eager AudioPage chunk until first open.

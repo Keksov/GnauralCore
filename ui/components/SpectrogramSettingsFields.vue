@@ -19,7 +19,7 @@
 
       <q-select
         v-if="field.kind === 'select'"
-        :model-value="values[field.key]"
+        :model-value="local[field.key]"
         :options="field.options"
         dense outlined emit-value map-options
         class="spectrogram-fields__control"
@@ -27,7 +27,7 @@
       />
       <q-input
         v-else-if="field.kind === 'number'"
-        :model-value="values[field.key]"
+        :model-value="local[field.key]"
         type="number"
         dense outlined
         class="spectrogram-fields__control"
@@ -36,7 +36,7 @@
       <!-- SF16.1 + SS2.6: numeric field; native arrows are the only stepper. @blur re-clamps. -->
       <q-input
         v-else-if="field.kind === 'spin'"
-        :model-value="values[field.key]"
+        :model-value="local[field.key]"
         type="number"
         :min="field.spin!.min"
         :max="field.spin!.max"
@@ -48,10 +48,10 @@
       />
       <template v-else>
         <div class="spectrogram-fields__slider-value text-grey-7">
-          {{ Number(values[field.key]).toFixed(field.slider!.decimals) }}
+          {{ Number(local[field.key]).toFixed(field.slider!.decimals) }}
         </div>
         <q-slider
-          :model-value="Number(values[field.key])"
+          :model-value="Number(local[field.key])"
           :min="field.slider!.min"
           :max="field.slider!.max"
           :step="field.slider!.step"
@@ -68,6 +68,7 @@
 // snapshot's settings) and emits a `set` action per edit instead of mutating a store. This is what
 // lets the same markup render in the detached child window (which has no store). @blur still clamps
 // spinbox fields to the step grid + bounds, emitting the clamped value.
+import { reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { clamp, type Field } from '../composables/spectrogram-settings-fields'
 import type { SpectrogramSettings } from '../composables/spectrogram-settings'
@@ -81,10 +82,25 @@ const emit = defineEmits<{ action: [action: SpectrumSettingsAction] }>()
 
 const { t } = useI18n()
 
-// Loosely-typed read of the current value (the field kind guarantees the runtime type).
-const values = props.values as unknown as Record<string, string | number>
+// SS3.2: a LOCAL mirror of the values, so a controlled input stays smooth even when the authoritative
+// value arrives asynchronously — in the detached child the round-trip (emit -> bridge -> parent store
+// -> snapshot -> bridge -> prop) is async, and binding the raw prop would fight the user's typing. On
+// input we update `local` immediately AND emit the action; when the snapshot echoes back we reconcile
+// `local` to it (no-op if unchanged, so no loop). In the main window the echo is synchronous.
+const local = reactive<Record<string, string | number>>({ ...(props.values as unknown as Record<string, string | number>) })
+watch(
+  () => props.values,
+  (nv) => {
+    const src = nv as unknown as Record<string, string | number>
+    for (const k in src) {
+      if (local[k] !== src[k]) local[k] = src[k]
+    }
+  },
+  { deep: true },
+)
 
 function set(key: Field['key'], value: string | number): void {
+  local[key] = value
   emit('action', { kind: 'set', key, value })
 }
 function toNumber(v: string | number | null): number {
@@ -93,7 +109,7 @@ function toNumber(v: string | number | null): number {
 }
 function clampField(aField: Field): void {
   const spec = aField.spin!
-  const cur = Number(values[aField.key])
+  const cur = Number(local[aField.key])
   set(aField.key, clamp(Number.isFinite(cur) ? cur : spec.min, spec))
 }
 </script>
