@@ -237,10 +237,15 @@ watch(openSet, (v) => {
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+/* Owner pick: a filled «band» header — a full-width tint, full-brightness text, heavier weight and
+   letter-spacing so the groups read as sections rather than faint labels — plus an accent bar on the
+   left edge for extra emphasis. */
 .spectrogram-settings__block-header {
+  background: rgba(148, 163, 184, 0.12);
+  border-left: 3px solid var(--q-primary);
   font-size: 12px;
-  font-weight: 600;
-  opacity: 0.8;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -254,9 +259,11 @@ watch(openSet, (v) => {
 
 /* The accordion header is rendered by q-expansion-item, so reach it through :deep. */
 .spectrogram-settings__card :deep(.spectrogram-settings__block-header) {
+  background: rgba(148, 163, 184, 0.12);
+  border-left: 3px solid var(--q-primary);
   font-size: 12px;
-  font-weight: 600;
-  opacity: 0.8;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
