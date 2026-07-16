@@ -19,42 +19,44 @@
 
       <q-select
         v-if="field.kind === 'select'"
-        v-model="sVal[field.key]"
+        :model-value="values[field.key]"
         :options="field.options"
         dense outlined emit-value map-options
         class="spectrogram-fields__control"
+        @update:model-value="(v: string | number) => set(field.key, v)"
       />
       <q-input
         v-else-if="field.kind === 'number'"
-        v-model.number="sNum[field.key]"
+        :model-value="values[field.key]"
         type="number"
         dense outlined
         class="spectrogram-fields__control"
+        @update:model-value="(v: string | number | null) => set(field.key, toNumber(v))"
       />
-      <!-- SF16.1 + SS2.6: numeric field with min/max/step. The native number-input arrows are the
-           only stepper now — the owner had the +/- prepend/append buttons removed as duplicating
-           (and confusing next to) the arrows. @blur re-clamps to the step grid + bounds. -->
+      <!-- SF16.1 + SS2.6: numeric field; native arrows are the only stepper. @blur re-clamps. -->
       <q-input
         v-else-if="field.kind === 'spin'"
-        v-model.number="sNum[field.key]"
+        :model-value="values[field.key]"
         type="number"
         :min="field.spin!.min"
         :max="field.spin!.max"
         :step="field.spin!.step"
         dense outlined
         class="spectrogram-fields__control"
+        @update:model-value="(v: string | number | null) => set(field.key, toNumber(v))"
         @blur="clampField(field)"
       />
       <template v-else>
         <div class="spectrogram-fields__slider-value text-grey-7">
-          {{ Number(sNum[field.key]).toFixed(field.slider!.decimals) }}
+          {{ Number(values[field.key]).toFixed(field.slider!.decimals) }}
         </div>
         <q-slider
-          v-model="sNum[field.key]"
+          :model-value="Number(values[field.key])"
           :min="field.slider!.min"
           :max="field.slider!.max"
           :step="field.slider!.step"
           dense
+          @update:model-value="(v: number | null) => set(field.key, v ?? field.slider!.min)"
         />
       </template>
     </div>
@@ -62,28 +64,37 @@
 </template>
 
 <script setup lang="ts">
-// SS2.1: the field renderer, extracted verbatim from SpectrogramSettingsPanel so the tiles and the
-// accordion layouts share ONE copy of it (a duplicated 50-line control block would be exactly the
-// divergent-copy hazard this repo has been bitten by before). It binds v-model directly onto the
-// global spectrogram store — the same object every group's instance edits, each at its own keys.
+// SS3.1 (SS-D2): the field renderer is now a PURE view — it reads its values from `values` (the
+// snapshot's settings) and emits a `set` action per edit instead of mutating a store. This is what
+// lets the same markup render in the detached child window (which has no store). @blur still clamps
+// spinbox fields to the step grid + bounds, emitting the clamped value.
 import { useI18n } from 'vue-i18n'
-import { useSpectrogramStore } from '../stores/spectrogram'
 import { clamp, type Field } from '../composables/spectrogram-settings-fields'
+import type { SpectrogramSettings } from '../composables/spectrogram-settings'
+import type { SpectrumSettingsAction } from '../composables/spectrum-settings-model'
 
-defineProps<{ readonly fields: readonly Field[] }>()
+const props = defineProps<{
+  readonly fields: readonly Field[]
+  readonly values: SpectrogramSettings
+}>()
+const emit = defineEmits<{ action: [action: SpectrumSettingsAction] }>()
 
 const { t } = useI18n()
-const store = useSpectrogramStore()
-const s = store.settings
-// Same reactive object, loosely typed for the data-driven v-models (the field kind guarantees the
-// runtime type; TS can't narrow s[field.key] from a dynamic key).
-const sNum = s as unknown as Record<string, number>
-const sVal = s as unknown as Record<string, string | number>
 
+// Loosely-typed read of the current value (the field kind guarantees the runtime type).
+const values = props.values as unknown as Record<string, string | number>
+
+function set(key: Field['key'], value: string | number): void {
+  emit('action', { kind: 'set', key, value })
+}
+function toNumber(v: string | number | null): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
 function clampField(aField: Field): void {
   const spec = aField.spin!
-  const cur = Number(sNum[aField.key])
-  sNum[aField.key] = clamp(Number.isFinite(cur) ? cur : spec.min, spec)
+  const cur = Number(values[aField.key])
+  set(aField.key, clamp(Number.isFinite(cur) ? cur : spec.min, spec))
 }
 </script>
 
