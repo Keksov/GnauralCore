@@ -211,20 +211,22 @@ watch(openSet, (v) => {
   flex-direction: column;
 }
 
-/* SS2.5 (owner: compact, one shared border between neighbours): tiles = a GAPLESS grid inside one
-   frame. The container draws the outer border; each tile draws only its right + bottom edges, so any
-   two adjacent tiles share a SINGLE line (no gap, no doubled borders). minmax min ==
-   SPECTRUM_BLOCK_MIN_PX; cells stretch to equal height per row so the shared dividers stay straight. */
+/* SS2.7 (owner: unequal-height blocks left big empty cells in a regular grid — a short block was
+   stretched to its tall row-mate). Tiles are now MASONRY via CSS multicol: blocks flow into balanced
+   columns by their NATURAL height, so nothing stretches and no empty space is left. Still one frame,
+   flush (SS2.6): the container draws the outer border, each block its right+bottom, so touching
+   blocks share a single line (ragged where heights differ — inherent to masonry). column-width ==
+   SPECTRUM_BLOCK_MIN_PX so the column count matches the tiles threshold; column-gap 0 = no gaps. */
 .spectrogram-settings--tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  /* SS2.6: square frame flush with the window edges (no radius -> no corner gaps). Container draws
-     the outer frame (all sides, so a non-full last row still closes on the right/bottom); each tile
-     draws only right+bottom, so any two adjacent blocks share one interior line. */
+  /* display:block (not the base flex) so CSS multicol actually applies. */
+  display: block;
+  column-width: 280px;
+  column-gap: 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .spectrogram-settings__tile {
+  break-inside: avoid;
   border-right: 1px solid rgba(148, 163, 184, 0.18);
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   display: flex;
