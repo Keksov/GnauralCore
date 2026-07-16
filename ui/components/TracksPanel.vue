@@ -478,7 +478,7 @@
                 :reload-key="spectrogramReloadKey"
             :solo-voice-ids="gtracks.mixVoiceIds.value"
             :analysis="track.analysis"
-            :render="spectrogramStore.renderOptions"
+            :render="overallSpectrumRender(track.channel)"
             :window-override="spectrogramWindowOverride"
             :waveform-overlay="waveformOverlay"
             :waveform-scale="wfScale(track.channel)"
@@ -842,7 +842,7 @@
               :file-path="audio.displayFilePath"
               :reload-key="spectrogramReloadKey"
               :analysis="spectrogramTracks[0]?.analysis"
-              :render="spectrogramStore.renderOptions"
+              :render="overallSpectrumRender(spectrogramTracks[0]?.channel ?? 0)"
               :mode="minimapMode"
               :waveform-color="wfColor(0)"
               v-model:view="spectrogramView"
@@ -1154,6 +1154,7 @@ import GTrackView from './GTrackView.vue'
 import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
+import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-overrides'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
@@ -1281,6 +1282,8 @@ const gtrackPlayheadSec = computed(() =>
 watch(() => audio.transportState, (st) => { if (st === 'playing') localPlayheadSec.value = null })
 watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 const spectrogramStore = useSpectrogramStore()
+// SG3.1 (SG-D7): per-channel individual overrides for the overall spectrogram (else the program level).
+const spectrumOverrides = useOverallSpectrumOverridesStore()
 // GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
 // waveform + spectrum (GT-D2). Lanes appear only for a gnaural file with a loaded schedule.
 // PW5.6 (PW-D10): shared singleton so the AudioPage-hosted «Список треков» panel and this tab edit
@@ -2570,6 +2573,20 @@ function spectrogramAnalysisForChannel(ch: number): SpectrogramAnalysisParams {
   return ch === 0 ? spectrogramLeftAnalysis.value : spectrogramRightAnalysis.value
 }
 
+// SG3.1 (SG-D7): the OVERALL spectrogram tracks resolve each channel to its individual override
+// (spectrumOverrides) if set, else the program-level store. Kept SEPARATE from
+// spectrogramAnalysisForChannel above, which the WAVEFORM tracks (and the gtrack lane fallback) also
+// use — a spectrum override must not leak into the waveform analysis.
+function overallSpectrumAnalysis(ch: number): SpectrogramAnalysisParams {
+  const o = spectrumOverrides.getChannel(ch)
+  if (o !== null) return { ...applyHighZoom(toAnalysisParams(o)), channel: ch }
+  return spectrogramAnalysisForChannel(ch)
+}
+function overallSpectrumRender(ch: number) {
+  const o = spectrumOverrides.getChannel(ch)
+  return o !== null ? toRenderOptions(o) : spectrogramStore.renderOptions
+}
+
 const spectrogramHasView = computed(() => spectrogramShared.view.value !== null)
 // v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
 const spectrogramView = computed<TimeWindow | null>({
@@ -2609,12 +2626,12 @@ interface SpectrogramTrack {
 // primary (drives the shared view/keyboard focus).
 const spectrogramTracks = computed<SpectrogramTrack[]>(() => {
   if (!isSpectrogramStereo.value) {
-    return [{ key: 'mono', channel: 0, analysis: applyHighZoom(spectrogramStore.analysisParams), primary: true }]
+    return [{ key: 'mono', channel: 0, analysis: overallSpectrumAnalysis(0), primary: true }]
   }
   return orderedChannels('spectrogram', 2).map((ch, i) => ({
     key: ch === 0 ? 'L' : 'R',
     channel: ch,
-    analysis: ch === 0 ? spectrogramLeftAnalysis.value : spectrogramRightAnalysis.value,
+    analysis: overallSpectrumAnalysis(ch),
     label: ch === 0 ? 'L' : 'R',
     primary: i === 0,
   }))
