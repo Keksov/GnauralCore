@@ -110,11 +110,12 @@ function onSaveAs(): void {
   padding: 4px 6px;
 }
 
+/* SS3.4-fix (owner): no padding — the block frame sits flush with the window edges, exactly as the
+   floating main window does (SS2.6). The header/footer keep their own padding. */
 .spectrum-remote__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px;
 }
 
 /* Mirrors the main window's footer (SpectrumSettingsDialog): Reset at the bottom, right-aligned. */
