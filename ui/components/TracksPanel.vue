@@ -469,6 +469,18 @@
               </q-menu>
             </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallSpectrum') }}</span>
+            <!-- SG3.2 (SG-D7): per-graph settings gear -> the «Параметры» @panel bound to this
+                 overall spectrogram L/R channel overrides (mirrors the waveform group gear). -->
+            <q-btn
+              dense flat round size="xs"
+              class="tracks-panel__gtrack-header-gear"
+              icon="tune"
+              :color="spectrumSettingsPanel.open ? 'primary' : undefined"
+              :aria-label="t('audio.spectrogramSettingsTitle')"
+              @click="spectrumSettingsPanel.open = !spectrumSettingsPanel.open"
+            >
+              <app-tooltip>{{ t('audio.spectrogramSettingsTitle') }}</app-tooltip>
+            </q-btn>
           </div>
           <div v-show="!overallSpectrumFolded" class="audio-page__spectrogram-stack">
         <template v-for="(track, index) in spectrogramTracks" :key="track.key">
@@ -1155,6 +1167,7 @@ import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-overrides'
+import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
@@ -1284,6 +1297,8 @@ watch(() => audio.displayFilePath, () => { localPlayheadSec.value = null })
 const spectrogramStore = useSpectrogramStore()
 // SG3.1 (SG-D7): per-channel individual overrides for the overall spectrogram (else the program level).
 const spectrumOverrides = useOverallSpectrumOverridesStore()
+// SG3.2 (SG-D7): the overall spectrogram group-header gear toggles the «Параметры» @panel.
+const spectrumSettingsPanel = useSpectrumSettingsPanelState()
 // GT2.2: gtrack editor lanes for the open .gnaural, shown in the spectrogram stack alongside the
 // waveform + spectrum (GT-D2). Lanes appear only for a gnaural file with a loaded schedule.
 // PW5.6 (PW-D10): shared singleton so the AudioPage-hosted «Список треков» panel and this tab edit
