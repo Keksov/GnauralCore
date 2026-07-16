@@ -200,25 +200,27 @@ watch(openSet, (v) => {
 .spectrogram-settings {
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
-/* SS-D4: tiles = a grid that packs two+ blocks across; align-items:start so unequal-height blocks
-   sit at their natural height instead of stretching (R2). minmax min == SPECTRUM_BLOCK_MIN_PX. */
+/* SS2.5 (owner: compact, one shared border between neighbours): tiles = a GAPLESS grid inside one
+   frame. The container draws the outer border; each tile draws only its right + bottom edges, so any
+   two adjacent tiles share a SINGLE line (no gap, no doubled borders). minmax min ==
+   SPECTRUM_BLOCK_MIN_PX; cells stretch to equal height per row so the shared dividers stay straight. */
 .spectrogram-settings--tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 8px;
-  align-items: start;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .spectrogram-settings__tile {
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 6px;
+  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 8px 12px 10px;
 }
 
 .spectrogram-settings__title {
@@ -228,10 +230,20 @@ watch(openSet, (v) => {
   text-transform: uppercase;
 }
 
-/* Accordion blocks read as a bordered stack (SS-D5). */
-.spectrogram-settings__acc {
+/* Accordion: the same idea vertically — one frame, a single shared divider between stacked blocks
+   (the last one drops its divider so it doesn't double the frame's bottom). */
+.spectrogram-settings--accordion {
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 6px;
+  overflow: hidden;
+}
+
+.spectrogram-settings__acc {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.spectrogram-settings__acc:last-child {
+  border-bottom: none;
 }
 
 .spectrogram-settings__acc :deep(.spectrogram-settings__acc-header) {
@@ -242,6 +254,6 @@ watch(openSet, (v) => {
 }
 
 .spectrogram-settings__acc-body {
-  padding: 4px 12px 12px;
+  padding: 2px 12px 10px;
 }
 </style>

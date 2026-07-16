@@ -50,7 +50,9 @@ export function clamp(aValue: number, aSpec: SpinSpec): number {
 // MIN_BLOCK is the narrowest a block's controls stay usable at (the old fixed panel was 300px, so
 // 280 leaves room for two + a gap in a ~580px window; owner confirms the feel at SS2.2).
 export const SPECTRUM_BLOCK_MIN_PX = 280
-export const SPECTRUM_BLOCK_GAP_PX = 8
+// SS2.5: the tiles grid is now gapless (one shared border between neighbours), so two blocks fit at
+// exactly 2*MIN, no inter-block gap to add.
+export const SPECTRUM_BLOCK_GAP_PX = 0
 export const SPECTRUM_TILES_THRESHOLD_PX = 2 * SPECTRUM_BLOCK_MIN_PX + SPECTRUM_BLOCK_GAP_PX
 
 export type SpectrumLayout = 'tiles' | 'accordion'

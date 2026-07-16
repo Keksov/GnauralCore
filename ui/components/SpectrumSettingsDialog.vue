@@ -101,7 +101,7 @@ function openPresets(): void {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 12px;
+  padding: 8px;
   scrollbar-gutter: stable;
 }
 

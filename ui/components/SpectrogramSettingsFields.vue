@@ -101,7 +101,7 @@ function clampField(aField: Field): void {
 .spectrogram-fields {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .spectrogram-fields__field {
