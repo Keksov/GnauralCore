@@ -468,9 +468,6 @@ import { useSpectrogramStore } from '../stores/spectrogram'
 
 const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
 const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
-// SF9.2: per-track heights (array) — Audacity-style independent track heights,
-// resized by a 2px mutual divider (SF-D19) and a uniform bottom handle (SF-D20).
-// Audacity-like default spectrogram track height (per channel), in px (SF5.1).
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface GnauralEditorPanelHandle {
@@ -551,8 +548,6 @@ const audio = useAudioStore()
 const gtracks = useSharedGtrackLanes()
 const activeContentTab = ref<'player' | 'editor'>('player')
 const filesPanelOpen = ref(loadStoredFilesPanelOpen())
-// SF9.2: independent per-track heights; length is kept in sync with the track count
-// (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
 // SF8.1: stacked spectrogram tracks (stereo L/R) share one time window + area
 // selection so they zoom/pan/select together; reset per file so a new file starts full.
 const spectrogramShared = {
@@ -954,81 +949,12 @@ const spectrogramLoadingLabel = computed(() => {
   return t('audio.spectrogramLoading')
 })
 
-
-
-// SF22 + SF23: audio view prefs — Audacity-style view mode + waveform scale/colour/opacity.
-// SF26: minimap thumbnail content.
-// SF27: waveform colour / scale / overlay-opacity are now PER TRACK (per channel), so L and R
-// can differ. Arrays are indexed by channel; legacy scalar prefs seed channel 0 on migration.
-// Per-track settings dialog: which channel's settings are open (null = closed).
-
-// SF28 (SF-D66): per-kind track ORDER + independent HIDE set, so L/R can be reordered and hidden
-// independently for the waveform and the spectrogram. `viewMode` stays a coarse visibility preset
-// (which KINDS show); this layer decides order + which channels are hidden within a shown kind.
-// Ordered, non-hidden channel list for a kind, given the available channel count. Unknown/new
-// channels are appended so a mono→stereo file transition still surfaces the new channel.
-// SF28.2: hide/show a single track (independent per kind + channel). Reassign the Set so the
-// persistence watch + computeds react.
-
-// SF28.3: drag-and-drop reorder within a kind (swap L↔R). The grip in a track emits a pointerdown;
-// we hit-test the track under the pointer (same kind) and swap their positions in trackOrder.
-// The restore strip lists hidden tracks whose KIND is currently shown by the view-mode preset
-// (restoring a track under a preset-hidden kind wouldn't surface it).
-
-// SF23.3: the view mode drives which layers are shown.
-// SF28.1: driven by the unified layout model — ordered + hidden-filtered per channel. Kept LIGHT
-// (no analysis) so this getter — evaluated eagerly by the height watch during setup — does not call
-// applyHighZoom() before its deps (spectrogramHighZoomActive) are initialised (TDZ). The template
-// resolves the per-channel analysis at render time via spectrogramAnalysisForChannel().
-
-// SF25: waveform track heights — same mutual-divider + uniform-bottom resize as the spectrogram.
-
-// Waveform resize handlers (mirror the spectrogram: mutual divider + uniform bottom handle).
-
 // Reset the shared spectrogram view/selection when the file changes (fresh full view).
 watch(() => audio.displayFilePath, () => {
   spectrogramShared.view.value = null
   spectrogramShared.selection.value = null
   spectrogramShared.freqView.value = null
 })
-
-// SF10.1: the shared time window (provide/inject) is driven from the common header above
-// the stack. Duration comes from the decoded buffer (~ worker durationSec); good enough
-// for zoom/fit view math (SpectrogramView clamps to the analysis anyway).
-
-// SF17.3: high-zoom analysis profile. Above `highZoomThreshold` (with hysteresis to avoid
-// re-analysis thrash at the boundary) switch to a smaller FFT window or the reassign data
-// mode for sharper time detail; changing these params re-analyses via the composable.
-// SF17.4 (variant C): `smallWindow` no longer reconfigures the whole-track analysis; it is
-// applied per-tile via `spectrogramWindowOverride` (the worker serves sharper tiles for the
-// visible window only). Only `reassign` still overrides the analysis params (it is inherently
-// whole-track — reassignment scatter-writes the whole file).
-
-// The per-tile FFT window override for the `smallWindow` mode (0 = none / not active).
-
-// SF28.1: analysis params for a given channel (used by both the spectrogram and waveform tracks so
-// each track fetches its own channel regardless of display order). Mono uses the base params.
-
-// v-model bridge for the bottom minimap (SF10.4) onto the shared time window.
-
-// SF9.2: the ordered list of spectrogram tracks (mono = 1, stereo L/R = 2). Drives the
-// stack render (each track + a divider between adjacent tracks + a bottom handle).
-// SF28.1: ordered + hidden-filtered per the unified layout model. The first VISIBLE track is
-// primary (drives the shared view/keyboard focus).
-
-// Keep the per-track heights array length in sync with the track count; new tracks get
-// the first track's height (or the Audacity default), preserving existing sizes.
-
-// --- Track resize: 2px mutual divider (SF-D19) + uniform bottom handle (SF-D20) ---
-
-
-
-
-// SF9.3: the bottom handle (below the last track) resizes ALL tracks by the SAME
-// amount (equal delta), unlike the divider which is mutual (SF-D20).
-
-
-
 
 const showEmbeddedScheduleView = computed(() => {
   return audio.displayMode === 'gnaural'
