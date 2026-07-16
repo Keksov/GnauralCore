@@ -35,14 +35,14 @@ export const gnauralModule = {
       component: () => import('./components/TrackListRemote.vue'),
       events: ['action'],
     },
-    // SS3.2 (SS-D2/SS-D3): «Параметры» detached content is the remote adapter — it renders the
-    // parent-pushed settings snapshot and bridges each gesture back as one serializable 'action' (no
-    // child-side spectrogram store, SS-D3). SpectrumSettingsDialog applies the action to the store.
+    // SG3.2b (SG-D6/SS-D3): «Параметры» detached content is the PER-GRAPH remote adapter — it renders
+    // the parent-pushed OverridesSnapshot and bridges each gesture back as one scope-qualified 'action'
+    // (no child-side override store, SS-D3). SpectrumSettingsDialog applies the action to the stores.
     {
       id: 'spectrum-settings',
       titleKey: 'audio.spectrogramSettingsTitle',
       icon: 'tune',
-      component: () => import('./components/SpectrogramSettingsRemote.vue'),
+      component: () => import('./components/SpectrogramOverridesRemote.vue'),
       events: ['action'],
     },
   ],
