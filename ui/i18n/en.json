@@ -86,6 +86,8 @@
     "gtrackSoloSublane": "Sub-lane",
     "gtrackSoloUnder": "Under curves",
     "gtrackSpectrumCustom": "Custom spectrum settings for this lane",
+    "gtrackSpectrumTitle": "Track spectrum settings",
+    "gtrackSpectrumHint": "Editing creates this track's individual settings; \"Reset\" returns to the program-level ones.",
     "cancel": "Cancel",
     "lint_end_click": "Voice \"{name}\" ends at volume {vol} (no fade to zero) — likely a click at the end.",
     "lint_loop_click": "Voice \"{name}\" loops {loops}x but the end volume ({endVol}) differs from the start ({startVol}) — a click at each loop seam.",

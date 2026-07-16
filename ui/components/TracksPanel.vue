@@ -338,7 +338,7 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @seek="handleSeek"
-                @open-settings="gtrackSettingsId = lane.id"
+                @open-settings="gtrackSpectrumDialogId = lane.id"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', true)"
               />
             </div>
@@ -731,6 +731,34 @@
                 :label="t('audio.gtrackRemoveLane')"
                 v-close-popup
                 @click="gtracks.removeLane(gtrackSettingsLane.id)"
+              />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
+
+        <!-- VS2.1 (VS-D3): per-track solo-spectrum settings behind the spectrum graph's own gear. -->
+        <q-dialog v-model="gtrackSpectrumDialogOpen">
+          <q-card v-if="gtrackSpectrumDialogLane !== null" class="audio-page__gtrack-dialog">
+            <q-card-section class="row items-center q-pb-sm">
+              <div class="text-subtitle1">{{ t('audio.gtrackSpectrumTitle') }}</div>
+              <q-space />
+              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
+            </q-card-section>
+            <q-separator />
+            <q-card-section>
+              <GTrackSpectrumSettings
+                :model-value="gtracks.getLaneSpectrum(gtrackSpectrumDialogLane.id) ?? spectrogramStore.settings"
+                @update:model-value="(s) => gtracks.setLaneSpectrum(gtrackSpectrumDialogLane!.id, s)"
+              />
+              <div class="text-caption text-grey q-mt-sm">{{ t('audio.gtrackSpectrumHint') }}</div>
+            </q-card-section>
+            <q-separator />
+            <q-card-actions align="right">
+              <q-btn
+                flat no-caps
+                :disable="gtracks.getLaneSpectrum(gtrackSpectrumDialogLane.id) === null"
+                :label="t('audio.spectrogramReset')"
+                @click="gtracks.clearLaneSpectrum(gtrackSpectrumDialogLane.id)"
               />
             </q-card-actions>
           </q-card>
@@ -2223,6 +2251,15 @@ function toggleLaneSpectrumCustom(laneId: number, on: boolean): void {
 }
 
 const gtrackSettingsId = ref<number | null>(null)
+// VS2.1 (VS-D3): the solo-spectrum graph's gear opens its OWN per-lane spectrum dialog, not the
+// track dialog. No explicit «individual» toggle (SG-D8 model): the form shows the program level
+// until the first edit auto-creates the lane override; «Сброс» clears it back to inherit.
+const gtrackSpectrumDialogId = ref<number | null>(null)
+const gtrackSpectrumDialogOpen = computed<boolean>({
+  get: () => gtrackSpectrumDialogId.value !== null,
+  set: (v) => { if (!v) gtrackSpectrumDialogId.value = null },
+})
+const gtrackSpectrumDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSpectrumDialogId.value) ?? null)
 const gtrackSettingsOpen = computed<boolean>({
   get: () => gtrackSettingsId.value !== null,
   set: (v) => { if (!v) gtrackSettingsId.value = null },
