@@ -1028,10 +1028,12 @@ watch([spec.tiles, spec.analysis], () => {
   scheduleDraw()
 })
 
-// render-only transform changes redraw cached tiles, no refetch (DU5).
-watch(() => props.render, () => {
+// render-only transform changes redraw cached tiles, no refetch (DU5). Content-keyed for the same
+// reason as props.analysis above (fresh-object binding + playhead-rate re-render).
+const renderKey = computed(() => JSON.stringify(props.render ?? null))
+watch(renderKey, () => {
   scheduleDraw()
-}, { deep: true })
+})
 
 // playhead position moves during playback -> redraw the overlay canvas ONLY (a thin line), never
 // the body (which would recompute every tile's RGBA).
@@ -1053,14 +1055,20 @@ watch(
 
 // analysis params changed -> re-analyse the open source (reconfigure), then refetch.
 // Debounced so dragging a control coalesces into one re-analysis (U4.2).
+// Owner 2026-07-16: key on the SERIALIZED content, not the object reference. The parent binds
+// :analysis to a function-call result (laneSpectrogramAnalysis(...)) that is a fresh object every
+// render, and re-renders at the playhead rate — a `watch(() => props.analysis, …, {deep})` fired on
+// each new reference even when the params were identical, so every playhead tick reconfigured +
+// refetched + fully repainted the spectrum. Content-keyed, it fires only on a real params change.
 let reconfigureTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => props.analysis, () => {
+const analysisKey = computed(() => JSON.stringify(props.analysis ?? null))
+watch(analysisKey, () => {
   if (reconfigureTimer !== null) clearTimeout(reconfigureTimer)
   reconfigureTimer = setTimeout(() => {
     reconfigureTimer = null
     void reconfigureAnalysis()
   }, 150)
-}, { deep: true })
+})
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
