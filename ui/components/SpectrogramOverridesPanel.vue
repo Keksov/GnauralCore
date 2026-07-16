@@ -2,53 +2,64 @@
   <!-- SG3.2 (SG-D7/SG-D8): the PER-GRAPH editor hosted by the dockable/detachable «Параметры» @panel
        (SpectrumSettingsDialog), opened from the overall spectrogram group-header gear. It edits the
        overall spectrogram's per-CHANNEL overrides (overall-spectrum-overrides store), NOT the program
-       level. Scope «Оба | Левый | Правый» picks the channel(s); the «Индивидуальные» toggle turns the
-       scope's override on (seeded from the program level) or off (inherit). Editing a field while
-       inheriting auto-enables individual (SG-D8). Applying a preset writes the active scope. This is
-       the IN-WINDOW adapter (dock/float); the detached child reuses the same view via a remote. -->
+       level. The channel «закладки» are a vertical LEFT nav — «Оба канала | Левый | Правый» — exactly
+       like the overall-waveform settings form (owner screenshot); the right pane holds the
+       «Индивидуальные» toggle + presets + the settings form. The toggle turns the scope's override on
+       (seeded from the program level) or off (inherit); editing a field while inheriting auto-enables
+       individual (SG-D8); applying a preset writes the active scope. This is the IN-WINDOW adapter
+       (dock/float); the detached child reuses the same view via a remote. -->
   <div class="spectrum-overrides">
-    <div class="spectrum-overrides__bar">
-      <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
-        <q-list dense style="min-width: 200px">
-          <q-item
-            v-for="p in presets"
-            :key="p.id"
-            clickable
-            v-close-popup
-            @click="applyPreset(p.id)"
-          >
-            <q-item-section>{{ p.name }}</q-item-section>
-            <q-item-section side v-if="p.builtin">
-              <q-badge outline color="grey">{{ t('audio.spectrogramPresetBuiltinTag') }}</q-badge>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-btn-dropdown>
-      <q-space />
-      <!-- Scope «закладки» on the RIGHT, named like the overall-waveform settings form (owner). -->
-      <q-btn-toggle
-        :model-value="scope"
-        dense no-caps unelevated
-        toggle-color="primary"
-        :options="scopeOptions"
-        @update:model-value="onScopeChange"
-      />
-    </div>
+    <div class="spectrum-overrides__body row no-wrap">
+      <q-list class="spectrum-overrides__nav">
+        <q-item
+          v-for="opt in scopeOptions"
+          :key="String(opt.value)"
+          clickable
+          :active="scope === opt.value"
+          active-class="spectrum-overrides__nav--active"
+          @click="onScopeChange(opt.value)"
+        >
+          <q-item-section>{{ opt.label }}</q-item-section>
+        </q-item>
+      </q-list>
 
-    <div class="spectrum-overrides__scope-row">
-      <q-toggle
-        :model-value="individualActive"
-        dense
-        :label="t('audio.spectrumScopeIndividual')"
-        @update:model-value="onIndividualToggle"
-      />
-      <span v-if="!individualActive" class="spectrum-overrides__hint text-caption text-grey">
-        {{ t('audio.spectrumScopeInheritHint') }}
-      </span>
-    </div>
+      <q-separator vertical />
 
-    <div class="spectrum-overrides__body">
-      <SpectrogramSettingsView :snapshot="snapshot" @action="onFieldAction" />
+      <div class="spectrum-overrides__content">
+        <div class="spectrum-overrides__content-head">
+          <q-toggle
+            :model-value="individualActive"
+            dense
+            :label="t('audio.spectrumScopeIndividual')"
+            @update:model-value="onIndividualToggle"
+          />
+          <q-space />
+          <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
+            <q-list dense style="min-width: 200px">
+              <q-item
+                v-for="p in presets"
+                :key="p.id"
+                clickable
+                v-close-popup
+                @click="applyPreset(p.id)"
+              >
+                <q-item-section>{{ p.name }}</q-item-section>
+                <q-item-section side v-if="p.builtin">
+                  <q-badge outline color="grey">{{ t('audio.spectrogramPresetBuiltinTag') }}</q-badge>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
+        </div>
+
+        <div v-if="!individualActive" class="spectrum-overrides__hint text-caption text-grey">
+          {{ t('audio.spectrumScopeInheritHint') }}
+        </div>
+
+        <div class="spectrum-overrides__form">
+          <SpectrogramSettingsView :snapshot="snapshot" @action="onFieldAction" />
+        </div>
+      </div>
     </div>
 
     <div class="spectrum-overrides__footer">
@@ -79,7 +90,8 @@ const store = useSpectrogramStore()
 const overrides = useOverallSpectrumOverridesStore()
 
 const scope = ref<Scope>('both')
-// Named like the overall-waveform settings form (owner): «Оба канала» / «Левый» / «Правый».
+// Named + laid out like the overall-waveform settings form (owner): a vertical «Оба канала / Левый /
+// Правый» nav.
 const scopeOptions = computed(() => [
   { label: t('audio.waveformChannelsBoth'), value: 'both' as const },
   { label: t('audio.waveformChannelsLeft'), value: 0 as const },
@@ -155,28 +167,49 @@ function revertScope(): void {
   height: 100%;
 }
 
-.spectrum-overrides__bar {
+/* Two-pane like the waveform settings form: scope nav on the LEFT, content on the RIGHT. */
+.spectrum-overrides__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.spectrum-overrides__nav {
+  flex: 0 0 132px;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.spectrum-overrides__nav--active {
+  background: rgba(25, 118, 210, 0.12);
+  color: var(--q-primary);
+  font-weight: 600;
+}
+
+.spectrum-overrides__content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.spectrum-overrides__content-head {
   align-items: center;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
-  padding: 4px 6px;
-}
-
-.spectrum-overrides__scope-row {
-  align-items: center;
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
   padding: 4px 8px;
 }
 
 .spectrum-overrides__hint {
-  min-width: 0;
+  flex: 0 0 auto;
+  padding: 4px 8px;
 }
 
-.spectrum-overrides__body {
+.spectrum-overrides__form {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
