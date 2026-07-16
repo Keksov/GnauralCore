@@ -414,3 +414,55 @@ describe('clampPointTime (standalone, GT3.2 reuse)', () => {
     expect(clampPointTime(pts, 1, 999)).toBe(20)
   })
 })
+
+describe('undo journal export/adopt (project-store PR2.2 / PR-D8)', () => {
+  function editedModel(): GTrackModel {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    model.edit(() => model.movePoint(7, 1, 12))
+    model.edit(() => model.movePoint(7, 1, 14))
+    return model
+  }
+
+  test('journal round-trips onto an identical model and restores undo/redo', () => {
+    const source = editedModel()
+    source.undo() // one entry moves to the redo stack
+    const journal = source.exportUndoJournal()
+    expect(journal.undo.length).toBe(1)
+    expect(journal.redo.length).toBe(1)
+
+    // A fresh model in the SAME state as the exported one (same edits, same undo position).
+    const target = editedModel()
+    target.undo()
+    expect(target.adoptUndoJournal(journal)).toBe(true)
+    expect(target.canUndo).toBe(true)
+    expect(target.canRedo).toBe(true)
+    expect(target.undo()).toBe(true)
+    expect(JSON.stringify(target.schedule)).toBe(JSON.stringify(new GTrackModel(fixture([entry(0, 10), entry(10, 20)])).schedule))
+  })
+
+  test('a journal from a DIFFERENT state is rejected (no-op)', () => {
+    const journal = editedModel().exportUndoJournal()
+    const fresh = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    expect(fresh.adoptUndoJournal(journal)).toBe(false)
+    expect(fresh.canUndo).toBe(false)
+  })
+
+  test('maxEntries bounds the exported stacks (oldest dropped)', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    for (let i = 0; i < 10; i++) {
+      model.edit(() => model.movePoint(7, 1, 10 + i * 0.5))
+    }
+    const journal = model.exportUndoJournal(3)
+    expect(journal.undo.length).toBe(3)
+  })
+
+  test('isGTrackUndoJournal accepts the exported shape and rejects junk', async () => {
+    const { isGTrackUndoJournal } = await import('./gtrack-model')
+    const journal = editedModel().exportUndoJournal()
+    expect(isGTrackUndoJournal(journal)).toBe(true)
+    expect(isGTrackUndoJournal(JSON.parse(JSON.stringify(journal)))).toBe(true)
+    expect(isGTrackUndoJournal(null)).toBe(false)
+    expect(isGTrackUndoJournal({ currentSig: 1, undo: [], redo: [] })).toBe(false)
+    expect(isGTrackUndoJournal({ currentSig: 'x', undo: [{}], redo: [] })).toBe(false)
+  })
+})

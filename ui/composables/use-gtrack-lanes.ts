@@ -9,12 +9,17 @@ import type { GnauralScheduleData } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, isGTrackUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
-import { readProjectSectionFor, writeProjectSectionFor } from './use-project'
+import {
+  readProjectSectionFor,
+  readProjectUndoJournalFor,
+  writeProjectSectionFor,
+  writeProjectUndoJournalFor,
+} from './use-project'
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -33,6 +38,9 @@ export interface GTrackLane {
   /** GT10.4 (owner req. 48): solo-wave colour + opacity so the wave stays distinguishable. */
   soloWaveColor?: string
   soloWaveOpacity?: number
+  /** VS2.5 (VS-D4 rev 2): solo-wave amplitude scale — the lane reuses the overall waveform settings
+   *  dialog (mono), whose form has lin/dB, so the lane stores it too. */
+  soloWaveScale?: 'linear' | 'db'
   /** owner 2026-07-14: on a Base-freq lane, shade the binaural beat band (base ± beat/2), like the
    *  Schedule tab. Only rendered in 'base' mode. */
   beatBand?: boolean
@@ -91,6 +99,7 @@ export interface ResolvedGTrackLane {
   readonly soloInline: boolean
   readonly soloWaveColor: string
   readonly soloWaveOpacity: number
+  readonly soloWaveScale: 'linear' | 'db'
   readonly beatBand: boolean
   readonly folded: boolean
   readonly soloWaveHidden: boolean
@@ -109,6 +118,7 @@ interface StoredLane {
   soloInline?: boolean
   soloWaveColor?: string
   soloWaveOpacity?: number
+  soloWaveScale?: string
   beatBand?: boolean
   folded?: boolean
   soloWaveHidden?: boolean
@@ -224,6 +234,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       // amber default — distinct from the voice-curve palette so the wave stays visible (req 48)
       soloWaveColor: lane.soloWaveColor ?? '#f59e0b',
       soloWaveOpacity: lane.soloWaveOpacity ?? 0.6,
+      soloWaveScale: lane.soloWaveScale ?? 'linear',
       beatBand: lane.beatBand ?? false,
       folded: lane.folded ?? false,
       soloWaveHidden: lane.soloWaveHidden ?? false,
@@ -236,7 +247,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
   // --- persistence ---
   function storedLanesSnapshot(): StoredLane[] {
-    return lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
+    return lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, soloWaveScale: l.soloWaveScale, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
   }
   function persist(): void {
     const key = filePath.value
@@ -402,6 +413,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloInline: s.soloInline === true,
       soloWaveColor: typeof s.soloWaveColor === 'string' ? s.soloWaveColor : undefined,
       soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
+      soloWaveScale: (s.soloWaveScale === 'db' || s.soloWaveScale === 'linear' ? s.soloWaveScale : undefined) as 'linear' | 'db' | undefined,
       beatBand: s.beatBand === true,
       folded: s.folded === true,
       soloWaveHidden: s.soloWaveHidden === true,
@@ -427,12 +439,20 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   async function restoreFromProject(reqId: number): Promise<void> {
     const key = filePath.value
     if (key === null) return
-    const [storedLanes, storedSpectrum, storedMix] = await Promise.all([
+    const [storedLanes, storedSpectrum, storedMix, storedJournal] = await Promise.all([
       readProjectSectionFor<unknown>(key, SECTION_LANES),
       readProjectSectionFor<Record<string, unknown>>(key, SECTION_LANE_SPECTRUM),
       readProjectSectionFor<unknown>(key, SECTION_MIX_EXCLUDED),
+      readProjectUndoJournalFor(key),
     ])
     if (reqId !== projectRestoreReqId || key !== filePath.value) return
+
+    // PR2.2: adopt the persisted undo history — only when it chains to the freshly-loaded state
+    // (adoptUndoJournal verifies the signature; unsaved-and-lost edits leave it untouched).
+    const m = model.value
+    if (m !== null && isGTrackUndoJournal(storedJournal) && m.adoptUndoJournal(storedJournal)) {
+      refreshEditState(false)
+    }
 
     if (storedLanes === null) {
       // No section yet -> one-time migration seeded from localStorage (already applied on screen).
@@ -469,11 +489,28 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const dirty = ref(false)
   const canUndo = ref(false)
   const canRedo = ref(false)
-  function refreshEditState(): void {
+  // PR2.2 (PR-D8): every user-edit path already funnels through refreshEditState(), so it doubles
+  // as the undo-journal persist hook. The model rebuild (and journal adoption itself) pass false —
+  // persisting there would overwrite the stored journal with an empty baseline before it is adopted.
+  function refreshEditState(persistJournal = true): void {
     const m = model.value
     dirty.value = m?.isDirty ?? false
     canUndo.value = m?.canUndo ?? false
     canRedo.value = m?.canRedo ?? false
+    if (persistJournal) persistUndoJournal()
+  }
+
+  // Journal size is bounded by BYTES, not just entries: snapshots serialize without structural
+  // sharing, so 50 entries of a huge schedule could blow the server's 5 MB cap. One snapshot is
+  // stringified as the estimate (cheap); the full serialization happens once per debounced send.
+  const UNDO_JOURNAL_BYTE_BUDGET = 4_000_000
+  function persistUndoJournal(): void {
+    const m = model.value
+    const key = filePath.value
+    if (m === null || key === null) return
+    const oneSnapshotBytes = Math.max(JSON.stringify(m.schedule).length, 1)
+    const maxEntries = Math.max(1, Math.min(50, Math.floor(UNDO_JOURNAL_BYTE_BUDGET / (2 * oneSnapshotBytes))))
+    writeProjectUndoJournalFor(key, m.exportUndoJournal(maxEntries))
   }
 
   // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump
@@ -485,7 +522,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value)
     selection.value = null
     syncSchedule()
-    refreshEditState() // reset dirty/undo/redo to the freshly-loaded (saved) baseline
+    refreshEditState(false) // reset dirty/undo/redo to the freshly-loaded (saved) baseline
     restoreSpectrum() // GT8.1: per-lane spectrum overrides are per file
     restoreMix() // owner 2026-07-13: per-voice overall-mix exclusions are per file
     const reqId = ++projectRestoreReqId
@@ -618,6 +655,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
   function setLaneSoloWaveStyle(id: number, color: string, opacity: number): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloWaveColor: color, soloWaveOpacity: opacity } : l))
+    persist()
+  }
+  // VS2.5 (VS-D4 rev 2): lin/dB for the lane's solo wave (edited from the shared waveform dialog).
+  function setLaneSoloWaveScale(id: number, scale: 'linear' | 'db'): void {
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, soloWaveScale: scale } : l))
     persist()
   }
   function toggleLaneVoice(id: number, voiceId: number): void {
@@ -1279,6 +1321,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setVoiceGraphsHeight,
     setAllLanesGraphsHeight,
     setLaneSoloWaveStyle,
+    setLaneSoloWaveScale,
     laneSpectrum,
     getLaneSpectrum,
     ensureLaneSpectrum,

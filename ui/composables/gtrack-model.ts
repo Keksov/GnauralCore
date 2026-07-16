@@ -204,6 +204,23 @@ function signature(schedule: GTrackSchedule): string {
   return JSON.stringify(schedule)
 }
 
+/** project-store PR2.2 (PR-D8): the persistable undo/redo history. Snapshots are plain JSON
+ *  (signature() relies on that already); currentSig pins the state the stacks chain to, so a
+ *  journal is only ever adopted onto the exact schedule it was exported from. */
+export interface GTrackUndoJournal {
+  readonly currentSig: string
+  readonly undo: readonly GTrackSchedule[]
+  readonly redo: readonly GTrackSchedule[]
+}
+
+export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
+  if (value === null || typeof value !== 'object') return false
+  const candidate = value as { currentSig?: unknown; undo?: unknown; redo?: unknown }
+  const isScheduleArray = (entries: unknown): boolean =>
+    Array.isArray(entries) && entries.every((e) => e !== null && typeof e === 'object' && Array.isArray((e as GTrackSchedule).voices))
+  return typeof candidate.currentSig === 'string' && isScheduleArray(candidate.undo) && isScheduleArray(candidate.redo)
+}
+
 export class GTrackModel {
   private current: GTrackSchedule
   private readonly undoStack: GTrackSchedule[] = []
@@ -504,6 +521,30 @@ export class GTrackModel {
     this.undoStack.push(this.current)
     this.current = next
     this.recomputeDirty()
+    return true
+  }
+
+  // --- Undo journal persistence (project-store PR2.2, PR-D8) -----------------
+
+  /** Bounded snapshot of the undo/redo history for the project's undo.json. */
+  public exportUndoJournal(maxEntries = 50): GTrackUndoJournal {
+    return {
+      currentSig: signature(this.current),
+      undo: this.undoStack.slice(-maxEntries),
+      redo: this.redoStack.slice(-maxEntries),
+    }
+  }
+
+  /** Adopt a persisted journal — only when it chains to the CURRENT state (same signature), i.e.
+   *  the file content matches what the journal was exported against. Returns false (no-op) on a
+   *  signature mismatch (e.g. the file changed outside the editor or unsaved edits were lost). */
+  public adoptUndoJournal(journal: GTrackUndoJournal): boolean {
+    if (this.txnBefore !== null) return false
+    if (journal.currentSig !== signature(this.current)) return false
+    this.undoStack.length = 0
+    this.undoStack.push(...journal.undo)
+    this.redoStack.length = 0
+    this.redoStack.push(...journal.redo)
     return true
   }
 

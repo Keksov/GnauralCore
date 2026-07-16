@@ -10,6 +10,8 @@ import type { ProjectInfo } from '@protocol'
 import { projectApi } from '../project-api'
 
 const SECTION_PUT_DEBOUNCE_MS = 500
+// PR2.2 (PR-D8): the undo journal is heavier than a section — write it on an activity pause.
+const UNDO_PUT_DEBOUNCE_MS = 1500
 
 const currentProject = ref<ProjectInfo | null>(null)
 const openError = ref<string | null>(null)
@@ -35,12 +37,31 @@ function sendSection(projectId: string, name: string, value: unknown): void {
   })
 }
 
+interface PendingUndoWrite {
+  readonly journal: unknown
+  readonly timer: ReturnType<typeof setTimeout>
+}
+
+const pendingUndoWrites = new Map<string, PendingUndoWrite>() // key = projectId
+
+function sendUndoJournal(projectId: string, journal: unknown): void {
+  void projectApi.putUndoJournal({ id: projectId, journal }).catch((error: unknown) => {
+    console.warn('[use-project] putUndoJournal failed:', error instanceof Error ? error.message : error)
+  })
+}
+
 export function flushPendingProjectWrites(): void {
   for (const pending of pendingWrites.values()) {
     clearTimeout(pending.timer)
     sendSection(pending.projectId, pending.name, pending.value)
   }
   pendingWrites.clear()
+
+  for (const [projectId, pending] of pendingUndoWrites) {
+    clearTimeout(pending.timer)
+    sendUndoJournal(projectId, pending.journal)
+  }
+  pendingUndoWrites.clear()
 }
 
 /** Called from the audio store on file selection: flushes writes belonging to the previous file,
@@ -171,6 +192,48 @@ export function writeProjectSectionFor(path: string, name: string, value: unknow
     if (project !== null) {
       queueSectionWrite(project.id, name, value)
     }
+  })
+}
+
+/** Undo-journal transport (PR2.2, PR-D8): same shape as sections, longer debounce, own endpoint. */
+export async function readProjectUndoJournalFor(path: string): Promise<unknown | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
+  }
+
+  const pending = pendingUndoWrites.get(project.id)
+  if (pending !== undefined) {
+    return pending.journal ?? null
+  }
+
+  try {
+    const response = await projectApi.fetchUndoJournal(project.id)
+    return response.journal ?? null
+  } catch (error) {
+    console.warn('[use-project] fetchUndoJournal failed:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
+export function writeProjectUndoJournalFor(path: string, journal: unknown): void {
+  void getProjectForPath(path).then((project) => {
+    if (project === null) {
+      return
+    }
+
+    const existing = pendingUndoWrites.get(project.id)
+    if (existing !== undefined) {
+      clearTimeout(existing.timer)
+    }
+
+    pendingUndoWrites.set(project.id, {
+      journal,
+      timer: setTimeout(() => {
+        pendingUndoWrites.delete(project.id)
+        sendUndoJournal(project.id, journal)
+      }, UNDO_PUT_DEBOUNCE_MS),
+    })
   })
 }
 
