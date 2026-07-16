@@ -7,6 +7,8 @@ import type {
   ProjectRelinkRequest,
   ProjectSectionPutRequest,
   ProjectSectionResponse,
+  ProjectSettingsPatchRequest,
+  ProjectSettingsResponse,
   ProjectUndoPutRequest,
   ProjectUndoResponse,
 } from '@protocol'
@@ -119,5 +121,18 @@ export const projectApi = {
 
   async deleteProject(id: string, signal?: AbortSignal): Promise<void> {
     await requestJson<null>(`/api/projects?id=${encodeURIComponent(id)}`, { method: 'DELETE', signal })
+  },
+
+  // PR3.1 (PR-D6): the user-data root setting.
+  fetchProjectSettings(signal?: AbortSignal): Promise<ProjectSettingsResponse> {
+    return requestJson<ProjectSettingsResponse>('/api/project-settings', { method: 'GET', cache: 'no-store', signal })
+  },
+
+  updateProjectSettings(request: ProjectSettingsPatchRequest, signal?: AbortSignal): Promise<ProjectSettingsResponse> {
+    return requestJson<ProjectSettingsResponse>('/api/project-settings', {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+      signal,
+    })
   },
 } as const

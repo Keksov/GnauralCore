@@ -2,6 +2,36 @@
   <!-- GT10.45 (owner 2026-07-13): cache-only settings, no wrapping card/frame — the dialog's right
        pane already provides the container. The "Audio presets" block was removed. -->
   <div class="gnaural-settings-tab">
+    <!-- project-store PR3.1 (PR-D6, owner req 3/8): the user-data folder where per-file project
+         folders live. Empty = the built-in default (%LOCALAPPDATA%\KKSoundCore). -->
+    <div>
+      <div class="text-h6">{{ $t('settings.projectsTitle') }}</div>
+      <div class="text-caption text-grey-7">{{ $t('settings.projectsSubtitle') }}</div>
+    </div>
+    <q-input
+      v-model="userDataRoot"
+      dense
+      outlined
+      :label="$t('settings.projectsRootLabel')"
+      :placeholder="projectSettings?.effectiveUserDataRoot ?? ''"
+      :hint="$t('settings.projectsRootHint', { effective: projectSettings?.effectiveUserDataRoot ?? '' })"
+      :error="projectsError !== null"
+      :error-message="projectsError ?? undefined"
+      :loading="projectsSaving"
+    >
+      <template #after>
+        <q-btn
+          flat
+          dense
+          :label="$t('settings.projectsRootSave')"
+          :disable="projectsSaving || userDataRoot === (projectSettings?.userDataRoot ?? '')"
+          @click="saveProjectSettings"
+        />
+      </template>
+    </q-input>
+
+    <q-separator />
+
     <!-- GT6.2 (owner req. 13, GT-D11): audio cache management. -->
     <div class="row items-center no-wrap">
       <div>
@@ -57,9 +87,41 @@ import { onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 import { audioApi, type AudioCacheSummary } from '../audio-api'
+import { projectApi } from '../project-api'
+import type { ProjectSettingsResponse } from '@protocol'
 
 const { t } = useI18n()
 const $q = useQuasar()
+
+// project-store PR3.1: the user-data root behind the projects subsystem.
+const projectSettings = ref<ProjectSettingsResponse | null>(null)
+const userDataRoot = ref('')
+const projectsSaving = ref(false)
+const projectsError = ref<string | null>(null)
+
+async function loadProjectSettings(): Promise<void> {
+  try {
+    projectSettings.value = await projectApi.fetchProjectSettings()
+    userDataRoot.value = projectSettings.value.userDataRoot
+    projectsError.value = null
+  } catch (error) {
+    projectsError.value = error instanceof Error ? error.message : 'Failed to load the project settings.'
+  }
+}
+
+async function saveProjectSettings(): Promise<void> {
+  projectsSaving.value = true
+  projectsError.value = null
+  try {
+    projectSettings.value = await projectApi.updateProjectSettings({ userDataRoot: userDataRoot.value.trim() })
+    userDataRoot.value = projectSettings.value.userDataRoot
+    $q.notify({ type: 'positive', message: t('settings.projectsRootSaved') })
+  } catch (error) {
+    projectsError.value = error instanceof Error ? error.message : 'Failed to save the project settings.'
+  } finally {
+    projectsSaving.value = false
+  }
+}
 
 // GT6.2: audio cache summary + management.
 const cacheSummary = ref<AudioCacheSummary | null>(null)
@@ -106,6 +168,7 @@ function clearAllCache(): void {
 
 onMounted(() => {
   void loadCache()
+  void loadProjectSettings()
 })
 </script>
 
