@@ -9,9 +9,10 @@
        pushes `snapshot` to it, and the child (SpectrogramOverridesRemote) sends every gesture back as
        one scope-qualified `action` over the bridge, which we apply HERE to the authoritative stores.
        So editing in the separate window repaints THIS window's spectrogram, with one writer only. -->
+  <!-- VS2.8 (owner): the caption names the edited entity — «Параметры: Общий спектр». -->
   <PanelWindow
     :state="panel"
-    :title="t('audio.spectrogramSettingsTitle')"
+    :title="t('audio.paramsTitle', { entity: t('audio.entityOverallSpectrum') })"
     icon="tune"
     :bridge-state="snapshot"
     @panel-event="onBridgedEvent"

@@ -747,7 +747,9 @@
         <q-dialog v-model="waveformSettingsOpen">
           <q-card class="tracks-panel__wf-settings">
             <q-card-section class="row items-center q-py-sm">
-              <div class="text-subtitle1">{{ t('audio.waveformSettingsTitle') }}</div>
+              <!-- VS2.8 (owner): the caption names the edited entity — «Параметры: Общая волна» or
+                   «Параметры: <имя голоса>: Волна» for a lane target. -->
+              <div class="text-subtitle1">{{ waveformDialogTitle }}</div>
               <q-space />
               <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.close')" />
             </q-card-section>
@@ -1982,6 +1984,21 @@ function openLaneWaveSettings(laneId: number): void {
 watch(waveformSettingsOpen, (open) => {
   if (!open) waveformSettingsLaneId.value = null
 })
+// VS2.8 (owner): «Параметры: <сущность>» — the dialog names what it edits.
+const waveformDialogTitle = computed<string>(() => {
+  const lane = wfDlgLane.value
+  const entity = lane === null
+    ? t('audio.entityOverallWave')
+    : t('audio.entityLaneWave', { name: laneVoiceNamesById(lane.voiceIds) })
+  return t('audio.paramsTitle', { entity })
+})
+function laneVoiceNamesById(voiceIds: readonly number[]): string {
+  const names = voiceIds.map((vid) => {
+    const v = gtracks.voices.value.find((x) => x.id === vid)
+    return v !== undefined && v.description.trim() !== '' ? v.description : `#${vid}`
+  })
+  return names.length === 0 ? t('audio.gtrackNoVoices') : names.join(', ')
+}
 // WS-D5: a per-channel entry point (the overlay spectrogram gear; the per-track gears until WS1.2
 // retires them) must never land on a tab the link toggle has locked -> fall back to «Оба канала»,
 // which is where a linked edit belongs anyway.

@@ -7,9 +7,11 @@
        Detach mirrors SS-D3: the child owns no store — PanelWindow pushes `snapshot`, and the child
        (LaneSpectrumSettingsRemote) bridges each gesture back as one 'action', applied HERE to the
        authoritative lane override. -->
+  <!-- VS2.8 (owner): the caption names the edited entity — «Параметры: <имя голоса>: Спектр» —
+       and retargets live with the panel (PanelWindow mirrors it to a detached window's caption). -->
   <PanelWindow
     :state="panel"
-    :title="t('audio.gtrackSpectrumTitle')"
+    :title="panelTitle"
     icon="tune"
     :bridge-state="snapshot"
     @panel-event="onBridgedEvent"
@@ -55,6 +57,22 @@ const panel = useLaneSpectrumPanelState()
 const targetLaneId = useLaneSpectrumTarget()
 const gtracks = useSharedGtrackLanes()
 const spectrogramStore = useSpectrogramStore()
+
+// VS2.8: «Параметры: <имя голоса>: Спектр» — the voice name(s) of the target lane.
+const laneVoiceNames = computed<string>(() => {
+  const id = targetLaneId.value
+  const lane = id === null ? null : (gtracks.lanes.value.find((l) => l.id === id) ?? null)
+  if (lane === null) return ''
+  return lane.voiceIds
+    .map((vid) => {
+      const v = gtracks.voices.value.find((x) => x.id === vid)
+      return v !== undefined && v.description.trim() !== '' ? v.description : `#${vid}`
+    })
+    .join(', ')
+})
+const panelTitle = computed<string>(() =>
+  t('audio.paramsTitle', { entity: t('audio.entityLaneSpectrum', { name: laneVoiceNames.value }) }),
+)
 
 // VS2.4/VS2.7: the channel-based OverridesSnapshot contract fits a MONO lane naturally — the single
 // laneSpectrum override plays both "channels", so displayedForScope/scopeHasOverride and the SG-D8
