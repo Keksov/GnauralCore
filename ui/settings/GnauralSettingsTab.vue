@@ -30,6 +30,48 @@
       </template>
     </q-input>
 
+    <!-- project-store PR4.1-PR4.3 + PR5.1/PR5.2: the projects list — status, re-link, delete,
+         orphan GC, one-file export/import, reveal in Explorer. -->
+    <div class="row items-center no-wrap">
+      <div class="text-subtitle2">{{ $t('settings.projectsListTitle') }}</div>
+      <q-space />
+      <q-btn flat dense round icon="refresh" :loading="projectsLoading" :aria-label="$t('settings.projectsRefresh')" @click="loadProjects" />
+      <q-btn flat dense icon="upload_file" :label="$t('settings.projectsImport')" @click="pickImportFile" />
+      <q-btn
+        v-if="orphanCount > 0"
+        flat
+        dense
+        color="negative"
+        icon="auto_delete"
+        :label="`${$t('settings.projectsGc')} (${orphanCount})`"
+        @click="gcOrphans"
+      />
+      <input ref="importInputRef" type="file" accept=".json,.scpexport.json" class="hidden" @change="onImportFilePicked" />
+    </div>
+
+    <q-list v-if="projects.length > 0" bordered separator class="rounded-borders">
+      <q-item v-for="project in projects" :key="project.id" dense>
+        <q-item-section>
+          <q-item-label>
+            {{ sourceBaseName(project) }}
+            <q-badge v-if="project.sourceStatus === 'missing'" color="negative" class="q-ml-sm">
+              {{ $t('settings.projectsMissing') }}
+            </q-badge>
+          </q-item-label>
+          <q-item-label caption class="gnaural-settings-tab__path">{{ project.source.path }}</q-item-label>
+        </q-item-section>
+        <q-item-section side>
+          <div class="row no-wrap items-center">
+            <q-btn flat dense round size="sm" icon="link" :aria-label="$t('settings.projectsRelink')" @click="relinkProject(project)" />
+            <q-btn flat dense round size="sm" icon="download" :aria-label="$t('settings.projectsExport')" @click="exportProject(project)" />
+            <q-btn flat dense round size="sm" icon="folder_open" :aria-label="$t('settings.projectsReveal')" @click="revealProject(project)" />
+            <q-btn flat dense round size="sm" icon="delete" color="negative" :aria-label="$t('settings.projectsDelete')" @click="deleteProject(project)" />
+          </div>
+        </q-item-section>
+      </q-item>
+    </q-list>
+    <div v-else class="text-caption text-grey-7">{{ $t('settings.projectsEmpty') }}</div>
+
     <q-separator />
 
     <!-- GT6.2 (owner req. 13, GT-D11): audio cache management. -->
@@ -83,12 +125,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 import { audioApi, type AudioCacheSummary } from '../audio-api'
 import { projectApi } from '../project-api'
-import type { ProjectSettingsResponse } from '@protocol'
+import type { ProjectInfo, ProjectSettingsResponse } from '@protocol'
 
 const { t } = useI18n()
 const $q = useQuasar()
@@ -189,9 +231,151 @@ function clearAllCache(): void {
     })
 }
 
+// project-store PR4.1-PR4.3 + PR5.1/PR5.2: the projects list and its actions.
+const projects = ref<readonly ProjectInfo[]>([])
+const projectsLoading = ref(false)
+const importInputRef = ref<HTMLInputElement | null>(null)
+const orphanCount = computed(() => projects.value.filter((p) => p.sourceStatus === 'missing').length)
+
+function sourceBaseName(project: ProjectInfo): string {
+  return project.source.path.split(/[\\/]/u).pop() ?? project.id
+}
+
+async function loadProjects(): Promise<void> {
+  projectsLoading.value = true
+  try {
+    projects.value = (await projectApi.fetchProjects()).projects
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Failed to load the projects list.' })
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+function relinkProject(project: ProjectInfo): void {
+  $q.dialog({
+    title: t('settings.projectsRelink'),
+    message: t('settings.projectsRelinkTitle'),
+    prompt: { model: project.source.path, type: 'text' },
+    cancel: { label: t('audio.cancel'), flat: true },
+    persistent: false,
+  }).onOk((value: string) => {
+    void projectApi
+      .relinkProject({ id: project.id, path: value.trim() })
+      .then(loadProjects)
+      .catch((error: unknown) => {
+        $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Re-link failed.' })
+      })
+  })
+}
+
+function deleteProject(project: ProjectInfo): void {
+  $q.dialog({
+    title: t('settings.projectsDelete'),
+    message: t('settings.projectsDeleteConfirm', { name: sourceBaseName(project) }),
+    cancel: { label: t('audio.cancel'), flat: true },
+    persistent: true,
+  }).onOk(() => {
+    void projectApi
+      .deleteProject(project.id)
+      .then(loadProjects)
+      .catch((error: unknown) => {
+        $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Delete failed.' })
+      })
+  })
+}
+
+function gcOrphans(): void {
+  const orphans = projects.value.filter((p) => p.sourceStatus === 'missing')
+  if (orphans.length === 0) return
+  $q.dialog({
+    title: t('settings.projectsGc'),
+    message: t('settings.projectsGcConfirm', { count: orphans.length }),
+    cancel: { label: t('audio.cancel'), flat: true },
+    persistent: true,
+  }).onOk(() => {
+    void (async () => {
+      for (const orphan of orphans) {
+        await projectApi.deleteProject(orphan.id).catch(() => undefined)
+      }
+      await loadProjects()
+    })()
+  })
+}
+
+async function exportProject(project: ProjectInfo): Promise<void> {
+  try {
+    const bundle = await projectApi.exportProject(project.id)
+    const blob = new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${project.id}.scpexport.json`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Export failed.' })
+  }
+}
+
+function revealProject(project: ProjectInfo): void {
+  void projectApi.revealProject(project.id).catch((error: unknown) => {
+    $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Reveal failed.' })
+  })
+}
+
+function pickImportFile(): void {
+  importInputRef.value?.click()
+}
+
+async function onImportFilePicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file === undefined) return
+
+  let bundle: unknown
+  try {
+    bundle = JSON.parse(await file.text()) as unknown
+  } catch {
+    $q.notify({ type: 'negative', message: t('settings.projectsImportInvalid') })
+    return
+  }
+
+  try {
+    await projectApi.importProject(bundle, false)
+    $q.notify({ type: 'positive', message: t('settings.projectsImported') })
+    await loadProjects()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    // 409: a project for this source already exists — the explicit-choice escape hatch (PR-D10).
+    if (message.includes('already exists')) {
+      $q.dialog({
+        title: t('settings.projectsImport'),
+        message: t('settings.projectsImportConflict'),
+        cancel: { label: t('audio.cancel'), flat: true },
+        persistent: true,
+      }).onOk(() => {
+        void projectApi
+          .importProject(bundle, true)
+          .then(async () => {
+            $q.notify({ type: 'positive', message: t('settings.projectsImported') })
+            await loadProjects()
+          })
+          .catch((retryError: unknown) => {
+            $q.notify({ type: 'negative', message: retryError instanceof Error ? retryError.message : 'Import failed.' })
+          })
+      })
+      return
+    }
+
+    $q.notify({ type: 'negative', message: message || 'Import failed.' })
+  }
+}
+
 onMounted(() => {
   void loadCache()
   void loadProjectSettings()
+  void loadProjects()
 })
 </script>
 

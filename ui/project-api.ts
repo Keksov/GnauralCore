@@ -123,6 +123,32 @@ export const projectApi = {
     await requestJson<null>(`/api/projects?id=${encodeURIComponent(id)}`, { method: 'DELETE', signal })
   },
 
+  // PR5.1/PR5.2 (PR-D10): one-file text bundle export/import.
+  exportProject(id: string, signal?: AbortSignal): Promise<unknown> {
+    return requestJson<unknown>(`/api/projects/export?id=${encodeURIComponent(id)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+    })
+  },
+
+  importProject(bundle: unknown, overwrite: boolean, signal?: AbortSignal): Promise<ProjectInfo> {
+    return requestJson<ProjectInfo>('/api/projects/import', {
+      method: 'POST',
+      body: JSON.stringify({ bundle, overwrite }),
+      signal,
+    })
+  },
+
+  // PR4.3: open the project folder in the OS file manager (Windows desktop host).
+  async revealProject(id: string, signal?: AbortSignal): Promise<void> {
+    await requestJson<null>('/api/projects/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+      signal,
+    })
+  },
+
   // PR3.1 (PR-D6): the user-data root setting.
   fetchProjectSettings(signal?: AbortSignal): Promise<ProjectSettingsResponse> {
     return requestJson<ProjectSettingsResponse>('/api/project-settings', { method: 'GET', cache: 'no-store', signal })
