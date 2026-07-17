@@ -590,141 +590,103 @@
           </q-card>
         </q-dialog>
 
-        <!-- GT2.2: gtrack lane settings — display mode + which voices are shown. -->
+        <!-- GT2.2 → VS3.1 (VS-D2, variant B): the track dialog is TWO-PANE like the waveform dialog
+             (WS1.1/GT10.29, same CSS classes) — sections «График» / «Соло-звук» / «Голоса» on the
+             left. Spectrum and wave-style settings are NOT here any more: each lives behind its own
+             graph's gear (VS2.4-VS2.7). «Соло-звук» is two INDEPENDENT toggles over the persisted
+             4-state soloMode — the old 4-way toggle's «Оба» was just wave+spectrum (R5: UI-only
+             mapping, the model is unchanged). -->
         <q-dialog v-model="gtrackSettingsOpen">
-          <q-card v-if="gtrackSettingsLane !== null" class="audio-page__gtrack-dialog">
-            <q-card-section class="row items-center q-pb-sm">
+          <q-card v-if="gtrackSettingsLane !== null" class="tracks-panel__wf-settings">
+            <q-card-section class="row items-center q-py-sm">
               <div class="text-subtitle1">{{ t('audio.gtrackSettings') }}</div>
               <q-space />
               <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
             </q-card-section>
             <q-separator />
-            <q-card-section>
-              <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackModeLabel') }}</div>
-              <q-btn-toggle
-                :model-value="gtrackSettingsLane.mode"
-                dense unelevated no-caps spread
-                toggle-color="primary"
-                :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
-                @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
-              />
-              <!-- owner 2026-07-14: beat-band shading (base ± beat/2), like the Schedule tab. Base mode only. -->
-              <q-toggle
-                v-if="gtrackSettingsLane.mode === 'base'"
-                class="q-mt-sm"
-                :model-value="gtrackSettingsLane.beatBand"
-                dense
-                :label="t('audio.gtrackBeatBand')"
-                @update:model-value="(v: boolean) => gtracks.setLaneBeatBand(gtrackSettingsLane!.id, v)"
-              />
-            </q-card-section>
-            <q-separator />
-            <!-- GT4.3 (owner req. 21, GT-D17): solo spectrum of this lane's voice set, under the curves. -->
-            <q-card-section>
-              <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloAudio') }}</div>
-              <q-btn-toggle
-                :model-value="gtrackSettingsLane.soloMode ?? 'off'"
-                dense unelevated no-caps spread
-                toggle-color="primary"
-                :options="[
-                  { label: t('audio.gtrackSoloOff'), value: 'off' },
-                  { label: t('audio.gtrackSoloWave'), value: 'wave' },
-                  { label: t('audio.gtrackSoloSpectrum'), value: 'spectrum' },
-                  { label: t('audio.gtrackSoloBoth'), value: 'both' },
-                ]"
-                @update:model-value="(m: GTrackSoloMode) => gtracks.setLaneSolo(gtrackSettingsLane!.id, m)"
-              />
-              <div class="text-caption text-grey q-mt-xs">{{ t('audio.gtrackSoloHint') }}</div>
-              <!-- GT4.2 (GT-D17): placement — under the curves (inline) or a sub-lane below. -->
-              <q-btn-toggle
-                v-if="(gtrackSettingsLane.soloMode ?? 'off') !== 'off'"
-                class="q-mt-sm"
-                :model-value="gtrackSettingsLane.soloInline ?? false"
-                dense unelevated no-caps spread
-                toggle-color="primary"
-                :options="[
-                  { label: t('audio.gtrackSoloSublane'), value: false },
-                  { label: t('audio.gtrackSoloUnder'), value: true },
-                ]"
-                @update:model-value="(v: boolean) => gtracks.setLaneSoloInline(gtrackSettingsLane!.id, v)"
-              />
-              <!-- GT10.4 (owner req. 48): solo-wave colour + opacity. -->
-              <template v-if="gtrackSettingsLane.soloMode === 'wave' || gtrackSettingsLane.soloMode === 'both'">
-                <div class="row items-center q-col-gutter-sm q-mt-sm">
-                  <div class="col-5">
-                    <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackSoloWaveColor') }}</div>
-                    <!-- GT10.20 (owner req. 69): the colour circle opens a colour picker on click. -->
-                    <div
-                      class="tracks-panel__color-swatch"
-                      :style="{ background: gtrackSettingsLane.soloWaveColor ?? '#f59e0b' }"
-                      role="button" tabindex="0"
-                      :aria-label="t('audio.gtrackSoloWaveColor')"
-                    >
-                      <!-- GT10.20 (owner 2026-07-12): open to the RIGHT of the circle, with a close (X). -->
-                      <q-popup-proxy anchor="top right" self="top left" :offset="[8, 0]" transition-show="scale" transition-hide="scale">
-                        <div class="tracks-panel__color-popup">
-                          <div class="row justify-end">
-                            <q-btn flat round dense icon="close" v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
-                          </div>
-                          <q-color
-                            :model-value="gtrackSettingsLane.soloWaveColor ?? '#f59e0b'"
-                            format-model="hex" no-header-tabs default-view="palette"
-                            @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, String(v ?? '#f59e0b'), gtrackSettingsLane!.soloWaveOpacity ?? 0.6)"
-                          />
-                        </div>
-                      </q-popup-proxy>
-                    </div>
-                  </div>
-                  <div class="col-7">
-                    <div class="text-caption text-grey">
-                      {{ t('audio.gtrackSoloWaveOpacity') }}: {{ (gtrackSettingsLane.soloWaveOpacity ?? 0.6).toFixed(2) }}
-                    </div>
-                    <q-slider
-                      dense :min="0.1" :max="1" :step="0.05"
-                      :model-value="gtrackSettingsLane.soloWaveOpacity ?? 0.6"
-                      @update:model-value="(v) => gtracks.setLaneSoloWaveStyle(gtrackSettingsLane!.id, gtrackSettingsLane!.soloWaveColor ?? '#f59e0b', v ?? 0.6)"
-                    />
-                  </div>
-                </div>
-              </template>
-            </q-card-section>
-            <!-- GT8.1/GT8.2 (owner req. 35-37, GT-D19): per-lane spectrum settings (accordion),
-                 independent of the global panel — shown when this lane displays a solo spectrum. -->
-            <template v-if="gtrackSettingsLane.soloMode === 'spectrum' || gtrackSettingsLane.soloMode === 'both'">
-              <q-separator />
-              <q-card-section>
-                <q-toggle
-                  :model-value="gtracks.getLaneSpectrum(gtrackSettingsLane.id) !== null"
-                  dense
-                  :label="t('audio.gtrackSpectrumCustom')"
-                  @update:model-value="(on: boolean) => toggleLaneSpectrumCustom(gtrackSettingsLane!.id, on)"
-                />
-                <GTrackSpectrumSettings
-                  v-if="gtracks.getLaneSpectrum(gtrackSettingsLane.id) !== null"
-                  class="q-mt-sm"
-                  :model-value="gtracks.getLaneSpectrum(gtrackSettingsLane.id)!"
-                  @update:model-value="(s) => gtracks.setLaneSpectrum(gtrackSettingsLane!.id, s)"
-                />
-              </q-card-section>
-            </template>
-            <q-separator />
-            <q-card-section>
-              <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackVoices') }}</div>
-              <q-list dense>
-                <q-item v-for="v in gtracks.voices.value" :key="v.id" tag="label" clickable>
-                  <q-item-section side>
-                    <q-checkbox
-                      :model-value="gtrackSettingsLane.voiceIds.includes(v.id)"
-                      @update:model-value="() => gtracks.toggleLaneVoice(gtrackSettingsLane!.id, v.id)"
-                    />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
-                    <q-item-label caption>{{ v.type }}</q-item-label>
-                  </q-item-section>
+            <div class="tracks-panel__wf-settings-body row no-wrap">
+              <q-list class="tracks-panel__wf-settings-nav">
+                <q-item
+                  v-for="tab in gtrackSettingsTabs"
+                  :key="tab.id"
+                  clickable
+                  :active="gtrackSettingsTab === tab.id"
+                  active-class="tracks-panel__wf-settings-nav--active"
+                  @click="gtrackSettingsTab = tab.id"
+                >
+                  <q-item-section>{{ tab.label }}</q-item-section>
                 </q-item>
               </q-list>
-            </q-card-section>
+              <q-separator vertical />
+              <div class="tracks-panel__wf-settings-content">
+                <!-- «График»: display mode + beat-band shading (base mode only, owner 2026-07-14). -->
+                <q-card-section v-if="gtrackSettingsTab === 'graph'">
+                  <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackModeLabel') }}</div>
+                  <q-btn-toggle
+                    :model-value="gtrackSettingsLane.mode"
+                    dense unelevated no-caps spread
+                    toggle-color="primary"
+                    :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
+                    @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
+                  />
+                  <q-toggle
+                    v-if="gtrackSettingsLane.mode === 'base'"
+                    class="q-mt-sm"
+                    :model-value="gtrackSettingsLane.beatBand"
+                    dense
+                    :label="t('audio.gtrackBeatBand')"
+                    @update:model-value="(v: boolean) => gtracks.setLaneBeatBand(gtrackSettingsLane!.id, v)"
+                  />
+                </q-card-section>
+                <!-- «Соло-звук» (GT4.3/GT4.2): wave + spectrum toggles, then placement. -->
+                <q-card-section v-else-if="gtrackSettingsTab === 'solo'">
+                  <q-toggle
+                    :model-value="laneSoloWaveOn"
+                    dense
+                    :label="t('audio.gtrackSoloWave')"
+                    @update:model-value="(v: boolean) => setLaneSoloParts(v, laneSoloSpectrumOn)"
+                  />
+                  <q-toggle
+                    class="q-ml-md"
+                    :model-value="laneSoloSpectrumOn"
+                    dense
+                    :label="t('audio.gtrackSoloSpectrum')"
+                    @update:model-value="(v: boolean) => setLaneSoloParts(laneSoloWaveOn, v)"
+                  />
+                  <div class="text-caption text-grey q-mt-xs">{{ t('audio.gtrackSoloHint') }}</div>
+                  <template v-if="laneSoloWaveOn || laneSoloSpectrumOn">
+                    <div class="text-caption text-grey q-mt-md q-mb-xs">{{ t('audio.gtrackSoloPlacement') }}</div>
+                    <q-btn-toggle
+                      :model-value="gtrackSettingsLane.soloInline ?? false"
+                      dense unelevated no-caps spread
+                      toggle-color="primary"
+                      :options="[
+                        { label: t('audio.gtrackSoloSublane'), value: false },
+                        { label: t('audio.gtrackSoloUnder'), value: true },
+                      ]"
+                      @update:model-value="(v: boolean) => gtracks.setLaneSoloInline(gtrackSettingsLane!.id, v)"
+                    />
+                  </template>
+                </q-card-section>
+                <!-- «Голоса»: which voices this lane shows. -->
+                <q-card-section v-else>
+                  <q-list dense>
+                    <q-item v-for="v in gtracks.voices.value" :key="v.id" tag="label" clickable>
+                      <q-item-section side>
+                        <q-checkbox
+                          :model-value="gtrackSettingsLane.voiceIds.includes(v.id)"
+                          @update:model-value="() => gtracks.toggleLaneVoice(gtrackSettingsLane!.id, v.id)"
+                        />
+                      </q-item-section>
+                      <q-item-section>
+                        <q-item-label>{{ v.description.trim() !== '' ? v.description : `#${v.id}` }}</q-item-label>
+                        <q-item-label caption>{{ v.type }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-card-section>
+              </div>
+            </div>
             <q-separator />
             <q-card-actions align="right">
               <q-btn
@@ -1197,7 +1159,6 @@ import { useTracksListPanelState } from '../stores/track-list-panel'
 import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-overrides'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
-import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
 // VS2.7 (VS-D3 rev 3): the lane solo-spectrum gear opens the standard dock/detach panel hosted in
 // AudioPage — this file only sets the target lane and flips the shared panel state open.
 import { useLaneSpectrumPanelState, useLaneSpectrumTarget } from '../stores/lane-spectrum-panel'
@@ -2275,10 +2236,6 @@ function laneSpectrogramRender(laneId: number): ReturnType<typeof toRenderOption
   const o = gtracks.getLaneSpectrum(laneId)
   return o !== null ? toRenderOptions(o) : spectrogramStore.renderOptions
 }
-function toggleLaneSpectrumCustom(laneId: number, on: boolean): void {
-  if (on) gtracks.ensureLaneSpectrum(laneId, { ...spectrogramStore.settings })
-  else gtracks.clearLaneSpectrum(laneId)
-}
 
 const gtrackSettingsId = ref<number | null>(null)
 // VS2.7 (VS-D3 rev 3, owner): the solo-spectrum gear opens the standard dockable/detachable panel
@@ -2295,6 +2252,33 @@ const gtrackSettingsOpen = computed<boolean>({
   set: (v) => { if (!v) gtrackSettingsId.value = null },
 })
 const gtrackSettingsLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSettingsId.value) ?? null)
+// VS3.1 (VS-D2, variant B): the two-pane dialog's section nav; reopening always lands on «График».
+type GTrackSettingsTab = 'graph' | 'solo' | 'voices'
+const gtrackSettingsTab = ref<GTrackSettingsTab>('graph')
+watch(gtrackSettingsId, (id) => {
+  if (id !== null) gtrackSettingsTab.value = 'graph'
+})
+const gtrackSettingsTabs = computed<{ id: GTrackSettingsTab; label: string }[]>(() => [
+  { id: 'graph', label: t('audio.gtrackSectionGraph') },
+  { id: 'solo', label: t('audio.gtrackSoloAudio') },
+  { id: 'voices', label: t('audio.gtrackSectionVoices') },
+])
+// VS3.1: two independent «Волна»/«Спектр» toggles over the persisted 4-state soloMode (R5 —
+// UI-only mapping; 'both' was always just wave+spectrum).
+const laneSoloWaveOn = computed<boolean>(() => {
+  const m = gtrackSettingsLane.value?.soloMode ?? 'off'
+  return m === 'wave' || m === 'both'
+})
+const laneSoloSpectrumOn = computed<boolean>(() => {
+  const m = gtrackSettingsLane.value?.soloMode ?? 'off'
+  return m === 'spectrum' || m === 'both'
+})
+function setLaneSoloParts(wave: boolean, spectrum: boolean): void {
+  const lane = gtrackSettingsLane.value
+  if (lane === null) return
+  const mode: GTrackSoloMode = wave && spectrum ? 'both' : wave ? 'wave' : spectrum ? 'spectrum' : 'off'
+  gtracks.setLaneSolo(lane.id, mode)
+}
 
 // gtrack reorder: mirror the SF-D66 grip drag, but swap lanes in the composable via a hit-test.
 const gtrackDrag = ref<number | null>(null)
@@ -3304,10 +3288,6 @@ onBeforeUnmount(() => {
 /* GT9.2: lint diagnostic messages wrap instead of truncating. */
 .tracks-panel__diag-msg {
   white-space: normal;
-}
-
-.audio-page__gtrack-dialog {
-  min-width: 320px;
 }
 
 /* SF28.3: the track currently being dragged for reorder. */
