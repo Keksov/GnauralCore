@@ -24,6 +24,7 @@ export function useOverridesSnapshot(): ComputedRef<OverridesSnapshot> {
       channel0: ch0 === null ? null : { ...ch0 },
       channel1: ch1 === null ? null : { ...ch1 },
       presets: store.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
+      linkChannels: overrides.linkChannels,
     }
   })
 }
@@ -37,6 +38,7 @@ export function useApplyOverridesAction(): (action: OverridesAction) => void {
       overrides,
       program: store.settings,
       findPreset: (id) => store.allPresets.find((p) => p.id === id)?.settings,
+      setLinkChannels: overrides.setLinkChannels,
     })
   }
 }

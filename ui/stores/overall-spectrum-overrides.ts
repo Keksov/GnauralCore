@@ -19,6 +19,17 @@ import {
 } from '../composables/overall-spectrum-overrides'
 
 const STORAGE_KEY = 'mindwave-spectrogram-channel-overrides'
+// SG3.4 (owner): «Применить к обоим каналам» — persisted separately from the overrides themselves
+// (flipping the toggle must not touch the channel data). Default ON, like the waveform's link.
+const LINK_STORAGE_KEY = 'mindwave-spectrogram-overrides-link'
+
+function loadLinkFromStorage(): boolean {
+  try {
+    return localStorage.getItem(LINK_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
 
 function loadFromStorage(): SpectrumOverrides {
   try {
@@ -54,6 +65,17 @@ export const useOverallSpectrumOverridesStore = defineStore('overall-spectrum-ov
     overrides.value = clearBothOverride()
   }
 
+  // SG3.4: the «Применить к обоим каналам» flag (view locks «Левый»/«Правый» while ON).
+  const linkChannels = ref<boolean>(loadLinkFromStorage())
+  function setLinkChannels(value: boolean): void {
+    linkChannels.value = value
+    try {
+      localStorage.setItem(LINK_STORAGE_KEY, String(value))
+    } catch {
+      // best-effort, matching the overrides persistence
+    }
+  }
+
   watch(
     overrides,
     (value) => {
@@ -66,5 +88,5 @@ export const useOverallSpectrumOverridesStore = defineStore('overall-spectrum-ov
     { deep: true },
   )
 
-  return { overrides, getChannel, isIndividual, setChannel, ensureChannel, clearChannel, setBoth, clearBoth }
+  return { overrides, getChannel, isIndividual, setChannel, ensureChannel, clearChannel, setBoth, clearBoth, linkChannels, setLinkChannels }
 })

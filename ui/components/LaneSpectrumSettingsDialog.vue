@@ -68,6 +68,8 @@ const snapshot = computed<OverridesSnapshot>(() => {
     channel0: override,
     channel1: override,
     presets: spectrogramStore.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
+    // Mono: no channels to link — the view hides the toggle, the flag is inert.
+    linkChannels: true,
   }
 })
 

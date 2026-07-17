@@ -24,6 +24,7 @@ const EMPTY_SNAPSHOT: OverridesSnapshot = {
   channel0: null,
   channel1: null,
   presets: [],
+  linkChannels: true,
 }
 const snapshot = computed<OverridesSnapshot>(
   () => (props.bridgeState as OverridesSnapshot | undefined) ?? EMPTY_SNAPSHOT,

@@ -19,6 +19,9 @@ export interface OverridesSnapshot {
   /** The RIGHT channel's individual override, or null = inherit. */
   readonly channel1: SpectrogramSettings | null
   readonly presets: readonly SpectrumPresetSnapshot[]
+  /** SG3.4 (owner): «Применить к обоим каналам» — the waveform-dialog link analog. While ON the
+   *  «Левый»/«Правый» scopes are locked in the view, so the channels cannot diverge. */
+  readonly linkChannels: boolean
 }
 
 // Every gesture the view can perform, as one serializable union (discriminated by `kind`), each
@@ -29,6 +32,10 @@ export type OverridesAction =
   | { readonly kind: 'set-field'; readonly scope: OverrideScope; readonly key: keyof SpectrogramSettings; readonly value: string | number }
   | { readonly kind: 'apply-preset'; readonly scope: OverrideScope; readonly id: string }
   | { readonly kind: 'reset'; readonly scope: OverrideScope }
+  // SG3.4: flip «Применить к обоим каналам». Scope-free — it is panel-level UI state, not a write
+  // to a channel; it still crosses the detach bridge as an action so the MAIN window stays the
+  // single writer of the persisted flag.
+  | { readonly kind: 'set-link'; readonly value: boolean }
 
 /** The channel(s) a scope touches: «Оба» = both, else the one channel. */
 export function scopeChannels(scope: OverrideScope): number[] {
@@ -65,6 +72,9 @@ export interface OverridesActionContext {
   readonly program: SpectrogramSettings
   /** Resolve a preset id to its settings (the child snapshot carries only id/name/builtin). */
   readonly findPreset: (id: string) => SpectrogramSettings | undefined
+  /** SG3.4: persist the «Применить к обоим каналам» flag. Optional — a MONO host (the per-lane
+   *  panel, VS2.7) has no channels to link and never shows the toggle. */
+  readonly setLinkChannels?: (value: boolean) => void
 }
 
 export function applyOverridesAction(action: OverridesAction, ctx: OverridesActionContext): void {
@@ -96,6 +106,10 @@ export function applyOverridesAction(action: OverridesAction, ctx: OverridesActi
     case 'reset': {
       if (action.scope === 'both') ctx.overrides.clearBoth()
       else ctx.overrides.clearChannel(action.scope)
+      break
+    }
+    case 'set-link': {
+      ctx.setLinkChannels?.(action.value)
       break
     }
   }

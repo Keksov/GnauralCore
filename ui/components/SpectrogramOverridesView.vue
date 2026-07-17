@@ -17,9 +17,10 @@
           v-for="opt in scopeOptions"
           :key="String(opt.value)"
           clickable
+          :disable="opt.disable"
           :active="scope === opt.value"
           active-class="spectrum-overrides__nav--active"
-          @click="scope = opt.value"
+          @click="selectScope(opt)"
         >
           <q-item-section>{{ opt.label }}</q-item-section>
         </q-item>
@@ -29,6 +30,16 @@
 
       <div class="spectrum-overrides__content">
         <div class="spectrum-overrides__content-head">
+          <!-- SG3.4 (owner): «Применить к обоим каналам», the waveform-dialog link analog (same
+               label key). Lives on the «Оба канала» scope like the waveform's toggle; while ON the
+               «Левый»/«Правый» items are locked so the channels cannot diverge. -->
+          <q-toggle
+            v-if="!mono && scope === 'both'"
+            :model-value="snapshot.linkChannels"
+            dense
+            :label="t('audio.waveformApplyBoth')"
+            @update:model-value="(v: boolean) => emit('action', { kind: 'set-link', value: v })"
+          />
           <q-space />
           <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
             <q-list dense style="min-width: 200px">
@@ -67,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import SpectrogramSettingsView from './SpectrogramSettingsView.vue'
 import {
@@ -93,12 +104,32 @@ const { t } = useI18n()
 const scope = ref<OverrideScope>('both')
 
 // Named + laid out like the overall-waveform settings form (owner): a vertical «Оба канала / Левый /
-// Правый» nav.
-const scopeOptions = computed(() => [
-  { label: t('audio.waveformChannelsBoth'), value: 'both' as const },
-  { label: t('audio.waveformChannelsLeft'), value: 0 as const },
-  { label: t('audio.waveformChannelsRight'), value: 1 as const },
-])
+// Правый» nav. SG3.4: while «Применить к обоим каналам» is ON the per-channel items are LOCKED
+// (waveform owner req 6 analog) so the channels cannot diverge.
+interface ScopeOption { readonly label: string; readonly value: OverrideScope; readonly disable: boolean }
+const scopeOptions = computed<ScopeOption[]>(() => {
+  const locked = props.snapshot.linkChannels
+  return [
+    { label: t('audio.waveformChannelsBoth'), value: 'both' as const, disable: false },
+    { label: t('audio.waveformChannelsLeft'), value: 0 as const, disable: locked },
+    { label: t('audio.waveformChannelsRight'), value: 1 as const, disable: locked },
+  ]
+})
+// The guard must be OURS (the WS1.1 lesson): QItem's :disable drops its own click handling but a
+// fallthrough @click still lands on the root element, and Quasar's .disabled rule only sets
+// opacity/cursor, not pointer-events — without this a locked tab would still open on click.
+function selectScope(opt: ScopeOption): void {
+  if (opt.disable) return
+  scope.value = opt.value
+}
+// A snapshot can arrive with the link ON while a per-channel scope is selected (e.g. the flag was
+// flipped in the other window while detached) — coerce back to «Оба», never leave a locked scope active.
+watch(
+  () => props.snapshot.linkChannels,
+  (linked) => {
+    if (linked && scope.value !== 'both') scope.value = 'both'
+  },
+)
 
 // The inner field form renders the effective settings for the active scope (override ?? program).
 const formSnapshot = computed<SpectrumSettingsSnapshot>(() => ({
