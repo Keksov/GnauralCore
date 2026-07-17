@@ -157,6 +157,13 @@
         <SpectrumSettingsDialog v-if="spectrumSettingsPanel.open" />
       </Teleport>
 
+      <!-- VS2.7 (VS-D3 rev 3): the per-lane solo-spectrum «Настройки спектра дорожки» — the same
+           standard dock/float/detach panel, retargeted by each lane gear (shared singletons again,
+           nothing to plumb). -->
+      <Teleport to="body" :disabled="!laneSpectrumFloating">
+        <LaneSpectrumSettingsDialog v-if="laneSpectrumPanel.open" />
+      </Teleport>
+
       <div class="audio-page__inner">
       <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
         <q-card flat bordered class="audio-page__card">
@@ -462,7 +469,9 @@ import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import TrackListDialog from '../components/TrackListDialog.vue'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
+import { useLaneSpectrumPanelState } from '../stores/lane-spectrum-panel'
 import SpectrumSettingsDialog from '../components/SpectrumSettingsDialog.vue'
+import LaneSpectrumSettingsDialog from '../components/LaneSpectrumSettingsDialog.vue'
 import AppMenuList from '../components/app-menu/AppMenuList.vue'
 import type { MenuNode } from '../components/app-menu/menu-node'
 import { menuNodeDisabled } from '../components/app-menu/menu-node'
@@ -623,11 +632,15 @@ const tracksListFloating = computed<boolean>(() => tracksListPanel.mode === 'flo
 // keep-alive, so TracksPanel — where its toolbar button lives — is destroyed on every switch).
 const spectrumSettingsPanel = useSpectrumSettingsPanelState()
 const spectrumSettingsFloating = computed<boolean>(() => spectrumSettingsPanel.mode === 'floating')
+// VS2.7 (VS-D3 rev 3): the per-lane solo-spectrum panel joins the same dock-wrap.
+const laneSpectrumPanel = useLaneSpectrumPanelState()
+const laneSpectrumFloating = computed<boolean>(() => laneSpectrumPanel.mode === 'floating')
 const dockWrapClass = computed<string>(() => {
   const anyVertical =
     filePanel.mode === 'top' || filePanel.mode === 'bottom' ||
     tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom' ||
-    spectrumSettingsPanel.mode === 'top' || spectrumSettingsPanel.mode === 'bottom'
+    spectrumSettingsPanel.mode === 'top' || spectrumSettingsPanel.mode === 'bottom' ||
+    laneSpectrumPanel.mode === 'top' || laneSpectrumPanel.mode === 'bottom'
   return anyVertical ? 'audio-page__dock-wrap--col' : 'audio-page__dock-wrap--row'
 })
 

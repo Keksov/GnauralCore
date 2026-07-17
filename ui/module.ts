@@ -45,5 +45,14 @@ export const gnauralModule = {
       component: () => import('./components/SpectrogramOverridesRemote.vue'),
       events: ['action'],
     },
+    // VS2.7 (VS-D3 rev 3): the per-LANE solo-spectrum panel detaches the same way — its child content
+    // is the mono twin of the remote above; LaneSpectrumSettingsDialog applies the bridged actions.
+    {
+      id: 'lane-spectrum-settings',
+      titleKey: 'audio.gtrackSpectrumTitle',
+      icon: 'tune',
+      component: () => import('./components/LaneSpectrumSettingsRemote.vue'),
+      events: ['action'],
+    },
   ],
 } as const

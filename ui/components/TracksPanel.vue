@@ -340,7 +340,7 @@
                 :show-time-axis-top="false"
                 :show-time-axis-bottom="false"
                 @seek="handleSeek"
-                @open-settings="gtrackSpectrumDialogId = lane.id"
+                @open-settings="openLaneSpectrumSettings(lane.id)"
                 @hide="gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', true)"
               />
             </div>
@@ -738,23 +738,8 @@
           </q-card>
         </q-dialog>
 
-        <!-- VS2.4 (VS-D3 rev 2, owner): the solo-spectrum gear opens the SAME standard spectrum form
-             as the program settings and the overall-spectrum panel (SpectrogramOverridesView), in
-             MONO mode — no L/R nav; the adapter maps every scope onto the lane's single override.
-             Presets-apply and «Сброс» (= revert to the program level) are the view's own chrome. -->
-        <q-dialog v-model="gtrackSpectrumDialogOpen">
-          <q-card v-if="gtrackSpectrumSnapshot !== null" class="tracks-panel__lane-spectrum-dialog column no-wrap">
-            <q-card-section class="row items-center q-py-sm">
-              <div class="text-subtitle1">{{ t('audio.gtrackSpectrumTitle') }}</div>
-              <q-space />
-              <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramSettingsClose')" />
-            </q-card-section>
-            <q-separator />
-            <div class="tracks-panel__lane-spectrum-body">
-              <SpectrogramOverridesView mono :snapshot="gtrackSpectrumSnapshot" @action="applyLaneSpectrumAction" />
-            </div>
-          </q-card>
-        </q-dialog>
+        <!-- VS2.7 (VS-D3 rev 3): the solo-spectrum gear opens the standard dock/float/detach panel
+             (LaneSpectrumSettingsDialog, hosted in AudioPage's dock-wrap) — no q-dialog here. -->
 
         <!-- WS1.1 (WS-D2): waveform display settings — two-pane, built like the GT10.29 settings
              dialog (AudioPage.vue): a narrow channel-SCOPE list on the left, the settings for the
@@ -1193,7 +1178,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -1211,14 +1196,9 @@ import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-ove
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
 import GTrackSpectrumSettings from './GTrackSpectrumSettings.vue'
-// VS2.4 (VS-D3 rev 2): the lane solo-spectrum dialog hosts the SAME form as the program settings and
-// the overall-spectrum panel. Lazy like SpectrumSettingsDialog's host — it pulls the full form chunk.
-import {
-  applyOverridesAction,
-  type OverridesAction,
-  type OverridesSnapshot,
-} from '../composables/overall-spectrum-overrides-model'
-const SpectrogramOverridesView = defineAsyncComponent(() => import('./SpectrogramOverridesView.vue'))
+// VS2.7 (VS-D3 rev 3): the lane solo-spectrum gear opens the standard dock/detach panel hosted in
+// AudioPage — this file only sets the target lane and flips the shared panel state open.
+import { useLaneSpectrumPanelState, useLaneSpectrumTarget } from '../stores/lane-spectrum-panel'
 import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
@@ -2284,44 +2264,14 @@ function toggleLaneSpectrumCustom(laneId: number, on: boolean): void {
 }
 
 const gtrackSettingsId = ref<number | null>(null)
-// VS2.1 (VS-D3): the solo-spectrum graph's gear opens its OWN per-lane spectrum dialog, not the
-// track dialog. No explicit «individual» toggle (SG-D8 model): the form shows the program level
-// until the first edit auto-creates the lane override; «Сброс» clears it back to inherit.
-const gtrackSpectrumDialogId = ref<number | null>(null)
-const gtrackSpectrumDialogOpen = computed<boolean>({
-  get: () => gtrackSpectrumDialogId.value !== null,
-  set: (v) => { if (!v) gtrackSpectrumDialogId.value = null },
-})
-const gtrackSpectrumDialogLane = computed(() => gtracks.lanes.value.find((l) => l.id === gtrackSpectrumDialogId.value) ?? null)
-// VS2.4 (VS-D3 rev 2): the OverridesSnapshot/ActionContext contract is channel-based, but a lane is
-// MONO — its single laneSpectrum override plays both "channels", so displayedForScope/scopeHasOverride
-// and the SG-D8 auto-individual seeding all work unchanged over the one entry.
-const gtrackSpectrumSnapshot = computed<OverridesSnapshot | null>(() => {
-  const lane = gtrackSpectrumDialogLane.value
-  if (lane === null) return null
-  const o = gtracks.getLaneSpectrum(lane.id)
-  const override = o === null ? null : { ...o }
-  return {
-    program: { ...spectrogramStore.settings },
-    channel0: override,
-    channel1: override,
-    presets: spectrogramStore.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
-  }
-})
-function applyLaneSpectrumAction(action: OverridesAction): void {
-  const laneId = gtrackSpectrumDialogId.value
-  if (laneId === null) return
-  applyOverridesAction(action, {
-    overrides: {
-      getChannel: () => gtracks.getLaneSpectrum(laneId),
-      setChannel: (_ch, s) => gtracks.setLaneSpectrum(laneId, s),
-      clearChannel: () => gtracks.clearLaneSpectrum(laneId),
-      setBoth: (s) => gtracks.setLaneSpectrum(laneId, s),
-      clearBoth: () => gtracks.clearLaneSpectrum(laneId),
-    },
-    program: spectrogramStore.settings,
-    findPreset: (id) => spectrogramStore.allPresets.find((p) => p.id === id)?.settings,
-  })
+// VS2.7 (VS-D3 rev 3, owner): the solo-spectrum gear opens the standard dockable/detachable panel
+// (LaneSpectrumSettingsDialog in AudioPage), retargeted to this lane — the same singleton pattern as
+// the overall spectrum's «Параметры» gear. The panel content is the standard mono spectrum form.
+const laneSpectrumPanel = useLaneSpectrumPanelState()
+const laneSpectrumTarget = useLaneSpectrumTarget()
+function openLaneSpectrumSettings(laneId: number): void {
+  laneSpectrumTarget.value = laneId
+  laneSpectrumPanel.open = true
 }
 const gtrackSettingsOpen = computed<boolean>({
   get: () => gtrackSettingsId.value !== null,
@@ -3294,20 +3244,6 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-/* VS2.4: the lane solo-spectrum dialog — a fixed-size flex card so the hosted overrides view
-   (height:100%, its form scrolls internally) gets a real height to fill. */
-.tracks-panel__lane-spectrum-dialog {
-  display: flex;
-  flex-direction: column;
-  max-height: 84vh;
-  max-width: 92vw;
-  width: 440px;
-}
-.tracks-panel__lane-spectrum-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
 /* GT10.28 (owner req. 77): flash a highlight on a freshly added lane. */
 .tracks-panel__gtrack-inline--new {
   animation: tracks-panel-new-lane 1.8s ease-out;
