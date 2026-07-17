@@ -2706,17 +2706,18 @@ function spectrogramAnalysisForChannel(ch: number): SpectrogramAnalysisParams {
   return ch === 0 ? spectrogramLeftAnalysis.value : spectrogramRightAnalysis.value
 }
 
-// SG3.1 (SG-D7): the OVERALL spectrogram tracks resolve each channel to its individual override
-// (spectrumOverrides) if set, else the program-level store. Kept SEPARATE from
-// spectrogramAnalysisForChannel above, which the WAVEFORM tracks (and the gtrack lane fallback) also
-// use — a spectrum override must not leak into the waveform analysis.
+// SG3.1 (SG-D7) + SG3.5: the OVERALL spectrogram tracks resolve each channel to the override IN
+// EFFECT — the «Оба канала» group while the link toggle is ON, else the channel's own override —
+// falling back to the program-level store (WS-D9 mirror: peer groups, link decides which renders).
+// Kept SEPARATE from spectrogramAnalysisForChannel above, which the WAVEFORM tracks (and the gtrack
+// lane fallback) also use — a spectrum override must not leak into the waveform analysis.
 function overallSpectrumAnalysis(ch: number): SpectrogramAnalysisParams {
-  const o = spectrumOverrides.getChannel(ch)
+  const o = spectrumOverrides.effective(ch)
   if (o !== null) return { ...applyHighZoom(toAnalysisParams(o)), channel: ch }
   return spectrogramAnalysisForChannel(ch)
 }
 function overallSpectrumRender(ch: number) {
-  const o = spectrumOverrides.getChannel(ch)
+  const o = spectrumOverrides.effective(ch)
   return o !== null ? toRenderOptions(o) : spectrogramStore.renderOptions
 }
 

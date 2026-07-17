@@ -18,11 +18,13 @@ export function useOverridesSnapshot(): ComputedRef<OverridesSnapshot> {
   return computed<OverridesSnapshot>(() => {
     const ch0 = overrides.getChannel(0)
     const ch1 = overrides.getChannel(1)
+    const both = overrides.getBoth()
     return {
       // Clone so the snapshot is plain serializable data, not the stores' reactive proxies.
       program: { ...store.settings },
       channel0: ch0 === null ? null : { ...ch0 },
       channel1: ch1 === null ? null : { ...ch1 },
+      both: both === null ? null : { ...both },
       presets: store.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
       linkChannels: overrides.linkChannels,
     }

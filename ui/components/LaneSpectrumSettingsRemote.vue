@@ -23,6 +23,7 @@ const EMPTY_SNAPSHOT: OverridesSnapshot = {
   program: DEFAULT_SPECTROGRAM_SETTINGS,
   channel0: null,
   channel1: null,
+  both: null,
   presets: [],
   linkChannels: true,
 }

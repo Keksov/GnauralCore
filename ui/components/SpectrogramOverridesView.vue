@@ -41,7 +41,7 @@
             @update:model-value="(v: boolean) => emit('action', { kind: 'set-link', value: v })"
           />
           <q-space />
-          <q-btn-dropdown dense flat no-caps icon="bookmarks" :label="t('audio.spectrogramPresets')">
+          <q-btn-dropdown dense flat no-caps icon="bookmarks" :disable="formDisabled" :label="t('audio.spectrogramPresets')">
             <q-list dense style="min-width: 200px">
               <q-item
                 v-for="p in snapshot.presets"
@@ -60,7 +60,7 @@
         </div>
 
         <div class="spectrum-overrides__form">
-          <SpectrogramSettingsView :snapshot="formSnapshot" @action="onFieldAction" />
+          <SpectrogramSettingsView :snapshot="formSnapshot" :disabled="formDisabled" @action="onFieldAction" />
         </div>
       </div>
     </div>
@@ -70,7 +70,7 @@
         flat dense no-caps
         icon="restart_alt"
         :label="t('audio.spectrogramReset')"
-        :disable="!hasOverride"
+        :disable="formDisabled || !hasOverride"
         @click="emit('action', { kind: 'reset', scope })"
       />
     </div>
@@ -141,9 +141,16 @@ const formSnapshot = computed<SpectrumSettingsSnapshot>(() => ({
 
 const hasOverride = computed<boolean>(() => scopeHasOverride(props.snapshot, scope.value))
 
+// SG3.5 (owner, the WS-D3 mirror): with the link toggle OFF the «Оба канала» group is not in effect
+// (the per-channel tabs own the rendered settings) — its whole form goes inert; only the toggle
+// itself stays live. Mono (the per-lane panel) has no channels to link and never disables.
+const formDisabled = computed<boolean>(
+  () => !props.mono && scope.value === 'both' && !props.snapshot.linkChannels,
+)
+
 function onFieldAction(action: SpectrumSettingsAction): void {
   // The field view only emits field edits here (presets/reset are this view's own chrome).
-  if (action.kind !== 'set') return
+  if (action.kind !== 'set' || formDisabled.value) return
   emit('action', { kind: 'set-field', scope: scope.value, key: action.key, value: action.value })
 }
 </script>

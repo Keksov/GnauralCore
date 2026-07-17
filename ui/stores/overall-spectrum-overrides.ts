@@ -6,9 +6,11 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { SpectrogramSettings } from '../composables/spectrogram-settings'
 import {
+  bothOverride,
   channelOverride,
   clearBothOverride,
   clearChannelOverride,
+  effectiveOverride,
   emptyOverrides,
   ensureChannelOverride,
   isChannelIndividual,
@@ -58,11 +60,19 @@ export const useOverallSpectrumOverridesStore = defineStore('overall-spectrum-ov
   function clearChannel(ch: number): void {
     overrides.value = clearChannelOverride(overrides.value, ch)
   }
+  // SG3.5 (owner, WS-D9 mirror): «Оба» is its own group slot — these no longer touch the channels.
+  function getBoth(): SpectrogramSettings | null {
+    return bothOverride(overrides.value)
+  }
   function setBoth(settings: SpectrogramSettings): void {
-    overrides.value = setBothOverride(settings)
+    overrides.value = setBothOverride(overrides.value, settings)
   }
   function clearBoth(): void {
-    overrides.value = clearBothOverride()
+    overrides.value = clearBothOverride(overrides.value)
+  }
+  /** The override in effect for a rendered channel («Оба» group while linked, else the channel's). */
+  function effective(ch: number): SpectrogramSettings | null {
+    return effectiveOverride(overrides.value, linkChannels.value, ch)
   }
 
   // SG3.4: the «Применить к обоим каналам» flag (view locks «Левый»/«Правый» while ON).
@@ -88,5 +98,5 @@ export const useOverallSpectrumOverridesStore = defineStore('overall-spectrum-ov
     { deep: true },
   )
 
-  return { overrides, getChannel, isIndividual, setChannel, ensureChannel, clearChannel, setBoth, clearBoth, linkChannels, setLinkChannels }
+  return { overrides, getChannel, isIndividual, setChannel, ensureChannel, clearChannel, getBoth, setBoth, clearBoth, effective, linkChannels, setLinkChannels }
 })

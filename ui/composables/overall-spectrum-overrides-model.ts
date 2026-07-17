@@ -18,6 +18,9 @@ export interface OverridesSnapshot {
   readonly channel0: SpectrogramSettings | null
   /** The RIGHT channel's individual override, or null = inherit. */
   readonly channel1: SpectrogramSettings | null
+  /** SG3.5 (owner, WS-D9 mirror): the «Оба канала» PEER GROUP's own settings, or null = inherit.
+   *  Editing it never touches the channels; it is what renders while the link toggle is ON. */
+  readonly both: SpectrogramSettings | null
   readonly presets: readonly SpectrumPresetSnapshot[]
   /** SG3.4 (owner): «Применить к обоим каналам» — the waveform-dialog link analog. While ON the
    *  «Левый»/«Правый» scopes are locked in the view, so the channels cannot diverge. */
@@ -37,25 +40,20 @@ export type OverridesAction =
   // single writer of the persisted flag.
   | { readonly kind: 'set-link'; readonly value: boolean }
 
-/** The channel(s) a scope touches: «Оба» = both, else the one channel. */
-export function scopeChannels(scope: OverrideScope): number[] {
-  return scope === 'both' ? [0, 1] : [scope]
+function scopeOverride(snapshot: OverridesSnapshot, scope: OverrideScope): SpectrogramSettings | null {
+  if (scope === 'both') return snapshot.both
+  return scope === 1 ? snapshot.channel1 : snapshot.channel0
 }
 
-function channelOf(snapshot: OverridesSnapshot, ch: number): SpectrogramSettings | null {
-  return ch === 1 ? snapshot.channel1 : snapshot.channel0
-}
-
-/** What the form shows for a scope: its override if set, else the program level (inherited). For
- *  «Оба» the LEFT channel is the representative shown — matching the in-window adapter. */
+/** What the form shows for a scope: its OWN group's override if set, else the program level.
+ *  SG3.5: «Оба» is a peer group (WS-D9 mirror) — it shows its own slot, never a channel's. */
 export function displayedForScope(snapshot: OverridesSnapshot, scope: OverrideScope): SpectrogramSettings {
-  const ch = scope === 'both' ? 0 : scope
-  return channelOf(snapshot, ch) ?? snapshot.program
+  return scopeOverride(snapshot, scope) ?? snapshot.program
 }
 
-/** «Сброс» is enabled when the scope has anything to clear (any covered channel is overridden). */
+/** «Сброс» is enabled when the scope's own group has anything to clear. */
 export function scopeHasOverride(snapshot: OverridesSnapshot, scope: OverrideScope): boolean {
-  return scopeChannels(scope).some((ch) => channelOf(snapshot, ch) !== null)
+  return scopeOverride(snapshot, scope) !== null
 }
 
 /** The main-window side that applies a (possibly bridged) action to the authoritative stores. Both
@@ -65,6 +63,8 @@ export interface OverridesActionContext {
     getChannel: (ch: number) => SpectrogramSettings | null
     setChannel: (ch: number, settings: SpectrogramSettings) => void
     clearChannel: (ch: number) => void
+    /** SG3.5: the «Оба» PEER GROUP's slot (a mono host maps all three onto its single entry). */
+    getBoth: () => SpectrogramSettings | null
     setBoth: (settings: SpectrogramSettings) => void
     clearBoth: () => void
   }
@@ -78,11 +78,12 @@ export interface OverridesActionContext {
 }
 
 export function applyOverridesAction(action: OverridesAction, ctx: OverridesActionContext): void {
-  // What the scope currently shows (override ?? program) — the seed for an edit.
+  // What the scope currently shows (its own group's override ?? program) — the seed for an edit.
   const displayed = (scope: OverrideScope): SpectrogramSettings => {
-    const ch = scope === 'both' ? 0 : scope
-    return ctx.overrides.getChannel(ch) ?? ctx.program
+    const o = scope === 'both' ? ctx.overrides.getBoth() : ctx.overrides.getChannel(scope)
+    return o ?? ctx.program
   }
+  // SG3.5: «Оба» writes its OWN group slot (WS-D9 mirror), never the channels.
   const write = (scope: OverrideScope, settings: SpectrogramSettings): void => {
     if (scope === 'both') ctx.overrides.setBoth(settings)
     else ctx.overrides.setChannel(scope, settings)

@@ -67,6 +67,8 @@ const snapshot = computed<OverridesSnapshot>(() => {
     program: { ...spectrogramStore.settings },
     channel0: override,
     channel1: override,
+    // Mono locks the view's scope to 'both', so the lane's single override IS the both group.
+    both: override,
     presets: spectrogramStore.allPresets.map((p) => ({ id: p.id, name: p.name, builtin: p.builtin })),
     // Mono: no channels to link — the view hides the toggle, the flag is inert.
     linkChannels: true,
@@ -81,6 +83,7 @@ function applyAction(action: OverridesAction): void {
       getChannel: () => gtracks.getLaneSpectrum(laneId),
       setChannel: (_ch, s) => gtracks.setLaneSpectrum(laneId, s),
       clearChannel: () => gtracks.clearLaneSpectrum(laneId),
+      getBoth: () => gtracks.getLaneSpectrum(laneId),
       setBoth: (s) => gtracks.setLaneSpectrum(laneId, s),
       clearBoth: () => gtracks.clearLaneSpectrum(laneId),
     },

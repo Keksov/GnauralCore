@@ -22,6 +22,7 @@
         :model-value="local[field.key]"
         :options="field.options"
         dense outlined emit-value map-options
+        :disable="disable"
         class="spectrogram-fields__control"
         @update:model-value="(v: string | number) => set(field.key, v)"
       />
@@ -30,6 +31,7 @@
         :model-value="local[field.key]"
         type="number"
         dense outlined
+        :disable="disable"
         class="spectrogram-fields__control"
         @update:model-value="(v: string | number | null) => set(field.key, toNumber(v))"
       />
@@ -42,6 +44,7 @@
         :max="field.spin!.max"
         :step="field.spin!.step"
         dense outlined
+        :disable="disable"
         class="spectrogram-fields__control"
         @update:model-value="(v: string | number | null) => set(field.key, toNumber(v))"
         @blur="clampField(field)"
@@ -56,6 +59,7 @@
           :max="field.slider!.max"
           :step="field.slider!.step"
           dense
+          :disable="disable"
           @update:model-value="(v: number | null) => set(field.key, v ?? field.slider!.min)"
         />
       </template>
@@ -77,6 +81,8 @@ import type { SpectrumSettingsAction } from '../composables/spectrum-settings-mo
 const props = defineProps<{
   readonly fields: readonly Field[]
   readonly values: SpectrogramSettings
+  /** SG3.5 (WS-D3 mirror): every control :disable'd (help popups stay reachable). */
+  readonly disable?: boolean
 }>()
 const emit = defineEmits<{ action: [action: SpectrumSettingsAction] }>()
 

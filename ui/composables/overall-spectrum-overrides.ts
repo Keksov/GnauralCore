@@ -12,10 +12,14 @@ import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-set
 export interface SpectrumOverrides {
   0: SpectrogramSettings | null
   1: SpectrogramSettings | null
+  /** SG3.5 (owner, WS-D9 mirror): «Оба канала» is a PEER GROUP with its own settings — editing it
+   *  never touches the per-channel slots (and vice versa). Which group is IN EFFECT is decided by
+   *  the link toggle: linked → `both`, unlinked → the per-channel slots (see effectiveOverride). */
+  both: SpectrogramSettings | null
 }
 
 export function emptyOverrides(): SpectrumOverrides {
-  return { 0: null, 1: null }
+  return { 0: null, 1: null, both: null }
 }
 
 /** 0 = Left/Mono, anything else = Right — so callers can pass a raw channel index safely. */
@@ -44,13 +48,23 @@ export function ensureChannelOverride(o: SpectrumOverrides, ch: number, seed: Sp
   return isChannelIndividual(o, ch) ? o : setChannelOverride(o, ch, seed)
 }
 
-/** «Оба» scope: write BOTH channels at once (the bulk editor of SG-D7). */
-export function setBothOverride(settings: SpectrogramSettings): SpectrumOverrides {
-  return { 0: { ...settings }, 1: { ...settings } }
+export function bothOverride(o: SpectrumOverrides): SpectrogramSettings | null {
+  return o.both
 }
 
-export function clearBothOverride(): SpectrumOverrides {
-  return emptyOverrides()
+/** SG3.5 (supersedes SG-D7's bulk write): «Оба» writes its OWN group slot, channels untouched. */
+export function setBothOverride(o: SpectrumOverrides, settings: SpectrogramSettings): SpectrumOverrides {
+  return { ...o, both: { ...settings } }
+}
+
+export function clearBothOverride(o: SpectrumOverrides): SpectrumOverrides {
+  return { ...o, both: null }
+}
+
+/** The override IN EFFECT for a rendered channel: the «Оба» group while linked, else the channel's
+ *  own slot; null = inherit the program level either way. */
+export function effectiveOverride(o: SpectrumOverrides, linked: boolean, ch: number): SpectrogramSettings | null {
+  return linked ? o.both : channelOverride(o, ch)
 }
 
 export function loadOverrides(raw: unknown): SpectrumOverrides {
@@ -59,5 +73,7 @@ export function loadOverrides(raw: unknown): SpectrumOverrides {
   return {
     0: p['0'] !== undefined && p['0'] !== null ? mergeStoredSettings(p['0']) : null,
     1: p['1'] !== undefined && p['1'] !== null ? mergeStoredSettings(p['1']) : null,
+    // Pre-SG3.5 storage has no group slot -> inherit (the old bulk-written values stay on 0/1).
+    both: p['both'] !== undefined && p['both'] !== null ? mergeStoredSettings(p['both']) : null,
   }
 }

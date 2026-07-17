@@ -19,7 +19,7 @@
         @update:model-value="(v: boolean) => setOpen(block.key, v)"
       >
         <div class="spectrogram-settings__card-body">
-          <spectrogram-settings-fields :fields="block.fields" :values="snapshot.settings" @action="onAction" />
+          <spectrogram-settings-fields :fields="block.fields" :values="snapshot.settings" :disable="disabled" @action="onAction" />
         </div>
       </q-expansion-item>
 
@@ -29,7 +29,7 @@
           {{ block.title }}
         </div>
         <div class="spectrogram-settings__card-body">
-          <spectrogram-settings-fields :fields="block.fields" :values="snapshot.settings" @action="onAction" />
+          <spectrogram-settings-fields :fields="block.fields" :values="snapshot.settings" :disable="disabled" @action="onAction" />
         </div>
       </section>
     </template>
@@ -63,7 +63,12 @@ import {
 } from '../composables/spectrogram-settings-fields'
 import type { SpectrumSettingsSnapshot, SpectrumSettingsAction } from '../composables/spectrum-settings-model'
 
-defineProps<{ readonly snapshot: SpectrumSettingsSnapshot }>()
+defineProps<{
+  readonly snapshot: SpectrumSettingsSnapshot
+  /** SG3.5 (WS-D3 mirror): render every field inert — the host's «Оба канала» scope is not in
+   *  effect while the channels are unlinked. Accordion open/close stays live (it is view state). */
+  readonly disabled?: boolean
+}>()
 const emit = defineEmits<{ action: [action: SpectrumSettingsAction] }>()
 
 function onAction(action: SpectrumSettingsAction): void {
