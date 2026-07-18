@@ -1385,35 +1385,9 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   padding: 16px;
 }
 
-.audio-page__output-section--main {
-  overflow: hidden;
-}
-
-.audio-page__output-section--schedule {
-  padding: 0;
-}
-
 .audio-page__output-section--spectrogram {
   overflow: auto;
   position: relative;
-}
-
-.audio-page__schedule-view {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.audio-page__player-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
-
-.audio-page__player-controls {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .audio-page__tabs-bar {
@@ -1510,25 +1484,6 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   min-height: 0;
 }
 
-.audio-page__player-view-tabs-bar {
-  flex: 0 0 auto;
-  padding: 0 16px;
-}
-
-.audio-page__player-view-tabs {
-  min-width: 0;
-}
-
-.audio-page__player-view-panels {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.audio-page__player-view-panel {
-  overflow: hidden;
-}
-
 .audio-page__empty {
   align-items: center;
   display: flex;
@@ -1578,10 +1533,6 @@ watch([activeContentTab, () => audio.selectedPath], () => {
 
   .audio-page__meta-cell--metric {
     flex-basis: 78px;
-  }
-
-  .audio-page__player-view-tabs-bar {
-    padding: 0 12px;
   }
 }
 
