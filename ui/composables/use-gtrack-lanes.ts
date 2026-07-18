@@ -10,7 +10,7 @@ import type { GnauralScheduleData } from '@protocol'
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
 import { GTrackModel, clampPointTime, isGTrackUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, valuePatchForMode, type GTrackMode } from './gtrack-render'
+import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
@@ -1092,6 +1092,24 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     try { localStorage.setItem(STORAGE_DRAG_MODE_KEY, mode) } catch { /* ignore */ }
   }
 
+  // TS-D2 (owner 2026-07-18): the base-frequency display scale is a persisted GLOBAL editor setting,
+  // exactly like pointDragMode above (not per-lane, not in the schedule model). 'log' by default =
+  // the classic auto axis (gtrack-render.gtrackAxis); 'linear' forces a linear base axis. Only
+  // mode='base' lanes honour it.
+  const STORAGE_BASE_SCALE_KEY = 'mindwave-gtrack-base-scale'
+  function loadBaseScale(): GTrackBaseScale {
+    try {
+      return localStorage.getItem(STORAGE_BASE_SCALE_KEY) === 'linear' ? 'linear' : 'log'
+    } catch {
+      return 'log'
+    }
+  }
+  const baseScaleMode = ref<GTrackBaseScale>(loadBaseScale())
+  function setBaseScaleMode(mode: GTrackBaseScale): void {
+    baseScaleMode.value = mode
+    try { localStorage.setItem(STORAGE_BASE_SCALE_KEY, mode) } catch { /* ignore */ }
+  }
+
   // GT3.12 (GT-D18, owner req. 28): "Autosave" — when on, the point inspector applies every field
   // edit immediately instead of waiting for an explicit Apply. Persisted editor property.
   const STORAGE_POINT_AUTOSAVE_KEY = 'mindwave-gtrack-point-autosave'
@@ -1375,6 +1393,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     canRedo,
     pointDragMode,
     setPointDragMode,
+    baseScaleMode,
+    setBaseScaleMode,
     pointAutosave,
     setPointAutosave,
     deletePointAt,
