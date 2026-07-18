@@ -515,6 +515,7 @@ function draw(): void {
         ctx.stroke()
         ctx.fillStyle = ch.col
         ctx.font = '9px sans-serif'
+        ctx.textAlign = 'left'
         ctx.textBaseline = 'middle'
         ctx.fillText(ch.label, Math.min(timeToX(pts[pts.length - 1]!.timeSec) + 3, plotX + plotW - 8), valueToY(pts[pts.length - 1]![ch.key]))
       }
