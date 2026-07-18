@@ -388,10 +388,9 @@ let selectionChangeToken = 0
 // reusing the unsaved-changes guard + view switching from the tree-selection flow.
 // FB5.2 (FB-D19): the open/closed flag lives in the fs-browser store (persisted), so a docked or
 // floating panel that was open at shutdown reappears at its saved place on the next launch.
-const fileDialogInitialPath = computed<string | undefined>(() => {
-  const root = audio.settings.presetsRoot
-  return root !== '' ? root : undefined
-})
+// audio-panel-cleanup AC3.3: presetsRoot was removed, so the open dialog no longer seeds from it —
+// it starts at the fs-browser roots (whole machine) like any first open.
+const fileDialogInitialPath = computed<string | undefined>(() => undefined)
 
 // FB4.3 (FB-D13): the open dialog is a dockable panel. When floating it teleports to <body>; when
 // docked it is a flex sibling of the page inner, and the form reflows around it.
@@ -796,7 +795,6 @@ function goToSettings() {
 }
 
 onMounted(async () => {
-  await audio.loadSettings()
   await nextTick()
 })
 

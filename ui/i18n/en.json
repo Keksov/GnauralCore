@@ -422,13 +422,6 @@
     "stageAnalysis": "Opening the spectrum analysis (backend)"
   },
   "settings": {
-    "audioTab": "Audio",
-    "audioTitle": "Audio presets",
-    "audioSubtitle": "Configure the server-side presets root for the Audio tab.",
-    "audioPresetsRoot": "Presets root folder",
-    "audioPresetsRootHint": "Use an absolute server path. The Audio tab will scan this directory recursively.",
-    "audioSave": "Save audio settings",
-    "audioRefreshPresets": "Refresh presets",
     "projectsTitle": "Projects",
     "projectsSubtitle": "Every opened file gets a project folder (track layout, undo journal, …) under the user data folder.",
     "projectsRootLabel": "User data folder",

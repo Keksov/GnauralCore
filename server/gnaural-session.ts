@@ -12,7 +12,6 @@ import type {
   AudioRenderState,
   AudioScheduleLoadedEvent,
   AudioServerEvent,
-  AudioSettings,
   AudioStatusEvent,
   AudioTransportState,
   GnauralScheduleData,
@@ -246,7 +245,7 @@ export interface GnauralSession {
   getStatus(): AudioStatusEvent
   getLoadedSchedule(): GnauralScheduleData | null
   getLoadedScheduleStartedAtMs(): number | null
-  start(aFilePath: string, aSettings: AudioSettings, aExtraRoots?: readonly string[]): Promise<void>
+  start(aFilePath: string, aAllowedRoots?: readonly string[]): Promise<void>
   stop(): void
   pause(): void
   resume(): void
@@ -328,11 +327,11 @@ class GnauralPlaybackSession implements GnauralSession {
     return this.loadedScheduleStartedAtMs
   }
 
-  public start(aFilePath: string, aSettings: AudioSettings, aExtraRoots: readonly string[] = []): Promise<void> {
+  public start(aFilePath: string, aAllowedRoots: readonly string[] = []): Promise<void> {
     const runStart = async (): Promise<void> => {
-      const resolvedFile = resolveAllowedAudioFilePath(aFilePath, aSettings, aExtraRoots)
+      const resolvedFile = resolveAllowedAudioFilePath(aFilePath, aAllowedRoots)
       if (resolvedFile === null) {
-        this.emitError("Requested audio file is outside the configured presets root or has an unsupported type", aFilePath)
+        this.emitError("Requested audio file is outside the allowed roots or has an unsupported type", aFilePath)
         return
       }
 

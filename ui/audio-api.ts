@@ -10,7 +10,6 @@ import type {
   AudioEditorSaveResponse,
   AudioScheduleVoicePatchRequest,
   AudioScheduleVoicePatchResponse,
-  AudioSettings,
   GnauralScheduleData,
 } from '@protocol'
 
@@ -115,17 +114,6 @@ function buildAudioFileUrl(filePath: string, options?: AudioFileRequestOptions):
 }
 
 export const audioApi = {
-  fetchAudioSettings(): Promise<AudioSettings> {
-    return requestJson<AudioSettings>('/api/audio-settings', { method: 'GET' })
-  },
-
-  updateAudioSettings(presetsRoot: string): Promise<AudioSettings> {
-    return requestJson<AudioSettings>('/api/audio-settings', {
-      method: 'PATCH',
-      body: JSON.stringify({ presetsRoot }),
-    })
-  },
-
   fetchSchedule(filePath: string, signal?: AbortSignal): Promise<GnauralScheduleData> {
     return requestJson<GnauralScheduleData>(`/api/audio/schedule?path=${encodeURIComponent(filePath)}`, {
       method: 'GET',

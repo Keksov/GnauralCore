@@ -4,7 +4,6 @@ import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import type { Subprocess } from 'bun'
 import { XMLValidator } from 'fast-xml-parser'
 import {
-  getConfiguredAudioPresetsRoot,
   isPathInsideBase,
   resolveAllowedAudioFilePath,
 } from './audio-file-utils'
@@ -20,7 +19,6 @@ import type {
   AudioEditorSaveRequest,
   AudioEditorSaveResponse,
   AudioScheduleVoicePatchRequest,
-  AudioSettings,
 } from './protocol'
 
 class GnauralEditorStoreError extends Error {
@@ -260,14 +258,14 @@ const patchVoiceXmlState = (
 }
 
 export interface GnauralEditorStore {
-  loadDocument(aRequestedPath: string, aSettings: AudioSettings): Promise<AudioEditorDocumentResponse>
-  saveDocument(aRequest: AudioEditorSaveRequest, aSettings: AudioSettings): Promise<AudioEditorSaveResponse>
-  autosaveDocument(aRequest: AudioEditorAutosaveRequest, aSettings: AudioSettings): Promise<AudioEditorHistoryEntry>
-  listHistory(aRequestedPath: string, aSettings: AudioSettings): Promise<AudioEditorHistoryResponse>
-  loadHistoryContent(aRequestedPath: string, aHistoryFileName: string, aSettings: AudioSettings): Promise<AudioEditorHistoryContentResponse>
-  restoreDocument(aRequest: AudioEditorRestoreRequest, aSettings: AudioSettings): Promise<AudioEditorRestoreResponse>
-  patchVoiceState(aRequest: AudioScheduleVoicePatchRequest, aSettings: AudioSettings): Promise<PatchVoiceStateResult>
-  patchVoiceStates(aRequests: readonly AudioScheduleVoicePatchRequest[], aSettings: AudioSettings): Promise<PatchVoiceStatesResult>
+  loadDocument(aRequestedPath: string, aAllowedRoots: readonly string[]): Promise<AudioEditorDocumentResponse>
+  saveDocument(aRequest: AudioEditorSaveRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorSaveResponse>
+  autosaveDocument(aRequest: AudioEditorAutosaveRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorHistoryEntry>
+  listHistory(aRequestedPath: string, aAllowedRoots: readonly string[]): Promise<AudioEditorHistoryResponse>
+  loadHistoryContent(aRequestedPath: string, aHistoryFileName: string, aAllowedRoots: readonly string[]): Promise<AudioEditorHistoryContentResponse>
+  restoreDocument(aRequest: AudioEditorRestoreRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorRestoreResponse>
+  patchVoiceState(aRequest: AudioScheduleVoicePatchRequest, aAllowedRoots: readonly string[]): Promise<PatchVoiceStateResult>
+  patchVoiceStates(aRequests: readonly AudioScheduleVoicePatchRequest[], aAllowedRoots: readonly string[]): Promise<PatchVoiceStatesResult>
 }
 
 class GnauralEditorStoreImpl implements GnauralEditorStore {
@@ -282,8 +280,8 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     this.gnauralExePath = gnauralPathInfo.gnauralExePath
   }
 
-  public async loadDocument(aRequestedPath: string, aSettings: AudioSettings): Promise<AudioEditorDocumentResponse> {
-    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aSettings)
+  public async loadDocument(aRequestedPath: string, aAllowedRoots: readonly string[]): Promise<AudioEditorDocumentResponse> {
+    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aAllowedRoots)
     const file = Bun.file(resolvedFile.filePath)
     if (!(await file.exists())) {
       throw new GnauralEditorStoreError(404, 'Gnaural file not found')
@@ -297,9 +295,9 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     }
   }
 
-  public async saveDocument(aRequest: AudioEditorSaveRequest, aSettings: AudioSettings): Promise<AudioEditorSaveResponse> {
+  public async saveDocument(aRequest: AudioEditorSaveRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorSaveResponse> {
     return this.withFileLock(aRequest.path, async () => {
-      const resolvedFile = await this.resolveEditorFile(aRequest.path, aSettings)
+      const resolvedFile = await this.resolveEditorFile(aRequest.path, aAllowedRoots)
       const currentDocument = await this.readLiveDocument(resolvedFile)
       this.assertExpectedModifiedAt(currentDocument.modifiedAtMs, aRequest.expectedModifiedAtMs)
 
@@ -330,9 +328,9 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     })
   }
 
-  public async autosaveDocument(aRequest: AudioEditorAutosaveRequest, aSettings: AudioSettings): Promise<AudioEditorHistoryEntry> {
+  public async autosaveDocument(aRequest: AudioEditorAutosaveRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorHistoryEntry> {
     return this.withFileLock(aRequest.path, async () => {
-      const resolvedFile = await this.resolveEditorFile(aRequest.path, aSettings)
+      const resolvedFile = await this.resolveEditorFile(aRequest.path, aAllowedRoots)
       const snapshot = await this.createHistorySnapshot(resolvedFile, aRequest.content, true)
       return {
         fileName: snapshot.fileName,
@@ -344,8 +342,8 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     })
   }
 
-  public async listHistory(aRequestedPath: string, aSettings: AudioSettings): Promise<AudioEditorHistoryResponse> {
-    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aSettings)
+  public async listHistory(aRequestedPath: string, aAllowedRoots: readonly string[]): Promise<AudioEditorHistoryResponse> {
+    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aAllowedRoots)
     const items = await this.readHistoryEntries(resolvedFile)
 
     return {
@@ -357,9 +355,9 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
   public async loadHistoryContent(
     aRequestedPath: string,
     aHistoryFileName: string,
-    aSettings: AudioSettings,
+    aAllowedRoots: readonly string[],
   ): Promise<AudioEditorHistoryContentResponse> {
-    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aSettings)
+    const resolvedFile = await this.resolveEditorFile(aRequestedPath, aAllowedRoots)
     const historyPath = await this.resolveHistoryFilePath(resolvedFile, aHistoryFileName)
     const file = Bun.file(historyPath)
     if (!(await file.exists())) {
@@ -377,9 +375,9 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     }
   }
 
-  public async restoreDocument(aRequest: AudioEditorRestoreRequest, aSettings: AudioSettings): Promise<AudioEditorRestoreResponse> {
+  public async restoreDocument(aRequest: AudioEditorRestoreRequest, aAllowedRoots: readonly string[]): Promise<AudioEditorRestoreResponse> {
     return this.withFileLock(aRequest.path, async () => {
-      const resolvedFile = await this.resolveEditorFile(aRequest.path, aSettings)
+      const resolvedFile = await this.resolveEditorFile(aRequest.path, aAllowedRoots)
       const currentDocument = await this.readLiveDocument(resolvedFile)
       this.assertExpectedModifiedAt(currentDocument.modifiedAtMs, aRequest.expectedModifiedAtMs)
 
@@ -414,8 +412,8 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     })
   }
 
-  public async patchVoiceState(aRequest: AudioScheduleVoicePatchRequest, aSettings: AudioSettings): Promise<PatchVoiceStateResult> {
-    const result = await this.patchVoiceStates([aRequest], aSettings)
+  public async patchVoiceState(aRequest: AudioScheduleVoicePatchRequest, aAllowedRoots: readonly string[]): Promise<PatchVoiceStateResult> {
+    const result = await this.patchVoiceStates([aRequest], aAllowedRoots)
     const item = result.items[0]
 
     return {
@@ -431,7 +429,7 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
 
   public async patchVoiceStates(
     aRequests: readonly AudioScheduleVoicePatchRequest[],
-    aSettings: AudioSettings,
+    aAllowedRoots: readonly string[],
   ): Promise<PatchVoiceStatesResult> {
     if (aRequests.length === 0) {
       throw new GnauralEditorStoreError(400, 'At least one voice-state patch is required')
@@ -453,7 +451,7 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     }
 
     return this.withFileLock(basePath, async () => {
-      const resolvedFile = await this.resolveEditorFile(basePath, aSettings)
+      const resolvedFile = await this.resolveEditorFile(basePath, aAllowedRoots)
       const currentDocument = await this.readLiveDocument(resolvedFile)
       let nextContent = currentDocument.content
       const items: PatchVoiceStatesItemResult[] = []
@@ -504,27 +502,25 @@ class GnauralEditorStoreImpl implements GnauralEditorStore {
     })
   }
 
-  private async resolveEditorFile(aRequestedPath: string, aSettings: AudioSettings): Promise<ResolvedEditorFile> {
-    const resolvedAudioFile = resolveAllowedAudioFilePath(aRequestedPath, aSettings)
+  private async resolveEditorFile(aRequestedPath: string, aAllowedRoots: readonly string[]): Promise<ResolvedEditorFile> {
+    const resolvedAudioFile = resolveAllowedAudioFilePath(aRequestedPath, aAllowedRoots)
     if (resolvedAudioFile === null) {
-      throw new GnauralEditorStoreError(403, 'Requested audio file is outside the configured presets root or has an unsupported type')
+      throw new GnauralEditorStoreError(403, 'Requested audio file is outside the allowed roots or has an unsupported type')
     }
 
     if (resolvedAudioFile.fileKind !== 'gnaural') {
       throw new GnauralEditorStoreError(400, 'Only .gnaural files support editor access')
     }
 
-    const presetsRoot = getConfiguredAudioPresetsRoot(aSettings)
-    if (presetsRoot === null) {
-      throw new GnauralEditorStoreError(400, 'Configured presets root is missing')
-    }
-
-    const canonicalRoot = await this.canonicalizePath(presetsRoot)
+    // audio-panel-cleanup AC3.1: the `.history` sibling dir must sit inside one of the allowed roots
+    // (previously the single configured presetsRoot). The audio file itself is already validated to be
+    // inside an allowed root above; this re-checks the sibling `.history` path against the same set.
+    const canonicalRoots = await Promise.all(aAllowedRoots.map((aRoot) => this.canonicalizePath(aRoot)))
     const parentDir = dirname(resolvedAudioFile.filePath)
     const canonicalParentDir = await this.canonicalizePath(parentDir)
     const historyDir = join(canonicalParentDir, '.history')
-    if (!isPathInsideBase(canonicalRoot, historyDir)) {
-      throw new GnauralEditorStoreError(403, 'History directory would be created outside the configured presets root')
+    if (!canonicalRoots.some((aRoot) => isPathInsideBase(aRoot, historyDir))) {
+      throw new GnauralEditorStoreError(403, 'History directory would be created outside the allowed roots')
     }
 
     return {

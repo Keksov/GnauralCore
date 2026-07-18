@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs"
 import { extname, isAbsolute, relative, resolve } from "node:path"
-import type { AudioFileKind, AudioSettings } from "./protocol"
+import type { AudioFileKind } from "./protocol"
 
 const AUDIO_FILE_EXTENSIONS = new Map<string, AudioFileKind>([
   [".wav", "wav"],
@@ -37,16 +37,6 @@ export const buildInlineContentDisposition = (aFileName: string): string => {
   return `inline; filename="${asciiFileName}"; filename*=UTF-8''${utf8FileName}`
 }
 
-export const normalizeAudioPresetsRoot = (aRoot: string): string => {
-  const trimmed = aRoot.trim()
-  return trimmed === "" ? "" : resolve(trimmed)
-}
-
-export const getConfiguredAudioPresetsRoot = (aSettings: AudioSettings): string | null => {
-  const normalized = normalizeAudioPresetsRoot(aSettings.presetsRoot)
-  return normalized === "" ? null : normalized
-}
-
 export const getAudioFileKind = (aPath: string): AudioFileKind | null => {
   return AUDIO_FILE_EXTENSIONS.get(extname(aPath).toLowerCase()) ?? null
 }
@@ -64,18 +54,18 @@ export const isPathInsideBase = (aBasePath: string, aCandidatePath: string): boo
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
+// audio-panel-cleanup AC3.1/AC-D2: the single configured `presetsRoot` was removed. Callers now pass
+// the explicit set of allowed roots (on the MindWaveCore side these are the fs-browser roots — the
+// whole machine, AC-D6 — while the LAN exposure of the byte-serving endpoints is closed by a separate
+// loopback gate, AC3.2). A file is allowed iff it resolves inside ANY allowed root.
 export const resolveAllowedAudioFilePath = (
   aRequestedPath: string,
-  aSettings: AudioSettings,
-  aExtraRoots: readonly string[] = [],
+  aAllowedRoots: readonly string[],
 ): ResolvedAudioFile | null => {
-  const presetsRoot = getConfiguredAudioPresetsRoot(aSettings)
   const resolvedPath = resolve(aRequestedPath)
   const canonicalResolvedPath = canonicalizePathForCheck(resolvedPath)
-  const allowedRoots = [
-    ...(presetsRoot === null ? [] : [presetsRoot]),
-    ...aExtraRoots.map((rootPath) => resolve(rootPath)),
-  ].map((rootPath) => canonicalizePathForCheck(rootPath))
+  const allowedRoots = aAllowedRoots
+    .map((rootPath) => canonicalizePathForCheck(resolve(rootPath)))
     .filter((rootPath, index, rootPaths) => {
       return rootPath !== "" && rootPaths.indexOf(rootPath) === index
     })

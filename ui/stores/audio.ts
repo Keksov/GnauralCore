@@ -8,7 +8,6 @@ import type {
   AudioRenderState,
   AudioScheduleChangedEvent,
   AudioScheduleLoadedEvent,
-  AudioSettings,
   AudioStatusEvent,
   AudioTransportState,
   GnauralScheduleData,
@@ -107,7 +106,6 @@ export const useAudioStore = defineStore('audio', () => {
   let wavLoadRequestId = 0
   let gnauralScheduleAbortController: AbortController | null = null
   let wavLoadAbortController: AbortController | null = null
-  const settings = ref<AudioSettings>({ presetsRoot: '' })
   // SF20: no auto-load on Audio-tab open — the last file is NOT restored into the selection.
   const selectedPath = ref<string | null>(null)
   const recentFiles = ref<string[]>(loadRecentFiles())
@@ -127,7 +125,6 @@ export const useAudioStore = defineStore('audio', () => {
   const remoteDurationSec = ref(0)
   const localDurationSec = ref(0)
   const localFileKind = ref<LocalAudioFileKind | null>(null)
-  const settingsLoading = ref(false)
   const wavLoading = ref(false)
   const wavObjectUrl = ref<string | null>(null)
   const wavSourcePath = ref<string | null>(null)
@@ -742,34 +739,8 @@ export const useAudioStore = defineStore('audio', () => {
     localPositionSec.value = nextPosition
   }
 
-  async function loadSettings(): Promise<void> {
-    settingsLoading.value = true
-    try {
-      settings.value = await audioApi.fetchAudioSettings()
-      lastError.value = null
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : 'Failed to load audio settings'
-    } finally {
-      settingsLoading.value = false
-    }
-  }
-
   function queueLocalStartAfterRemoteStop(filePath: string): void {
     pendingLocalStartPath.value = filePath
-  }
-
-  async function saveSettings(presetsRoot: string): Promise<boolean> {
-    settingsLoading.value = true
-    try {
-      settings.value = await audioApi.updateAudioSettings(presetsRoot)
-      lastError.value = null
-      return true
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : 'Failed to save audio settings'
-      return false
-    } finally {
-      settingsLoading.value = false
-    }
   }
 
   // audio-panel-cleanup AC-D3: fileKind comes from the path extension now (the presets tree is gone).
@@ -933,7 +904,6 @@ export const useAudioStore = defineStore('audio', () => {
   })
 
   return {
-    settings,
     selectedPath,
     recentFiles,
     selectedNode,
@@ -954,7 +924,6 @@ export const useAudioStore = defineStore('audio', () => {
     positionSec,
     currentLoop: remoteCurrentLoop,
     durationSec,
-    settingsLoading,
     wavLoading,
     spectrogramLoading,
     spectrogramBuffer,
@@ -966,8 +935,6 @@ export const useAudioStore = defineStore('audio', () => {
     canResume,
     canStop,
     canSeek,
-    loadSettings,
-    saveSettings,
     loadGnauralSchedule,
     applyVoiceStateLocally,
     selectPath,
