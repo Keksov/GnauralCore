@@ -278,133 +278,35 @@
           <q-tab-panels v-model="activeContentTab" animated class="audio-page__panels">
             <q-tab-panel name="player" class="audio-page__panel audio-page__panel--player q-pa-none">
               <div class="audio-page__player-body">
-                <div class="audio-page__player-view-tabs-bar">
-                  <q-tabs
-                    v-model="activePlayerViewTab"
-                    align="left"
-                    active-color="primary"
-                    indicator-color="primary"
-                    inline-label
-                    no-caps
-                    class="audio-page__player-view-tabs"
-                  >
-                    <q-tab name="main" :icon="playerViewMainTabIcon" :label="playerViewMainTabLabel" />
-                    <!-- GT7.5 (owner 2026-07-13): the Спектрограмма tab was removed (its view lives
-                         in Треки). GT2.4: the "Треки" tab hosts ALL new track-stack functionality. -->
-                    <q-tab name="tracks" icon="stacked_line_chart" :label="t('audio.tracksTab')" />
-                  </q-tabs>
-                </div>
-
-                <q-separator />
-
-                <!-- GT2.4: NOT `animated` — the Спектрограмма and Треки tabs render the SAME heavy
-                     stack (each opens spectrogram analyses on the single serial worker). An animated
-                     transition keeps BOTH mounted for ~300ms, so two stacks open/close analyses at
-                     once and can thrash/crash the worker. Instant swap = the leaving stack fully
-                     unmounts (closing its analyses) before the entering one opens. -->
-                <q-tab-panels v-model="activePlayerViewTab" class="audio-page__player-view-panels">
-                  <q-tab-panel name="main" class="audio-page__panel audio-page__player-view-panel q-pa-none">
-                    <div
-                      class="audio-page__output-section audio-page__output-section--main"
-                      :class="{ 'audio-page__output-section--schedule': showEmbeddedScheduleView }"
-                    >
-                      <div v-if="showStandalonePlayerControls" class="audio-page__player-toolbar">
-                        <gnaural-transport-controls
-                          class="audio-page__player-controls"
-                          :start-stop-icon="startStopButtonIcon"
-                          :start-stop-label="startStopButtonLabel"
-                          :start-stop-color="startStopButtonColor"
-                          :start-stop-flat="startStopButtonFlat"
-                          :start-stop-disabled="startStopDisabled"
-                          :pause-resume-icon="pauseResumeButtonIcon"
-                          :pause-resume-label="pauseResumeButtonLabel"
-                          :pause-resume-disabled="pauseResumeDisabled"
-                          @start-stop="handleStartStop"
-                          @pause-resume="handlePauseResume"
-                        />
-                      </div>
-
-                      <template v-if="audio.displayMode !== 'gnaural'">
-                        <div class="audio-page__empty text-grey-7">
-                          {{ t('audio.spectrogramTabHint') }}
-                        </div>
-                      </template>
-                      <template v-else>
-                        <div v-if="audio.gnauralScheduleLoading" class="audio-page__empty text-grey-7">
-                          {{ t('audio.scheduleLoading') }}
-                        </div>
-                        <q-banner v-else-if="audio.gnauralScheduleError !== null" dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
-                          {{ audio.gnauralScheduleError }}
-                        </q-banner>
-                        <div v-else-if="audio.gnauralSchedule === null" class="audio-page__empty text-grey-7">
-                          {{ t('audio.noSchedule') }}
-                        </div>
-                        <gnaural-schedule-view
-                          ref="scheduleViewRef"
-                          v-else
-                          class="audio-page__schedule-view"
-                          :schedule="audio.gnauralSchedule"
-                          :file-path="audio.displayFilePath"
-                          :position-sec="displayedPositionSec"
-                          :transport-state="audio.transportState"
-                          :track-state-busy="trackStateBusy"
-                          :can-seek="canSeek"
-                          ui-state-scope="audio-page"
-                          @seek="handleSeek"
-                          @patch-voice-state="handleScheduleVoiceStatePatch"
-                          @patch-voice-state-batch="handleScheduleVoiceStateBatch"
-                        >
-                          <template #transportControls>
-                            <gnaural-transport-controls
-                              class="audio-page__player-controls"
-                              :start-stop-icon="startStopButtonIcon"
-                              :start-stop-label="startStopButtonLabel"
-                              :start-stop-color="startStopButtonColor"
-                              :start-stop-flat="startStopButtonFlat"
-                              :start-stop-disabled="startStopDisabled"
-                              :pause-resume-icon="pauseResumeButtonIcon"
-                              :pause-resume-label="pauseResumeButtonLabel"
-                              :pause-resume-disabled="pauseResumeDisabled"
-                              @start-stop="handleStartStop"
-                              @pause-resume="handlePauseResume"
-                            />
-                          </template>
-                        </gnaural-schedule-view>
-                      </template>
-                    </div>
-                  </q-tab-panel>
-
-
-                  <!-- GT2.4 (GT-D10): the "Треки" tab — the whole new track stack lives in
-                       TracksPanel.vue (its own zoom/selection state + storage keys). Transport
-                       stays here (same slot pattern as GnauralScheduleView). -->
-                  <q-tab-panel name="tracks" class="audio-page__panel audio-page__player-view-panel q-pa-none">
-                    <tracks-panel
-                      :position-sec="displayedPositionSec"
-                      :can-seek="canSeek"
-                      @seek="handleSeek"
-                      @toggle-play="handleTracksTogglePlay"
-                      @patch-voice-state="handleScheduleVoiceStatePatch"
-                      @patch-voice-state-batch="handleScheduleVoiceStateBatch"
-                    >
-                      <template #toolbar>
-                        <gnaural-transport-controls
-                          toolbar
-                          :start-stop-icon="startStopButtonIcon"
-                          :start-stop-label="startStopButtonLabel"
-                          :start-stop-color="startStopButtonColor"
-                          :start-stop-flat="startStopButtonFlat"
-                          :start-stop-disabled="startStopDisabled"
-                          :pause-resume-icon="pauseResumeButtonIcon"
-                          :pause-resume-label="pauseResumeButtonLabel"
-                          :pause-resume-disabled="pauseResumeDisabled"
-                          @start-stop="handleStartStop"
-                          @pause-resume="handlePauseResume"
-                        />
-                      </template>
-                    </tracks-panel>
-                  </q-tab-panel>
-                </q-tab-panels>
+                <!-- AC1.1 (audio-panel-cleanup): the inner player-view tabs were removed — the former
+                     `main` tab (Расписание for .gnaural / Воспроизведение for wav/flac) is gone, and
+                     «Треки» is now the sole player view, promoted directly here. It already renders the
+                     gnaural schedule as gtrack lanes for every file kind (GT2.4), and transport stays
+                     in the TracksPanel #toolbar slot (same slot pattern as before). -->
+                <tracks-panel
+                  :position-sec="displayedPositionSec"
+                  :can-seek="canSeek"
+                  @seek="handleSeek"
+                  @toggle-play="handleTracksTogglePlay"
+                  @patch-voice-state="handleScheduleVoiceStatePatch"
+                  @patch-voice-state-batch="handleScheduleVoiceStateBatch"
+                >
+                  <template #toolbar>
+                    <gnaural-transport-controls
+                      toolbar
+                      :start-stop-icon="startStopButtonIcon"
+                      :start-stop-label="startStopButtonLabel"
+                      :start-stop-color="startStopButtonColor"
+                      :start-stop-flat="startStopButtonFlat"
+                      :start-stop-disabled="startStopDisabled"
+                      :pause-resume-icon="pauseResumeButtonIcon"
+                      :pause-resume-label="pauseResumeButtonLabel"
+                      :pause-resume-disabled="pauseResumeDisabled"
+                      @start-stop="handleStartStop"
+                      @pause-resume="handlePauseResume"
+                    />
+                  </template>
+                </tracks-panel>
               </div>
 
             </q-tab-panel>
@@ -488,10 +390,6 @@ interface GnauralEditorPanelHandle {
   reloadCurrentDocumentFromDisk(aFilePath: string): Promise<void>
 }
 
-interface GnauralScheduleViewHandle {
-  resetView(): void
-}
-
 interface ScheduleVoiceStatePatch {
   readonly voiceId: number
   readonly hidden?: boolean
@@ -517,7 +415,6 @@ function createAsyncAudioPanel(loader: AsyncComponentLoader<Component>) {
 }
 
 const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/GnauralEditorPanel.vue'))
-const GnauralScheduleView = createAsyncAudioPanel(() => import('../components/GnauralScheduleView.vue'))
 // GT2.4 (GT-D10): the "Треки" tab content — all new track-stack functionality lives there.
 const TracksPanel = createAsyncAudioPanel(() => import('../components/TracksPanel.vue'))
 
@@ -569,13 +466,9 @@ const spectrogramShared = {
   // SF15.1: shared frequency window (bin-axis fractions) so stacked tracks freq-zoom together.
   freqView: ref<{ lo: number; hi: number } | null>(null),
 }
-// GT7.5 (owner 2026-07-13): the Спектрограмма sub-tab was removed — its visualization lives in the
-// Треки tab now.
-const activePlayerViewTab = ref<'main' | 'tracks'>('main')
 const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
 const treeSelectionAutoPlayRequested = ref(false)
 const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
-const scheduleViewRef = ref<GnauralScheduleViewHandle | null>(null)
 const trackStateBusy = ref(false)
 const exportingFormat = ref<ExportAudioFileKind | null>(null)
 // MR2.1 (menu-redesign): export dialog state (type + filename), opened from Меню → Файл → Экспорт.
@@ -750,9 +643,6 @@ async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Pr
 
   if (isLocalAudioFileKind(fileKind)) {
     activeContentTab.value = 'player'
-    if (activePlayerViewTab.value !== 'tracks') {
-      activePlayerViewTab.value = 'tracks' // GT7.5: Спектрограмма removed — Треки shows the spectrum
-    }
     void audio.ensureLocalAudioReady(path, fileKind)
   }
 }
@@ -829,15 +719,11 @@ function closeFilesPanel(): void {
 // leaving the stale "start playback" message with nothing happening.
 // GT2.4: the Треки tab shows the same stack, so it needs the same preparation.
 function ensureSpectrogramPrepared(): void {
-  if (activePlayerViewTab.value !== 'tracks') {
-    return
-  }
-
   // A gnaural needs nothing decoded here: the tab's waveform/spectrum come from the SpectrumCore
   // backend analysis, which TracksPanel opens itself. (GT2.6 used to fetch + decode a single-loop
   // WAV render on every tab open for a client-side buffer nothing displayed; removed 2026-07-15
   // together with that buffer.) Only the schedule is needed, for the gtrack curves.
-  if (activePlayerViewTab.value === 'tracks' && audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
+  if (audio.displayMode === 'gnaural' && audio.displayFilePath !== null) {
     // GT2.2 fix: the gtrack lanes come from the schedule DUMP, which is loaded on file selection —
     // not on tab activation. Ensure it's loaded here too so an already-selected gnaural shows its
     // gtrack curves when the Треки tab is opened (idempotent — no-op if already cached).
@@ -943,22 +829,6 @@ const canExportCurrentFile = computed(() => {
   return audio.selectedPath !== null && audio.selectedFileKind === 'gnaural'
 })
 
-const showStandalonePlayerControls = computed(() => {
-  if (audio.displayMode !== 'gnaural') {
-    return true
-  }
-
-  return audio.gnauralScheduleLoading || audio.gnauralScheduleError !== null || audio.gnauralSchedule === null
-})
-
-const playerViewMainTabLabel = computed(() => {
-  return audio.displayMode === 'gnaural' ? t('audio.scheduleTab') : t('audio.playbackTab')
-})
-
-const playerViewMainTabIcon = computed(() => {
-  return audio.displayMode === 'gnaural' ? 'view_stream' : 'volume_up'
-})
-
 const spectrogramLoadingLabel = computed(() => {
   // Only local wav/flac decode through the store, so only they can raise this overlay — a gnaural
   // has no client-side buffer (its spectrum is the backend analysis, opened by TracksPanel).
@@ -978,13 +848,6 @@ bindProjectViewState({
   filePath: () => audio.displayFilePath,
   view: spectrogramShared.view,
   freqView: spectrogramShared.freqView,
-})
-
-const showEmbeddedScheduleView = computed(() => {
-  return audio.displayMode === 'gnaural'
-    && !audio.gnauralScheduleLoading
-    && audio.gnauralScheduleError === null
-    && audio.gnauralSchedule !== null
 })
 
 function pageStyle(offset: number, height: number) {
@@ -1045,11 +908,6 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   // to the player's spectrogram view and decode the file without waiting for playback.
   if (path !== null && isLocalAudioFileKind(nextFileKind)) {
     activeContentTab.value = 'player'
-    // GT2.4/GT7.5: if the user is on the Треки tab, stay there (it shows the same stack); otherwise
-    // land on Треки (the Спектрограмма tab was removed).
-    if (activePlayerViewTab.value !== 'tracks') {
-      activePlayerViewTab.value = 'tracks'
-    }
     if (!shouldAutoPlay) {
       void audio.ensureLocalAudioReady(path, nextFileKind)
     }
@@ -1062,85 +920,12 @@ async function handleSelectedPathChange(path: string | null): Promise<void> {
   startPlayback()
 }
 
-function shouldIgnorePlayerHotkey(event: KeyboardEvent): boolean {
-  if (activeContentTab.value !== 'player') {
-    return true
-  }
-
-  const target = event.target
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-
-  if (target.closest('.audio-page__sidebar') !== null) {
-    return true
-  }
-
-  if (target.isContentEditable) {
-    return true
-  }
-
-  return target.closest('input, textarea, select, button, [role="button"], .cm-editor, .q-dialog, .q-menu') !== null
-}
-
-// SF21: the primary spectrogram track editor. Global keydown delegates navigation keys to it
-// when focus isn't in another control, so arrows/Home/End work anywhere in the window.
-interface SpectrogramNavHandle { handleNavKey: (event: KeyboardEvent) => void }
-const spectrogramNavRef = ref<SpectrogramNavHandle | null>(null)
-// SF23 follow-up: the waveform primary is the nav target when the spectrogram is hidden.
-const waveformNavRef = ref<SpectrogramNavHandle | null>(null)
-const trackEditorNav = computed(() => spectrogramNavRef.value ?? waveformNavRef.value)
-const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
-
 // GT2.4: Space from the Треки tab (TracksPanel owns its hotkeys; transport lives here).
 function handleTracksTogglePlay(): void {
   if (audio.canPause || audio.canResume) {
     handlePauseResume()
   } else if (canStart.value) {
     startPlayback()
-  }
-}
-
-function handlePlayerKeyDown(event: KeyboardEvent): void {
-  // MR4.1 (owner 2026-07-15): the GT10.45 Ctrl/Cmd+P -> settings binding is REMOVED. It called
-  // preventDefault to override the browser's Print, i.e. it silently stole the print shortcut;
-  // Ctrl+P now reaches the print dialog again and Settings is opened from Меню (or its MRU entry).
-  // GT2.4 (GT-D10): while the Треки tab is active, TracksPanel owns the player hotkeys
-  // (its own window listener); skip entirely so the two handlers never double-act.
-  if (activePlayerViewTab.value === 'tracks') {
-    return
-  }
-  if (shouldIgnorePlayerHotkey(event)) {
-    return
-  }
-
-  // SF21: when the spectrogram (track editor) view is active, route navigation keys to it
-  // even if the canvas isn't focused — the window is treated as the track editor's.
-  if (
-    trackEditorNav.value !== null &&
-    SPECTROGRAM_NAV_KEYS.has(event.key)
-  ) {
-    // SF23.1: preventDefault FIRST so Alt+Left/Right don't trigger the browser's history
-    // back/forward (hash router) before the pan runs.
-    event.preventDefault()
-    trackEditorNav.value.handleNavKey(event)
-    return
-  }
-
-  if (event.code === 'Space' || event.key === ' ') {
-    event.preventDefault()
-    if (audio.canPause || audio.canResume) {
-      handlePauseResume()
-    } else if (canStart.value) {
-      startPlayback()
-    }
-    return
-  }
-
-  if (event.key === 'Home') {
-    event.preventDefault()
-    scheduleViewRef.value?.resetView()
-    handleSeek(0)
   }
 }
 
@@ -1326,12 +1111,7 @@ onMounted(async () => {
   await nextTick()
 })
 
-onMounted(() => {
-  window.addEventListener('keydown', handlePlayerKeyDown)
-})
-
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handlePlayerKeyDown)
   wsService.send({ type: 'audio_subscribe_schedule', filePath: null })
 })
 
@@ -1345,24 +1125,10 @@ watch(() => wsService.connectionState.value, (state) => {
   wsService.send({ type: 'audio_subscribe_schedule', filePath: audio.selectedFileKind === 'gnaural' ? audio.selectedPath : null })
 }, { immediate: true })
 
-watch(() => audio.displayMode, (displayMode, previousDisplayMode) => {
-  if (displayMode === previousDisplayMode) {
-    return
-  }
-
-  // GT2.4: the Треки tab handles every file kind (audio + gnaural), so keep the user on it
-  // instead of yanking them to Воспроизведение/Спектрограмма on a selection change.
-  if (activePlayerViewTab.value === 'tracks') {
-    return
-  }
-
-  activePlayerViewTab.value = isLocalAudioFileKind(displayMode) ? 'tracks' : 'main'
-})
-
 // SF8.3: build the spectrum only on an explicit user action -- switching to the
 // Спектрограмма view or selecting a file -- NOT on mount for a restored selection
 // (no `immediate`, so opening the Audio tab with a pre-selected file won't auto-build).
-watch([activePlayerViewTab, activeContentTab, () => audio.selectedPath], () => {
+watch([activeContentTab, () => audio.selectedPath], () => {
   if (activeContentTab.value !== 'player') {
     return
   }
