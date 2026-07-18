@@ -150,6 +150,19 @@
         ]"
         @update:model-value="(m: GTrackPointDragMode) => emit('action', { kind: 'set-point-drag-mode', mode: m })"
       />
+      <!-- TS-D1 (owner 2026-07-18): global base-frequency display scale — log (classic auto) / linear.
+           Only affects the base-frequency lanes; mirrors the schedule editor's «Шкала» toggle. -->
+      <div class="text-caption text-grey q-mb-xs q-mt-sm">{{ t('audio.gtrackBaseScale') }}</div>
+      <q-btn-toggle
+        :model-value="snapshot.baseScaleMode"
+        dense unelevated no-caps spread
+        toggle-color="primary"
+        :options="[
+          { label: t('audio.gtrackBaseScale_log'), value: 'log' },
+          { label: t('audio.gtrackBaseScale_linear'), value: 'linear' },
+        ]"
+        @update:model-value="(m: GTrackBaseScale) => emit('action', { kind: 'set-base-scale-mode', mode: m })"
+      />
     </template>
   </div>
 </template>
@@ -157,7 +170,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
+import { GTRACK_MODES, type GTrackBaseScale, type GTrackMode } from '../composables/gtrack-render'
 import type { GTrackPointDragMode } from '../composables/use-gtrack-lanes'
 import type { TrackListSnapshot, TrackListAction } from '../composables/track-list-model'
 import AppTooltip from '@tooltip/AppTooltip.vue'
