@@ -8,7 +8,6 @@ import type {
   AudioEditorRestoreResponse,
   AudioEditorSaveRequest,
   AudioEditorSaveResponse,
-  AudioPresetsResponse,
   AudioScheduleVoicePatchRequest,
   AudioScheduleVoicePatchResponse,
   AudioSettings,
@@ -125,10 +124,6 @@ export const audioApi = {
       method: 'PATCH',
       body: JSON.stringify({ presetsRoot }),
     })
-  },
-
-  fetchPresets(): Promise<AudioPresetsResponse> {
-    return requestJson<AudioPresetsResponse>('/api/audio/presets', { method: 'GET' })
   },
 
   fetchSchedule(filePath: string, signal?: AbortSignal): Promise<GnauralScheduleData> {

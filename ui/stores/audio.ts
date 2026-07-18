@@ -12,7 +12,6 @@ import type {
   AudioStatusEvent,
   AudioTransportState,
   GnauralScheduleData,
-  PresetTreeNode,
 } from '@protocol'
 import { audioApi } from '../audio-api'
 import { closeCurrentProject, openProjectForFile } from '../composables/use-project'
@@ -72,24 +71,26 @@ const createAudioElement = (): HTMLAudioElement | null => {
   return element
 }
 
-const findNodeByPath = (
-  nodes: readonly PresetTreeNode[],
-  path: string,
-): PresetTreeNode | null => {
-  for (const node of nodes) {
-    if (node.path === path) {
-      return node
-    }
+// audio-panel-cleanup AC-D4: the presets tree was removed, so the store no longer resolves a file
+// from a tree node. `selectedNode` keeps only the minimal shape its consumers need (fileKind, isDir),
+// built from a path + fileKind by both select functions.
+interface SelectedAudioFile {
+  readonly path: string
+  readonly fileKind: AudioFileKind
+  readonly isDir: boolean
+}
 
-    if (node.children !== undefined) {
-      const childNode = findNodeByPath(node.children, path)
-      if (childNode !== null) {
-        return childNode
-      }
-    }
-  }
+// audio-panel-cleanup AC-D3: recent-files clicks call selectPath with only a path, so the file kind
+// is derived from the extension (mirrors selectExternalPath, which gets it from the open dialog).
+const AUDIO_FILE_EXTENSIONS = new Map<string, AudioFileKind>([
+  ['.wav', 'wav'],
+  ['.flac', 'flac'],
+  ['.gnaural', 'gnaural'],
+])
 
-  return null
+const getFileKindFromPath = (path: string): AudioFileKind | null => {
+  const dot = path.lastIndexOf('.')
+  return dot < 0 ? null : AUDIO_FILE_EXTENSIONS.get(path.slice(dot).toLowerCase()) ?? null
 }
 
 type LocalAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
@@ -107,11 +108,10 @@ export const useAudioStore = defineStore('audio', () => {
   let gnauralScheduleAbortController: AbortController | null = null
   let wavLoadAbortController: AbortController | null = null
   const settings = ref<AudioSettings>({ presetsRoot: '' })
-  const presetsTree = ref<readonly PresetTreeNode[]>([])
   // SF20: no auto-load on Audio-tab open — the last file is NOT restored into the selection.
   const selectedPath = ref<string | null>(null)
   const recentFiles = ref<string[]>(loadRecentFiles())
-  const selectedNode = ref<PresetTreeNode | null>(null)
+  const selectedNode = ref<SelectedAudioFile | null>(null)
   const remoteTransportState = ref<AudioTransportState>('idle')
   const localTransportState = ref<AudioTransportState>('idle')
   const renderState = ref<AudioRenderState>('idle')
@@ -128,7 +128,6 @@ export const useAudioStore = defineStore('audio', () => {
   const localDurationSec = ref(0)
   const localFileKind = ref<LocalAudioFileKind | null>(null)
   const settingsLoading = ref(false)
-  const presetsLoading = ref(false)
   const wavLoading = ref(false)
   const wavObjectUrl = ref<string | null>(null)
   const wavSourcePath = ref<string | null>(null)
@@ -773,26 +772,13 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
-  async function refreshPresets(): Promise<void> {
-    presetsLoading.value = true
-    try {
-      const response = await audioApi.fetchPresets()
-      settings.value = { presetsRoot: response.presetsRoot }
-      presetsTree.value = response.items
-      // SF20: do NOT re-select/auto-load a previously stored path on refresh — the user
-      // picks from the toolbar recent-files dropdown or the tree instead.
-      lastError.value = null
-    } catch (error) {
-      presetsTree.value = []
-      lastError.value = error instanceof Error ? error.message : 'Failed to load presets'
-    } finally {
-      presetsLoading.value = false
-    }
-  }
-
+  // audio-panel-cleanup AC-D3: fileKind comes from the path extension now (the presets tree is gone).
+  // Called by the toolbar recent-files quick-pick; unknown extensions clear the selection.
   function selectPath(path: string | null): void {
-    const nextNode = path === null ? null : findNodeByPath(presetsTree.value, path)
-    const nextSelectedPath = nextNode?.isDir === false ? nextNode.path : null
+    const nextFileKind = path === null ? null : getFileKindFromPath(path)
+    const nextNode: SelectedAudioFile | null =
+      path === null || nextFileKind === null ? null : { path, isDir: false, fileKind: nextFileKind }
+    const nextSelectedPath = nextNode?.path ?? null
 
     if (pendingLocalStartPath.value !== null && pendingLocalStartPath.value !== nextSelectedPath) {
       cancelPendingLocalStart()
@@ -826,12 +812,11 @@ export const useAudioStore = defineStore('audio', () => {
     clearLocalError()
   }
 
-  // FB3.2 (file-browser FB-D7): select a file chosen from the universal open dialog. That file lives
-  // OUTSIDE presetsTree, so selectPath (which resolves nodes from the tree) would yield null; here we
-  // build the node from the known path + fileKind returned by the dialog instead.
+  // FB3.2 (file-browser FB-D7): select a file chosen from the universal open dialog, building the
+  // minimal node from the known path + fileKind it returns. (audio-panel-cleanup: the presets tree
+  // that selectPath used to resolve from is gone; both paths now build a SelectedAudioFile.)
   function selectExternalPath(path: string, fileKind: AudioFileKind): void {
-    const name = path.split(/[\\/]/u).pop() ?? path
-    const node: PresetTreeNode = { name, path, isDir: false, fileKind }
+    const node: SelectedAudioFile = { path, isDir: false, fileKind }
 
     if (pendingLocalStartPath.value !== null && pendingLocalStartPath.value !== path) {
       cancelPendingLocalStart()
@@ -949,7 +934,6 @@ export const useAudioStore = defineStore('audio', () => {
 
   return {
     settings,
-    presetsTree,
     selectedPath,
     recentFiles,
     selectedNode,
@@ -971,7 +955,6 @@ export const useAudioStore = defineStore('audio', () => {
     currentLoop: remoteCurrentLoop,
     durationSec,
     settingsLoading,
-    presetsLoading,
     wavLoading,
     spectrogramLoading,
     spectrogramBuffer,
@@ -985,7 +968,6 @@ export const useAudioStore = defineStore('audio', () => {
     canSeek,
     loadSettings,
     saveSettings,
-    refreshPresets,
     loadGnauralSchedule,
     applyVoiceStateLocally,
     selectPath,

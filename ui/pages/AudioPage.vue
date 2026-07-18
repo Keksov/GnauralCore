@@ -165,76 +165,6 @@
       </Teleport>
 
       <div class="audio-page__inner">
-      <div v-if="filesPanelOpen" id="audio-page-sidebar" class="audio-page__sidebar">
-        <q-card flat bordered class="audio-page__card">
-          <q-card-section class="audio-page__sidebar-header">
-            <div class="audio-page__sidebar-heading">
-              <div class="text-h6">{{ t('audio.presetsTitle') }}</div>
-              <div class="text-caption text-grey-7">{{ t('audio.presetsSubtitle') }}</div>
-            </div>
-            <q-btn
-              flat
-              round
-              dense
-              color="primary"
-              icon="close"
-              :aria-label="t('audio.filesHide')"
-              @click="closeFilesPanel"
-            />
-          </q-card-section>
-
-          <q-separator />
-
-          <q-card-section>
-            <q-banner v-if="audio.settings.presetsRoot === ''" dense rounded class="bg-orange-1 text-orange-10">
-              {{ t('audio.configureRootHint') }}
-            </q-banner>
-            <q-banner v-else dense rounded class="bg-grey-2 text-grey-9">
-              {{ audio.settings.presetsRoot }}
-            </q-banner>
-          </q-card-section>
-
-          <q-card-actions align="between">
-            <q-btn flat color="primary" icon="refresh" :label="t('audio.refresh')" :loading="audio.presetsLoading" @click="refreshPresets" />
-          </q-card-actions>
-
-          <q-separator />
-
-          <q-card-section class="audio-page__tree-section">
-            <div v-if="audio.presetsLoading" class="audio-page__empty">
-              <q-spinner-hourglass color="primary" size="28px" />
-            </div>
-            <div v-else-if="audio.presetsTree.length === 0" class="audio-page__empty text-grey-7">
-              {{ t('audio.noPresets') }}
-            </div>
-            <q-tree
-              v-else
-              :nodes="treeNodes"
-              node-key="path"
-              label-key="name"
-              children-key="children"
-              selected-color="primary"
-              v-model:expanded="expandedTreePaths"
-              v-model:selected="selectedTreePath"
-            >
-              <template #default-header="treeNode">
-                <div
-                  class="audio-page__tree-node"
-                  @click="handlePresetNodeClick(treeNode.node, $event)"
-                >
-                  <q-icon
-                    :name="treeNode.node.icon"
-                    size="18px"
-                    class="audio-page__tree-node-icon"
-                  />
-                  <span class="audio-page__tree-node-label">{{ treeNode.node.name }}</span>
-                </div>
-              </template>
-            </q-tree>
-          </q-card-section>
-        </q-card>
-      </div>
-
       <div class="audio-page__content">
         <q-card flat bordered class="audio-page__card audio-page__content-card">
           <q-card-section v-if="audio.lastError !== null">
@@ -244,19 +174,6 @@
           </q-card-section>
 
           <div class="audio-page__tabs-bar">
-            <q-btn
-              flat
-              no-caps
-              color="primary"
-              icon="folder"
-              :label="t('audio.filesTab')"
-              class="audio-page__files-toggle"
-              :class="{ 'audio-page__files-toggle--active': filesPanelOpen }"
-              :aria-label="filesPanelOpen ? t('audio.filesHide') : t('audio.filesShow')"
-              :aria-expanded="filesPanelOpen"
-              aria-controls="audio-page-sidebar"
-              @click="toggleFilesPanel"
-            />
             <q-tabs
               v-model="activeContentTab"
               align="left"
@@ -353,8 +270,8 @@ import {
   type SpectrogramSelection,
   type TimeWindow,
 } from '../composables/spectrogram-viewport'
-import { QSpinnerHourglass, useQuasar, type QBtnDropdown, type QTreeNode } from 'quasar'
-import type { AudioFileKind, PresetTreeNode, SpectrogramAnalysisParams } from '@protocol'
+import { QSpinnerHourglass, useQuasar, type QBtnDropdown } from 'quasar'
+import type { AudioFileKind, SpectrogramAnalysisParams } from '@protocol'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { audioApi } from '../audio-api'
@@ -380,8 +297,6 @@ import { menuNodeDisabled } from '../components/app-menu/menu-node'
 import { useMenuMru } from '../composables/use-menu-mru'
 import { useSpectrogramStore } from '../stores/spectrogram'
 
-const STORAGE_AUDIO_EXPANDED_PATHS = 'mindwave-audio-expanded-paths'
-const STORAGE_AUDIO_FILES_PANEL_OPEN = 'mindwave-audio-files-panel-open'
 type ExportAudioFileKind = Exclude<AudioFileKind, 'gnaural'>
 
 interface GnauralEditorPanelHandle {
@@ -418,36 +333,6 @@ const GnauralEditorPanel = createAsyncAudioPanel(() => import('../components/Gna
 // GT2.4 (GT-D10): the "Треки" tab content — all new track-stack functionality lives there.
 const TracksPanel = createAsyncAudioPanel(() => import('../components/TracksPanel.vue'))
 
-const loadStoredExpandedPaths = (): string[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_AUDIO_EXPANDED_PATHS)
-    if (raw === null) {
-      return []
-    }
-
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-
-    return [...new Set(parsed.filter((value): value is string => typeof value === 'string' && value !== ''))]
-  } catch {
-    return []
-  }
-}
-
-function loadStoredFilesPanelOpen(): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_AUDIO_FILES_PANEL_OPEN)
-    return raw === null ? true : raw === 'true'
-  } catch {
-    return true
-  }
-}
-
-
-
-
 const { t } = useI18n()
 const $q = useQuasar()
 const router = useRouter()
@@ -456,7 +341,6 @@ const audio = useAudioStore()
 // used by the voice-patch save-first guard below.
 const gtracks = useSharedGtrackLanes()
 const activeContentTab = ref<'player' | 'editor'>('player')
-const filesPanelOpen = ref(loadStoredFilesPanelOpen())
 // SF8.1: stacked spectrogram tracks (stereo L/R) share one time window + area
 // selection so they zoom/pan/select together; reset per file so a new file starts full.
 const spectrogramShared = {
@@ -466,8 +350,6 @@ const spectrogramShared = {
   // SF15.1: shared frequency window (bin-axis fractions) so stacked tracks freq-zoom together.
   freqView: ref<{ lo: number; hi: number } | null>(null),
 }
-const expandedTreePaths = ref<string[]>(loadStoredExpandedPaths())
-const treeSelectionAutoPlayRequested = ref(false)
 const editorPanelRef = ref<GnauralEditorPanelHandle | null>(null)
 const trackStateBusy = ref(false)
 const exportingFormat = ref<ExportAudioFileKind | null>(null)
@@ -639,7 +521,6 @@ async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Pr
   }
 
   audio.selectExternalPath(path, fileKind)
-  syncRestoredTreeState()
 
   if (isLocalAudioFileKind(fileKind)) {
     activeContentTab.value = 'player'
@@ -649,69 +530,6 @@ async function handleExternalFileOpen(path: string, fileKind: AudioFileKind): Pr
 
 function isLocalAudioFileKind(fileKind: AudioFileKind | null): fileKind is Exclude<AudioFileKind, 'gnaural'> {
   return fileKind === 'wav' || fileKind === 'flac'
-}
-
-function getTreeNodeIcon(node: PresetTreeNode): string {
-  if (node.isDir) {
-    return 'folder'
-  }
-
-  return node.fileKind === 'gnaural' ? 'graphic_eq' : 'audiotrack'
-}
-
-function toTreeNodes(nodes: readonly PresetTreeNode[]): QTreeNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    icon: getTreeNodeIcon(node),
-    selectable: !node.isDir,
-    children: node.children !== undefined ? toTreeNodes(node.children) : undefined,
-  }))
-}
-
-function findPresetNodeByPath(nodes: readonly PresetTreeNode[], path: string): PresetTreeNode | null {
-  for (const node of nodes) {
-    if (node.path === path) {
-      return node
-    }
-
-    if (node.children !== undefined) {
-      const child = findPresetNodeByPath(node.children, path)
-      if (child !== null) {
-        return child
-      }
-    }
-  }
-
-  return null
-}
-
-const treeNodes = computed(() => {
-  return toTreeNodes(audio.presetsTree)
-})
-
-watch(expandedTreePaths, (value) => {
-  try {
-    localStorage.setItem(STORAGE_AUDIO_EXPANDED_PATHS, JSON.stringify(value))
-  } catch {
-    // Ignore storage failures and keep the in-memory tree state working.
-  }
-}, { deep: true, immediate: true })
-
-watch(filesPanelOpen, (value) => {
-  try {
-    localStorage.setItem(STORAGE_AUDIO_FILES_PANEL_OPEN, value ? 'true' : 'false')
-  } catch {
-    // Ignore storage failures and keep the in-memory panel state working.
-  }
-})
-
-
-function toggleFilesPanel(): void {
-  filesPanelOpen.value = !filesPanelOpen.value
-}
-
-function closeFilesPanel(): void {
-  filesPanelOpen.value = false
 }
 
 // Opening the Spectrogram view for a selected local audio file that isn't decoded
@@ -743,73 +561,6 @@ function ensureSpectrogramPrepared(): void {
 
   void audio.ensureLocalAudioReady(path, kind)
 }
-
-function collectDirectoryPaths(nodes: readonly PresetTreeNode[], result = new Set<string>()): Set<string> {
-  for (const node of nodes) {
-    if (!node.isDir) {
-      continue
-    }
-
-    result.add(node.path)
-
-    if (node.children !== undefined) {
-      collectDirectoryPaths(node.children, result)
-    }
-  }
-
-  return result
-}
-
-function findAncestorDirectoryPaths(
-  nodes: readonly PresetTreeNode[],
-  targetPath: string,
-  parents: readonly string[] = [],
-): string[] | null {
-  for (const node of nodes) {
-    if (node.path === targetPath) {
-      return [...parents]
-    }
-
-    if (node.children === undefined) {
-      continue
-    }
-
-    const nextParents = node.isDir ? [...parents, node.path] : parents
-    const childResult = findAncestorDirectoryPaths(node.children, targetPath, nextParents)
-    if (childResult !== null) {
-      return childResult
-    }
-  }
-
-  return null
-}
-
-function syncRestoredTreeState(): void {
-  const availableDirectoryPaths = collectDirectoryPaths(audio.presetsTree)
-  const nextExpandedPaths = expandedTreePaths.value.filter((path, index, paths) => {
-    return availableDirectoryPaths.has(path) && paths.indexOf(path) === index
-  })
-
-  if (audio.selectedPath !== null) {
-    const ancestorPaths = findAncestorDirectoryPaths(audio.presetsTree, audio.selectedPath) ?? []
-    for (const path of ancestorPaths) {
-      if (!nextExpandedPaths.includes(path)) {
-        nextExpandedPaths.push(path)
-      }
-    }
-  }
-
-  expandedTreePaths.value = nextExpandedPaths
-}
-
-const selectedTreePath = computed<string | null>({
-  get() {
-    return audio.selectedPath
-  },
-  set(path) {
-    void handleSelectedPathChange(path ?? null)
-  },
-})
 
 // SF20: toolbar quick-pick — basename for the dropdown label/items, full path in the caption.
 function fileBasename(aPath: string): string {
@@ -857,67 +608,6 @@ function pageStyle(offset: number, height: number) {
     height: `${pageHeight}px`,
     minHeight: `${pageHeight}px`,
   }
-}
-
-async function refreshPresets() {
-  await audio.refreshPresets()
-  syncRestoredTreeState()
-}
-
-function handlePresetNodeClick(node: PresetTreeNode, event: MouseEvent): void {
-  if (node.isDir) {
-    treeSelectionAutoPlayRequested.value = false
-    return
-  }
-
-  const shouldAutoPlay = event.ctrlKey
-  treeSelectionAutoPlayRequested.value = shouldAutoPlay
-
-  if (shouldAutoPlay && audio.selectedPath === node.path && audio.canStart) {
-    startPlayback()
-  }
-}
-
-async function handleSelectedPathChange(path: string | null): Promise<void> {
-  const shouldAutoPlay = treeSelectionAutoPlayRequested.value
-  treeSelectionAutoPlayRequested.value = false
-  const previousSelectedPath = audio.selectedPath
-  if (path === previousSelectedPath) {
-    return
-  }
-
-  const nextFileKind = path === null ? null : findPresetNodeByPath(audio.presetsTree, path)?.fileKind ?? null
-  const selectionToken = selectionChangeToken + 1
-  selectionChangeToken = selectionToken
-
-  if (editorPanelRef.value !== null) {
-    const canProceed = await editorPanelRef.value.prepareForPathChange(path, nextFileKind)
-    if (selectionChangeToken !== selectionToken || !canProceed) {
-      return
-    }
-  }
-
-  if (path !== null && shouldAutoPlay === false && audio.canStop) {
-    stopPlayback()
-  }
-
-  audio.selectPath(path)
-  syncRestoredTreeState()
-
-  // Selecting a local audio file (wav/flac) shows its spectrum right away: switch
-  // to the player's spectrogram view and decode the file without waiting for playback.
-  if (path !== null && isLocalAudioFileKind(nextFileKind)) {
-    activeContentTab.value = 'player'
-    if (!shouldAutoPlay) {
-      void audio.ensureLocalAudioReady(path, nextFileKind)
-    }
-  }
-
-  if (path === null || !audio.canStart || shouldAutoPlay === false) {
-    return
-  }
-
-  startPlayback()
 }
 
 // GT2.4: Space from the Треки tab (TracksPanel owns its hotkeys; transport lives here).
@@ -1107,7 +797,6 @@ function goToSettings() {
 
 onMounted(async () => {
   await audio.loadSettings()
-  await refreshPresets()
   await nextTick()
 })
 
@@ -1218,21 +907,6 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   padding: 0;
 }
 
-.audio-page__files-toggle {
-  flex: 0 0 auto;
-}
-
-.audio-page__sidebar-header {
-  align-items: flex-start;
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.audio-page__sidebar-heading {
-  min-width: 0;
-}
-
 .audio-page__load-dialog {
   border-radius: 8px;
   min-width: 320px;
@@ -1324,15 +998,6 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   background: rgba(148, 163, 184, 0.4);
 }
 
-.audio-page__files-toggle--active {
-  background: rgba(25, 118, 210, 0.12);
-}
-
-.audio-page__sidebar {
-  flex: 0 0 360px;
-  min-width: 280px;
-}
-
 .audio-page__content {
   flex: 1 1 auto;
   min-width: 0;
@@ -1349,33 +1014,9 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   min-height: 0;
 }
 
-.audio-page__tree-section,
 .audio-page__output-section {
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.audio-page__tree-section {
-  overflow: auto;
-}
-
-.audio-page__tree-node {
-  align-items: center;
-  display: inline-flex;
-  gap: 8px;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.audio-page__tree-node-icon {
-  flex: 0 0 auto;
-}
-
-.audio-page__tree-node-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .audio-page__output-section {
@@ -1519,11 +1160,6 @@ watch([activeContentTab, () => audio.selectedPath], () => {
   .audio-page__inner {
     flex-direction: column;
     padding: 0;
-  }
-
-  .audio-page__sidebar {
-    flex-basis: auto;
-    min-width: 0;
   }
 
   .audio-page__meta-strip {
