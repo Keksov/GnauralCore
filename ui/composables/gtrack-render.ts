@@ -7,6 +7,14 @@ import { pointBalance, pointBeatFreq, pointVolume, type GTrackPoint, type GTrack
 export type GTrackMode = 'base' | 'beat' | 'volume' | 'balance'
 export const GTRACK_MODES: readonly GTrackMode[] = ['base', 'beat', 'volume', 'balance']
 
+/**
+ * TS-D2/TS-D3: the display scale for the BASE-frequency axis, a global editor setting (owner
+ * 2026-07-18). 'log' is the default = the classic auto behaviour (log, or symlog when the data
+ * reaches 0); 'linear' forces a plain linear axis over the data range. Volume/balance/beat axes are
+ * unaffected — only mode='base' honours it.
+ */
+export type GTrackBaseScale = 'log' | 'linear'
+
 /** The value a point contributes under a display mode (GT-D6 derived axes). */
 export function pointValue(p: GTrackPoint, mode: GTrackMode): number {
   switch (mode) {
@@ -237,7 +245,45 @@ export function axisWithRange(axis: GTrackAxis, min: number, max: number): GTrac
   }
 }
 
-export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, editable = false, beatBand = false): GTrackAxis {
+/**
+ * A plain linear auto-ranged axis over [lo, hi], floored at 0, with 8% padding (a flat curve gets a
+ * ±10% window) and extra headroom in `editable` mode so a vertex can be dragged past the data. Shared
+ * by the beat axis and the TS-D3 linear base axis. Labels are formatted as frequencies.
+ */
+function linearAutoAxis(lo: number, hi: number, editable: boolean): GTrackAxis {
+  if (lo === hi) {
+    const pad = lo === 0 ? 1 : Math.max(1, Math.abs(lo) * 0.1)
+    lo = Math.max(0, lo - pad)
+    hi += pad
+  } else {
+    const pad = (hi - lo) * 0.08
+    lo = Math.max(0, lo - pad)
+    hi += pad
+  }
+  if (editable) {
+    // Extra headroom above/below so a vertex can be dragged past the current range.
+    const extra = Math.max(1, (hi - lo) * 0.25)
+    lo = Math.max(0, lo - extra)
+    hi += extra
+  }
+  const mid = (lo + hi) / 2
+  return {
+    min: lo,
+    max: hi,
+    scale: 'linear',
+    topLabel: formatFreq(hi),
+    midLabel: formatFreq(mid),
+    botLabel: formatFreq(lo),
+  }
+}
+
+export function gtrackAxis(
+  voices: readonly GTrackVoice[],
+  mode: GTrackMode,
+  editable = false,
+  beatBand = false,
+  baseScale: GTrackBaseScale = 'log',
+): GTrackAxis {
   if (mode === 'volume') {
     return { min: 0, max: 1, scale: 'linear', topLabel: '1.0', midLabel: '0.5', botLabel: '0' }
   }
@@ -281,6 +327,11 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, edi
     return { min: 0, max: 1, scale: 'linear', topLabel: '1', midLabel: '0.5', botLabel: '0' }
   }
   if (mode === 'base') {
+    // TS-D3 (owner 2026-07-18): the base-frequency scale is forced LINEAR — a plain linear axis over
+    // the data range (symlog is unnecessary, linear places 0 directly). Overrides the auto log/symlog.
+    if (baseScale === 'linear') {
+      return linearAutoAxis(lo, hi, editable)
+    }
     // GT11.17: the data reaches 0 (or below) — a log axis cannot place it. Keep the log character
     // for the real frequencies and give 0 an honest spot: linear up to SYMLOG_THRESHOLD_HZ, log
     // above it. The bottom is 0 exactly, so a point edited to 0 lands there and nowhere else.
@@ -319,28 +370,5 @@ export function gtrackAxis(voices: readonly GTrackVoice[], mode: GTrackMode, edi
     }
   }
   // beat — linear auto-range with padding, floored at 0.
-  if (lo === hi) {
-    const pad = lo === 0 ? 1 : Math.max(1, Math.abs(lo) * 0.1)
-    lo = Math.max(0, lo - pad)
-    hi += pad
-  } else {
-    const pad = (hi - lo) * 0.08
-    lo = Math.max(0, lo - pad)
-    hi += pad
-  }
-  if (editable) {
-    // Extra headroom above/below so a vertex can be dragged past the current range.
-    const extra = Math.max(1, (hi - lo) * 0.25)
-    lo = Math.max(0, lo - extra)
-    hi += extra
-  }
-  const mid = (lo + hi) / 2
-  return {
-    min: lo,
-    max: hi,
-    scale: 'linear',
-    topLabel: formatFreq(hi),
-    midLabel: formatFreq(mid),
-    botLabel: formatFreq(lo),
-  }
+  return linearAutoAxis(lo, hi, editable)
 }

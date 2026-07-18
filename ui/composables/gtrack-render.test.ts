@@ -104,6 +104,40 @@ describe('gtrackAxis (GT2.1)', () => {
   })
 })
 
+describe('gtrackAxis baseScale override (TS-D3, owner 2026-07-18)', () => {
+  test("baseScale='linear' forces a LINEAR base axis over the data range (padded)", () => {
+    const a = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base', false, false, 'linear')
+    expect(a.scale).toBe('linear')
+    // linear (arithmetic) midpoint, unlike the log axis's geometric ~141
+    expect(a.midLabel).toBe('150')
+    expect(a.min).toBeLessThanOrEqual(100)
+    expect(a.max).toBeGreaterThanOrEqual(200)
+    expect(a.min).toBeGreaterThanOrEqual(0)
+  })
+
+  test("the default (omitted / 'log') is unchanged — still a log axis", () => {
+    const omitted = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base')
+    const explicit = gtrackAxis([voice([pt({ baseFreq: 100 }), pt({ baseFreq: 200 })])], 'base', false, false, 'log')
+    expect(omitted.scale).toBe('log')
+    expect(explicit.scale).toBe('log')
+    expect([explicit.min, explicit.max, explicit.midLabel]).toEqual([omitted.min, omitted.max, omitted.midLabel])
+  })
+
+  test("base data reaching 0 goes symlog on 'log' but plain linear on 'linear' (0 placed directly)", () => {
+    const voices = [voice([pt({ baseFreq: 100 }), pt({ baseFreq: 0 })])]
+    expect(gtrackAxis(voices, 'base', false, false, 'log').scale).toBe('symlog')
+    const lin = gtrackAxis(voices, 'base', false, false, 'linear')
+    expect(lin.scale).toBe('linear')
+    expect(lin.min).toBe(0)
+  })
+
+  test('baseScale does not affect non-base modes (fixed volume/balance, linear beat)', () => {
+    expect(gtrackAxis([voice([pt({ volL: 1, volR: 1 })])], 'volume', false, false, 'linear').max).toBe(1)
+    expect(gtrackAxis([voice([pt({})])], 'balance', false, false, 'linear').min).toBe(-1)
+    expect(gtrackAxis([voice([pt({ beatFreqHalf: 2 }), pt({ beatFreqHalf: 5 })])], 'beat', false, false, 'linear').scale).toBe('linear')
+  })
+})
+
 describe('valueToUnit/unitToValue on a log axis (GT2.8)', () => {
   const axis = { min: 10, max: 1000, scale: 'log' as const, topLabel: '', midLabel: '', botLabel: '' }
   test('log mapping: geometric midpoint sits at 0.5; round-trips', () => {
