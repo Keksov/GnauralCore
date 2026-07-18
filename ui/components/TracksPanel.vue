@@ -59,24 +59,9 @@
               </q-item>
             </q-list>
           </q-btn-dropdown>
-          <!-- SF23.3: Audacity-style view-mode dropdown (waveform / spectrogram / both / overlay). -->
-          <q-btn-dropdown dense flat no-caps size="sm" icon="layers" :label="viewModeLabel" :aria-label="t('audio.viewMode')">
-            <q-list dense style="min-width: 190px">
-              <q-item
-                v-for="m in AUDIO_VIEW_MODES"
-                :key="m"
-                clickable
-                v-close-popup
-                :active="m === viewMode"
-                @click="viewMode = m"
-              >
-                <q-item-section avatar style="min-width: 26px">
-                  <q-icon v-if="m === viewMode" name="check" size="18px" />
-                </q-item-section>
-                <q-item-section>{{ t(`audio.viewMode_${m}`) }}</q-item-section>
-              </q-item>
-            </q-list>
-          </q-btn-dropdown>
+          <!-- viewmode-graph-header (VH-D1): the Audacity-style view-mode dropdown was REMOVED from
+               this toolbar; it now lives icon-only in each overall graph header, before the gear
+               (see <view-mode-dropdown> in the waveform / spectrogram headers below). -->
           <!-- GT9.2 (owner req. 42): schedule problems (lint) badge — count + severity colour. -->
           <q-btn
             v-if="audio.displayMode === 'gnaural' && gtracks.diagnostics.value.length > 0"
@@ -409,6 +394,8 @@
               </q-menu>
             </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallWave') }}</span>
+            <!-- viewmode-graph-header (VH-D2): the view-mode picker, before the gear. -->
+            <view-mode-dropdown v-model="viewMode" />
             <!-- WS1.2 (WS-D1, owner req 1): the group's settings gear, moved here OUT of the track
                  graphics area (where SF27 had one per channel). The title's flex:1 pushes it to the
                  right edge. It covers the whole group, so it opens the «Оба канала» scope. -->
@@ -508,6 +495,8 @@
               </q-menu>
             </q-btn>
             <span class="tracks-panel__gtrack-header-title">{{ t('audio.tracksOverallSpectrum') }}</span>
+            <!-- viewmode-graph-header (VH-D2): the view-mode picker, before the gear. -->
+            <view-mode-dropdown v-model="viewMode" />
             <!-- SG3.2 (SG-D7): per-graph settings gear -> the «Параметры» @panel bound to this
                  overall spectrogram L/R channel overrides (mirrors the waveform group gear). -->
             <q-btn
@@ -1207,6 +1196,8 @@ import { audioApi } from '../audio-api'
 import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
+import ViewModeDropdown from './ViewModeDropdown.vue'
+import { AUDIO_VIEW_MODES, type AudioViewMode } from '../composables/audio-view-mode'
 import GTrackView from './GTrackView.vue'
 import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
@@ -1894,8 +1885,8 @@ const isSpectrogramStereo = computed(
 )
 
 // SF22 + SF23: audio view prefs — Audacity-style view mode + waveform scale/colour/opacity.
-type AudioViewMode = 'waveform' | 'spectrogram' | 'both' | 'overlay'
-const AUDIO_VIEW_MODES: readonly AudioViewMode[] = ['both', 'overlay', 'spectrogram', 'waveform']
+// VH-D5: AudioViewMode + AUDIO_VIEW_MODES moved to ../composables/audio-view-mode (shared with
+// ViewModeDropdown.vue).
 const STORAGE_TRACKS_WAVEFORM = 'mindwave-tracks-waveform'
 function loadWaveformPrefs(): {
   mode?: string
@@ -2474,7 +2465,6 @@ const showSpectrogram = computed(() => viewMode.value !== 'waveform')
 // (leaving only the minimap + the "all excluded" message). Non-gnaural files always render.
 const overallMixActive = computed(() => audio.displayMode !== 'gnaural' || gtracks.hasMixVoices.value)
 const waveformOverlay = computed(() => viewMode.value === 'overlay')
-const viewModeLabel = computed(() => t(`audio.viewMode_${viewMode.value}`))
 
 // GT11.10 (owner 2026-07-14) / PW5.4: fold the OVERALL waveform / spectrogram stacks from a header bar
 // (like the per-track fold GT11.5). State moved into a shared singleton (useOverallGraphs) so the
