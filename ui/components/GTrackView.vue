@@ -117,6 +117,7 @@ import {
   pointValue,
   unitToValue,
   valueToUnit,
+  type GTrackBaseScale,
   type GTrackMode,
 } from '../composables/gtrack-render'
 import { formatTimeSec, timeAxisTicksWithMinor } from '../composables/spectrogram-axes'
@@ -200,6 +201,9 @@ interface Props {
   /** VS4.3: the left lane-chrome (grip/mute/hide/mix/delete) — shown only on the FIRST graph of a
    *  multi-mode stack (the buttons act on the whole lane). Defaults to true. */
   showSideActions?: boolean
+  /** TS-D4 (owner 2026-07-18): the display scale for the base-frequency axis (global editor setting).
+   *  Only affects mode==='base'. Defaults to 'log' (the classic auto axis). */
+  baseScaleMode?: GTrackBaseScale
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -216,6 +220,7 @@ const props = withDefaults(defineProps<Props>(), {
   showBeatBand: false,
   showBalanceBand: false,
   showSideActions: true,
+  baseScaleMode: 'log',
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -305,7 +310,7 @@ const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 // GT10.34-followup: the freq axes gain headroom so a vertex can be dragged past the current data
 // range (otherwise the max/min point sits on the edge and clamps to itself). Active in point-edit
 // mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
-const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand))
+const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand, props.baseScaleMode))
 
 // GT11.13 (owner 2026-07-15): the value (Y) view — a NORMALIZED [0,1] window over the auto-fit range
 // above, exactly the model SpectrogramView uses for its frequency band (freqView). {0,1} = the full

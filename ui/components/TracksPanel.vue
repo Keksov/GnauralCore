@@ -272,6 +272,7 @@
                 :in-mix="laneInMix(lane)"
                 :show-beat-band="lane.beatBand"
                 :show-balance-band="lane.balanceBand"
+                :base-scale-mode="gtracks.baseScaleMode.value"
                 :show-side-actions="mi === 0"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
