@@ -20,6 +20,7 @@ function makeCtx(fixResult = true): { ctx: TrackListActionContext; calls: unknow
       setVoiceVisible: rec('setVoiceVisible'),
       setVoiceInMix: rec('setVoiceInMix'),
       setPointDragMode: rec('setPointDragMode'),
+      setBaseScaleMode: rec('setBaseScaleMode'),
       fixPreparseVoice: (voiceId: number): boolean => { calls.push(['fixPreparseVoice', voiceId]); return fixResult },
     },
     overall: {
@@ -44,6 +45,7 @@ describe('applyTrackListAction (PW5.7b)', () => {
     [{ kind: 'toggle-voice-muted', voiceId: 9 }, ['toggleVoiceMuted', 9]],
     [{ kind: 'set-voice-in-mix', voiceId: 9, inMix: true }, ['setVoiceInMix', 9, true]],
     [{ kind: 'set-point-drag-mode', mode: 'clamp' }, ['setPointDragMode', 'clamp']],
+    [{ kind: 'set-base-scale-mode', mode: 'linear' }, ['setBaseScaleMode', 'linear']],
     [{ kind: 'set-wave-hidden', hidden: false }, ['setWaveHidden', false]],
     [{ kind: 'set-spectrum-hidden', hidden: true }, ['setSpectrumHidden', true]],
   ]

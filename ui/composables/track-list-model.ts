@@ -10,7 +10,7 @@
 //   * the child's parent (TrackListDialog, PW5.7c) applies the forwarded actions to the authoritative
 //     singletons.
 // Everything here MUST stay JSON-serializable — a snapshot and every action cross a BroadcastChannel.
-import type { GTrackMode } from './gtrack-render'
+import type { GTrackBaseScale, GTrackMode } from './gtrack-render'
 import type { GTrackPointDragMode } from './use-gtrack-lanes'
 
 export interface TrackListVoiceSnapshot {
@@ -32,6 +32,8 @@ export interface TrackListSnapshot {
   readonly isGnaural: boolean
   readonly allLanesHidden: boolean
   readonly pointDragMode: GTrackPointDragMode
+  /** TS-D2 (owner 2026-07-18): global base-frequency display scale (log/linear). */
+  readonly baseScaleMode: GTrackBaseScale
   readonly waveHidden: boolean
   readonly spectrumHidden: boolean
   readonly voices: readonly TrackListVoiceSnapshot[]
@@ -51,6 +53,7 @@ export type TrackListAction =
   | { readonly kind: 'toggle-voice-muted'; readonly voiceId: number }
   | { readonly kind: 'set-voice-in-mix'; readonly voiceId: number; readonly inMix: boolean }
   | { readonly kind: 'set-point-drag-mode'; readonly mode: GTrackPointDragMode }
+  | { readonly kind: 'set-base-scale-mode'; readonly mode: GTrackBaseScale }
   | { readonly kind: 'fix-preparse'; readonly voiceId: number }
   | { readonly kind: 'set-wave-hidden'; readonly hidden: boolean }
   | { readonly kind: 'set-spectrum-hidden'; readonly hidden: boolean }

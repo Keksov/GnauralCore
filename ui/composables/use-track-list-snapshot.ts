@@ -22,6 +22,7 @@ export function useTrackListSnapshot(): ComputedRef<TrackListSnapshot> {
     isGnaural: audio.displayMode === 'gnaural',
     allLanesHidden: gtracks.allLanesHidden.value,
     pointDragMode: gtracks.pointDragMode.value,
+    baseScaleMode: gtracks.baseScaleMode.value,
     waveHidden: overall.waveHidden.value,
     spectrumHidden: overall.spectrumHidden.value,
     voices: gtracks.voices.value.map((v, vi) => ({

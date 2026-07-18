@@ -27,6 +27,7 @@ const EMPTY_SNAPSHOT: TrackListSnapshot = {
   isGnaural: false,
   allLanesHidden: false,
   pointDragMode: 'crossover',
+  baseScaleMode: 'log',
   waveHidden: false,
   spectrumHidden: false,
   voices: [],

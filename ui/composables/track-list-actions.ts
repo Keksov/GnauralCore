@@ -5,7 +5,7 @@
 //
 // The dependencies are typed structurally (not via the composable return types) so the applier stays
 // trivially unit-testable with fakes and free of Vue/Pinia imports.
-import type { GTrackMode } from './gtrack-render'
+import type { GTrackBaseScale, GTrackMode } from './gtrack-render'
 import type { GTrackPointDragMode } from './use-gtrack-lanes'
 import type { TrackListAction } from './track-list-model'
 
@@ -21,6 +21,7 @@ export interface TrackListGtracksApi {
   readonly setVoiceVisible: (voiceId: number, visible: boolean) => void
   readonly setVoiceInMix: (voiceId: number, inMix: boolean) => void
   readonly setPointDragMode: (mode: GTrackPointDragMode) => void
+  readonly setBaseScaleMode: (mode: GTrackBaseScale) => void
   readonly fixPreparseVoice: (voiceId: number) => boolean
 }
 
@@ -72,6 +73,9 @@ export function applyTrackListAction(action: TrackListAction, ctx: TrackListActi
       break
     case 'set-point-drag-mode':
       ctx.gtracks.setPointDragMode(action.mode)
+      break
+    case 'set-base-scale-mode':
+      ctx.gtracks.setBaseScaleMode(action.mode)
       break
     case 'fix-preparse':
       if (ctx.gtracks.fixPreparseVoice(action.voiceId)) {
