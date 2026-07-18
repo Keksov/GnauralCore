@@ -31,8 +31,8 @@ interface PendingSectionWrite {
 // key = `${projectId}|${name}` — safe because "|" can never appear in a project id (slug strips it).
 const pendingWrites = new Map<string, PendingSectionWrite>()
 
-function sendSection(projectId: string, name: string, value: unknown): void {
-  void projectApi.putSection({ id: projectId, name, value }).catch((error: unknown) => {
+function sendSection(projectId: string, name: string, value: unknown, keepalive = false): void {
+  void projectApi.putSection({ id: projectId, name, value }, undefined, keepalive).catch((error: unknown) => {
     console.warn('[use-project] putSection failed:', error instanceof Error ? error.message : error)
   })
 }
@@ -44,8 +44,8 @@ interface PendingUndoWrite {
 
 const pendingUndoWrites = new Map<string, PendingUndoWrite>() // key = projectId
 
-function sendUndoJournal(projectId: string, journal: unknown): void {
-  void projectApi.putUndoJournal({ id: projectId, journal }).catch((error: unknown) => {
+function sendUndoJournal(projectId: string, journal: unknown, keepalive = false): void {
+  void projectApi.putUndoJournal({ id: projectId, journal }, undefined, keepalive).catch((error: unknown) => {
     console.warn('[use-project] putUndoJournal failed:', error instanceof Error ? error.message : error)
   })
 }
@@ -53,13 +53,13 @@ function sendUndoJournal(projectId: string, journal: unknown): void {
 export function flushPendingProjectWrites(): void {
   for (const pending of pendingWrites.values()) {
     clearTimeout(pending.timer)
-    sendSection(pending.projectId, pending.name, pending.value)
+    sendSection(pending.projectId, pending.name, pending.value, true) // UC-D4: keepalive only on the unload flush
   }
   pendingWrites.clear()
 
   for (const [projectId, pending] of pendingUndoWrites) {
     clearTimeout(pending.timer)
-    sendUndoJournal(projectId, pending.journal)
+    sendUndoJournal(projectId, pending.journal, true) // UC-D4: keepalive only on the unload flush
   }
   pendingUndoWrites.clear()
 }

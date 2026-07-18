@@ -83,12 +83,13 @@ export const projectApi = {
     })
   },
 
-  /** value: null removes the section. keepalive so a flush issued on page unload still lands. */
-  putSection(request: ProjectSectionPutRequest, signal?: AbortSignal): Promise<ProjectInfo> {
+  /** value: null removes the section. keepalive only for the unload flush — a >64 KB keepalive body is
+   *  refused by the browser (TypeError: Failed to fetch), so regular debounced writes must NOT use it. */
+  putSection(request: ProjectSectionPutRequest, signal?: AbortSignal, keepalive = false): Promise<ProjectInfo> {
     return requestJson<ProjectInfo>('/api/projects/section', {
       method: 'POST',
       body: JSON.stringify(request),
-      keepalive: true,
+      keepalive,
       signal,
     })
   },
@@ -101,12 +102,12 @@ export const projectApi = {
     })
   },
 
-  /** journal: null clears the stored journal. */
-  async putUndoJournal(request: ProjectUndoPutRequest, signal?: AbortSignal): Promise<void> {
+  /** journal: null clears the stored journal. keepalive only for the unload flush (see putSection). */
+  async putUndoJournal(request: ProjectUndoPutRequest, signal?: AbortSignal, keepalive = false): Promise<void> {
     await requestJson<null>('/api/projects/undo', {
       method: 'POST',
       body: JSON.stringify(request),
-      keepalive: true,
+      keepalive,
       signal,
     })
   },
