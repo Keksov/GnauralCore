@@ -206,16 +206,20 @@
                 <app-tooltip>{{ t('audio.gtrackSettings') }}</app-tooltip>
               </q-btn>
             </div>
-            <!-- GT4.2 (GT-D17): a curve lane sits over an optional inline solo-audio underlay -->
+            <!-- GT4.2 (GT-D17) → VS4.3 (VS-D5): ONE curve graph per CHECKED display mode, stacked in
+                 canonical order. The inline solo underlay, side-actions and the top time axis belong
+                 to the FIRST graph of the stack; each mode graph keeps its own height + resize handle
+                 (GT11.7). A multi-mode stack labels each graph with its mode name. -->
+            <template v-for="(gmode, mi) in lane.modes" :key="`${lane.id}:${gmode}`">
             <div
               v-show="!lane.folded"
               class="tracks-panel__gtrack-inline"
-              :class="{ 'tracks-panel__gtrack-inline--new': lane.id === newLaneId }"
-              :data-gtrack-lane-wrap="lane.id"
-              :style="{ height: `${lane.curveHeight}px` }"
+              :class="{ 'tracks-panel__gtrack-inline--new': lane.id === newLaneId && mi === 0 }"
+              :data-gtrack-lane-wrap="mi === 0 ? lane.id : undefined"
+              :style="{ height: `${lane.modeHeights[gmode]!}px` }"
             >
               <waveform-view
-                v-if="laneInlineKind(lane) === 'wave'"
+                v-if="mi === 0 && laneInlineKind(lane) === 'wave'"
                 class="tracks-panel__gtrack-underlay"
                 :style="{ opacity: lane.soloWaveOpacity }"
                 :scale="lane.soloWaveScale"
@@ -225,36 +229,40 @@
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :color="lane.soloWaveColor"
                 :seekable="false"
-                :height="lane.curveHeight"
+                :height="lane.modeHeights[gmode]!"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
               <spectrogram-view
-                v-else-if="laneInlineKind(lane) === 'spectrum'"
+                v-else-if="mi === 0 && (laneInlineKind(lane) === 'spectrum' || laneInlineKind(lane) === 'overlay')"
                 class="tracks-panel__gtrack-underlay"
                 :file-path="audio.displayFilePath"
                 :reload-key="spectrogramReloadKey"
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :render="laneSpectrogramRender(lane.id)"
+                :waveform-overlay="laneInlineKind(lane) === 'overlay'"
+                :waveform-scale="lane.soloWaveScale"
+                :waveform-color="lane.soloWaveColor"
+                :waveform-opacity="lane.soloWaveOpacity"
                 :seekable="false"
                 :primary="false"
-                :height="lane.curveHeight"
+                :height="lane.modeHeights[gmode]!"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex"
                 :show-time-axis-bottom="false"
               />
               <GTrackView
                 class="tracks-panel__gtrack-over"
-                :inline-underlay="laneInlineKind(lane) !== null"
+                :inline-underlay="mi === 0 && laneInlineKind(lane) !== null"
                 :data-gtrack-lane="lane.id"
                 :voices="lane.voices"
-                :mode="lane.mode"
+                :mode="gmode"
                 :duration-sec="gtracks.durationSec.value"
-                :label="''"
-                :height="lane.curveHeight"
+                :label="lane.modes.length > 1 ? t(`audio.gtrackMode_${gmode}`) : ''"
+                :height="lane.modeHeights[gmode]!"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="true"
-                :show-time-axis-top="gIndex === firstUnfoldedGIndex"
+                :show-time-axis-top="gIndex === firstUnfoldedGIndex && mi === 0"
                 :show-time-axis-bottom="false"
                 :point-mode="gtracks.isLanePointMode(lane.id)"
                 :selection="gtracks.selectionForLane(lane.id)"
@@ -263,6 +271,8 @@
                 :muted="laneMuted(lane)"
                 :in-mix="laneInMix(lane)"
                 :show-beat-band="lane.beatBand"
+                :show-balance-band="lane.balanceBand"
+                :show-side-actions="mi === 0"
                 :class="{ 'audio-page__track--dragging': gtrackDrag === lane.id }"
                 @seek="handleSeek"
                 @hide="gtracks.setLaneHidden(lane.id, true)"
@@ -272,8 +282,9 @@
                 @reorder-grip="onGtrackGripDown(lane.id, $event)"
                 @select-point="(p: GTrackPointRef | null) => { gtracks.selectPoint(lane.id, p); gtracks.clearMultiSelection() }"
                 @drag-start="(p: GTrackPointRef) => gtracks.beginPointDrag(p)"
-                @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, lane.mode)"
+                @drag-move="(e: GTrackDragMove) => gtracks.dragPoint(e.point, e.timeSec, e.value, gmode)"
                 @drag-beat-move="(e: GTrackBeatDragMove) => gtracks.dragPointBeat(e.point, e.beatFreqHalf)"
+                @drag-balance-move="(e: GTrackBalanceDragMove) => gtracks.dragPointBalance(e.point, e.balance)"
                 @drag-end="gtracks.endPointDrag()"
                 @drag-cancel="gtracks.cancelPointDrag()"
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
@@ -288,11 +299,12 @@
               role="separator"
               aria-orientation="horizontal"
               :aria-label="t('audio.spectrogramResizeHandle')"
-              @pointerdown="onGraphResizeDown(lane.id, 'curve', lane.curveHeight, $event)"
+              @pointerdown="onGraphResizeDown(lane.id, 'curve', lane.modeHeights[gmode]!, $event, gmode)"
               @pointermove="onGraphResizeMove"
               @pointerup="onGraphResizeUp"
               @pointercancel="onGraphResizeUp"
             />
+            </template>
             <!-- GT4.3/GT4.1: solo audio shown as sub-lane(s) below (when not inline). -->
             <div v-if="laneWaveSublane(lane) && !lane.folded && !lane.soloWaveHidden" class="tracks-panel__sublane" :style="sublaneAccentStyle(lane)">
               <waveform-view
@@ -331,6 +343,10 @@
                 :solo-voice-ids="lane.voiceIds"
                 :analysis="laneSpectrogramAnalysis(lane.id)"
                 :render="laneSpectrogramRender(lane.id)"
+                :waveform-overlay="lane.soloMode === 'overlay'"
+                :waveform-scale="lane.soloWaveScale"
+                :waveform-color="lane.soloWaveColor"
+                :waveform-opacity="lane.soloWaveOpacity"
                 :playhead-sec="gtrackPlayheadSec"
                 :seekable="true"
                 :primary="false"
@@ -601,6 +617,19 @@
             <q-card-section class="row items-center q-py-sm">
               <div class="text-subtitle1">{{ t('audio.gtrackSettings') }}</div>
               <q-space />
+              <!-- VS4.2 (owner): the lane's visibility eye, right in the dialog. VS4.5 (owner): it
+                   reflects EFFECTIVE visibility — with ZERO modes checked the lane is hidden too, so
+                   the eye shows crossed. Clicking a crossed eye shows the lane (un-hiding an
+                   all-unchecked lane re-seeds its default mode, VS-D5). -->
+              <q-btn
+                dense flat round
+                :icon="gtrackSettingsLaneHidden ? 'visibility_off' : 'visibility'"
+                :color="gtrackSettingsLaneHidden ? 'grey-7' : undefined"
+                :aria-label="gtrackSettingsLaneHidden ? t('audio.trackShow') : t('audio.trackHide')"
+                @click="gtracks.setLaneHidden(gtrackSettingsLane.id, !gtrackSettingsLaneHidden)"
+              >
+                <app-tooltip>{{ gtrackSettingsLaneHidden ? t('audio.trackShow') : t('audio.trackHide') }}</app-tooltip>
+              </q-btn>
               <q-btn icon="close" flat round dense v-close-popup :aria-label="t('audio.spectrogramZoomClose')" />
             </q-card-section>
             <q-separator />
@@ -619,24 +648,40 @@
               </q-list>
               <q-separator vertical />
               <div class="tracks-panel__wf-settings-content">
-                <!-- «График»: display mode + beat-band shading (base mode only, owner 2026-07-14). -->
+                <!-- «График» → VS4.2 (owner phase 4): «Режимы отображения» — ALL modes as always-
+                     visible blocks, each with an «Отображать на графике» checkbox; the checked set
+                     renders as the lane's graph stack (VS4.3, VS-D5: zero checked hides the lane).
+                     The band toggles live INSIDE their mode's block (beat → base, balance → volume),
+                     inert while that mode is unchecked. -->
                 <q-card-section v-if="gtrackSettingsTab === 'graph'">
                   <div class="text-caption text-grey q-mb-xs">{{ t('audio.gtrackModeLabel') }}</div>
-                  <q-btn-toggle
-                    :model-value="gtrackSettingsLane.mode"
-                    dense unelevated no-caps spread
-                    toggle-color="primary"
-                    :options="GTRACK_MODES.map((m) => ({ label: t(`audio.gtrackMode_${m}`), value: m }))"
-                    @update:model-value="(m: GTrackMode) => gtracks.setLaneMode(gtrackSettingsLane!.id, m)"
-                  />
-                  <q-toggle
-                    v-if="gtrackSettingsLane.mode === 'base'"
-                    class="q-mt-sm"
-                    :model-value="gtrackSettingsLane.beatBand"
-                    dense
-                    :label="t('audio.gtrackBeatBand')"
-                    @update:model-value="(v: boolean) => gtracks.setLaneBeatBand(gtrackSettingsLane!.id, v)"
-                  />
+                  <div v-for="m in GTRACK_MODES" :key="m" class="tracks-panel__mode-block q-mb-sm">
+                    <div class="text-body2">{{ t(`audio.gtrackMode_${m}`) }}</div>
+                    <q-checkbox
+                      dense
+                      :model-value="gtrackSettingsLane.modes.includes(m)"
+                      :label="t('audio.gtrackModeShow')"
+                      @update:model-value="(v: boolean) => gtracks.toggleLaneMode(gtrackSettingsLane!.id, m, v)"
+                    />
+                    <q-toggle
+                      v-if="m === 'base'"
+                      class="q-mt-xs tracks-panel__mode-block-extra"
+                      :model-value="gtrackSettingsLane.beatBand"
+                      dense
+                      :disable="!gtrackSettingsLane.modes.includes('base')"
+                      :label="t('audio.gtrackBeatBand')"
+                      @update:model-value="(v: boolean) => gtracks.setLaneBeatBand(gtrackSettingsLane!.id, v)"
+                    />
+                    <q-toggle
+                      v-if="m === 'volume'"
+                      class="q-mt-xs tracks-panel__mode-block-extra"
+                      :model-value="gtrackSettingsLane.balanceBand"
+                      dense
+                      :disable="!gtrackSettingsLane.modes.includes('volume')"
+                      :label="t('audio.gtrackBalanceBand')"
+                      @update:model-value="(v: boolean) => gtracks.setLaneBalanceBand(gtrackSettingsLane!.id, v)"
+                    />
+                  </div>
                 </q-card-section>
                 <!-- «Соло-звук» (GT4.3/GT4.2): wave + spectrum toggles, then placement. -->
                 <q-card-section v-else-if="gtrackSettingsTab === 'solo'">
@@ -653,8 +698,17 @@
                     :label="t('audio.gtrackSoloSpectrum')"
                     @update:model-value="(v: boolean) => setLaneSoloParts(laneSoloWaveOn, v)"
                   />
+                  <!-- VS4.6 (owner): the combined graph — wave drawn OVER the spectrum in one
+                       sub-graph (the lane mirror of the overall «Волна поверх спектра» view). -->
+                  <q-toggle
+                    class="q-ml-md"
+                    :model-value="laneSoloOverlayOn"
+                    dense
+                    :label="t('audio.gtrackSoloOverlay')"
+                    @update:model-value="(v: boolean) => setLaneSoloOverlay(v)"
+                  />
                   <div class="text-caption text-grey q-mt-xs">{{ t('audio.gtrackSoloHint') }}</div>
-                  <template v-if="laneSoloWaveOn || laneSoloSpectrumOn">
+                  <template v-if="laneSoloWaveOn || laneSoloSpectrumOn || laneSoloOverlayOn">
                     <div class="text-caption text-grey q-mt-md q-mb-xs">{{ t('audio.gtrackSoloPlacement') }}</div>
                     <q-btn-toggle
                       :model-value="gtrackSettingsLane.soloInline ?? false"
@@ -1167,7 +1221,7 @@ import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-se
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { bindProjectViewState } from '../composables/use-project-view-state'
 import { readProjectSectionFor, writeProjectSectionFor } from '../composables/use-project'
-import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackBeatDragMove, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
+import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackBalanceDragMove, type GTrackBeatDragMove, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
 import { GTRACK_MODES, ctrlStepValue, type GTrackMode } from '../composables/gtrack-render'
@@ -2170,10 +2224,12 @@ function onTrackGripDown(kind: TrackKind, channel: number, ev: PointerEvent): vo
 function gtrackModeLabel(mode: GTrackMode): string {
   return t(`audio.gtrackMode_${mode}`)
 }
-function gtrackLaneLabel(lane: { mode: GTrackMode; voices: readonly { id: number; description: string }[] }): string {
+function gtrackLaneLabel(lane: { modes: readonly GTrackMode[]; voices: readonly { id: number; description: string }[] }): string {
   const names = lane.voices.map((v) => (v.description.trim() !== '' ? v.description : `#${v.id}`))
   const voicePart = names.length === 0 ? t('audio.gtrackNoVoices') : names.join(', ')
-  return `${gtrackModeLabel(lane.mode)} · ${voicePart}`
+  // VS4.3: a multi-mode lane lists every checked mode in its header.
+  const modePart = lane.modes.map((m) => gtrackModeLabel(m)).join(' + ')
+  return `${modePart} · ${voicePart}`
 }
 // GT3.18 (GT-D20): a single-voice lane takes its voice's accent colour (left stripe + tinted title)
 // so all of a voice's lanes read as a group. Multi-voice lanes have no accent (colour is ambiguous).
@@ -2212,8 +2268,9 @@ interface LaneSoloShape { soloMode: GTrackSoloMode; soloInline: boolean; voiceId
 function laneSoloActive(lane: LaneSoloShape): boolean {
   return lane.soloMode !== 'off' && audio.displayMode === 'gnaural' && lane.voiceIds.length > 0
 }
-function laneInlineKind(lane: LaneSoloShape): 'wave' | 'spectrum' | null {
+function laneInlineKind(lane: LaneSoloShape): 'wave' | 'spectrum' | 'overlay' | null {
   if (!laneSoloActive(lane) || !lane.soloInline) return null
+  if (lane.soloMode === 'overlay') return 'overlay'
   return lane.soloMode === 'spectrum' || lane.soloMode === 'both' ? 'spectrum' : 'wave'
 }
 function laneWaveSublane(lane: LaneSoloShape): boolean {
@@ -2221,9 +2278,11 @@ function laneWaveSublane(lane: LaneSoloShape): boolean {
   if (lane.soloMode === 'both') return true // spectrum takes the inline/own slot; wave is always a sub-lane
   return lane.soloMode === 'wave' && !lane.soloInline
 }
+// VS4.6: 'overlay' renders through the SPECTRUM sub-lane slot (one combined graph — the spectrogram
+// view draws the wave on top itself), so it shares the spectrum height/hide/gear plumbing.
 function laneSpectrumSublane(lane: LaneSoloShape): boolean {
   if (!laneSoloActive(lane)) return false
-  return (lane.soloMode === 'spectrum' || lane.soloMode === 'both') && !lane.soloInline
+  return (lane.soloMode === 'spectrum' || lane.soloMode === 'both' || lane.soloMode === 'overlay') && !lane.soloInline
 }
 
 // GT8.1 (GT-D19): a lane's solo spectrum/waveform uses its per-lane settings OVERRIDE if present,
@@ -2258,6 +2317,12 @@ const gtrackSettingsTab = ref<GTrackSettingsTab>('graph')
 watch(gtrackSettingsId, (id) => {
   if (id !== null) gtrackSettingsTab.value = 'graph'
 })
+// VS4.5 (owner): the dialog eye shows the EFFECTIVE visibility — hidden flag OR no checked modes
+// (VS-D5: an all-unchecked lane leaves the stack). setLaneHidden(id, false) covers both ways back.
+const gtrackSettingsLaneHidden = computed<boolean>(() => {
+  const l = gtrackSettingsLane.value
+  return l !== null && (l.hidden || l.modes.length === 0)
+})
 const gtrackSettingsTabs = computed<{ id: GTrackSettingsTab; label: string }[]>(() => [
   { id: 'graph', label: t('audio.gtrackSectionGraph') },
   { id: 'solo', label: t('audio.gtrackSoloAudio') },
@@ -2273,6 +2338,14 @@ const laneSoloSpectrumOn = computed<boolean>(() => {
   const m = gtrackSettingsLane.value?.soloMode ?? 'off'
   return m === 'spectrum' || m === 'both'
 })
+// VS4.6 (owner): «Волна+Спектр» — the combined single graph. Mutually exclusive with the separate
+// Волна/Спектр toggles: switching it on replaces them, switching one of them on leaves it.
+const laneSoloOverlayOn = computed<boolean>(() => (gtrackSettingsLane.value?.soloMode ?? 'off') === 'overlay')
+function setLaneSoloOverlay(on: boolean): void {
+  const lane = gtrackSettingsLane.value
+  if (lane === null) return
+  gtracks.setLaneSolo(lane.id, on ? 'overlay' : 'off')
+}
 function setLaneSoloParts(wave: boolean, spectrum: boolean): void {
   const lane = gtrackSettingsLane.value
   if (lane === null) return
@@ -2310,15 +2383,16 @@ function onGtrackGripDown(laneId: number, ev: PointerEvent): void {
 // spectrum) has its OWN handle that resizes just that graph's height (clamped + persisted per file).
 let graphResizeStartY = 0
 let graphResizeStartH = 0
-let graphResizeTarget: { laneId: number; which: 'curve' | 'wave' | 'spectrum' } | null = null
+let graphResizeTarget: { laneId: number; which: 'curve' | 'wave' | 'spectrum'; mode?: GTrackMode } | null = null
 // GT11.7 (owner 2026-07-14): the modifier captured at drag start decides the SCOPE — plain = just
 // this graph; Ctrl/⌘ = the voice's graphs (its group); Shift = ALL graphs everywhere. resizeModeOf +
 // setAllGraphsHeight are shared with the overall wave/spectrum handles for uniform behaviour.
 let graphResizeMode: ResizeMode = 'one'
-function onGraphResizeDown(laneId: number, which: 'curve' | 'wave' | 'spectrum', startH: number, ev: PointerEvent): void {
+function onGraphResizeDown(laneId: number, which: 'curve' | 'wave' | 'spectrum', startH: number, ev: PointerEvent, mode?: GTrackMode): void {
   graphResizeStartY = ev.clientY
   graphResizeStartH = startH
-  graphResizeTarget = { laneId, which }
+  // VS4.3: a curve handle names WHICH mode graph of the lane's stack it resizes.
+  graphResizeTarget = { laneId, which, mode }
   graphResizeMode = resizeModeOf(ev)
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   ev.preventDefault()
@@ -2328,7 +2402,7 @@ function onGraphResizeMove(ev: PointerEvent): void {
   const h = graphResizeStartH + (ev.clientY - graphResizeStartY)
   if (graphResizeMode === 'all') setAllGraphsHeight(h)
   else if (graphResizeMode === 'group') gtracks.setVoiceGraphsHeight(graphResizeTarget.laneId, h)
-  else gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, h)
+  else gtracks.setLaneGraphHeight(graphResizeTarget.laneId, graphResizeTarget.which, h, graphResizeTarget.mode)
 }
 function onGraphResizeUp(): void {
   graphResizeTarget = null
@@ -2383,7 +2457,9 @@ function laneHiddenGraphs(lane: LaneSoloShape & { id: number; soloWaveHidden: bo
     out.push({ key: `lane:${lane.id}:wave`, label: t('audio.gtrackSoloWave'), restore: () => gtracks.setLaneSoloGraphHidden(lane.id, 'wave', false) })
   }
   if (lane.soloSpectrumHidden && laneSpectrumSublane(lane)) {
-    out.push({ key: `lane:${lane.id}:spectrum`, label: t('audio.gtrackSoloSpectrum'), restore: () => gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', false) })
+    // VS4.6: the overlay graph lives in the spectrum slot — name it accordingly in the eye menu.
+    const label = lane.soloMode === 'overlay' ? t('audio.gtrackSoloOverlay') : t('audio.gtrackSoloSpectrum')
+    out.push({ key: `lane:${lane.id}:spectrum`, label, restore: () => gtracks.setLaneSoloGraphHidden(lane.id, 'spectrum', false) })
   }
   return out
 }
@@ -3178,6 +3254,15 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   min-width: 0;
   overflow: auto;
+}
+/* VS4.2: one always-visible block per display mode in the track dialog's «График» section. */
+.tracks-panel__mode-block {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.tracks-panel__mode-block-extra {
+  margin-left: 24px;
 }
 
 /* SF22: waveform tracks above the spectrogram. */

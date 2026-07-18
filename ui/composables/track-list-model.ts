@@ -41,6 +41,9 @@ export type TrackListAction =
   | { readonly kind: 'merge-all' }
   | { readonly kind: 'spread-all' }
   | { readonly kind: 'show-all-modes' }
+  // VS4.1 (owner, VS-D5г): the NEW layout — one lane per voice with EVERY mode checked (a stack),
+  // unlike show-all-modes' lane-per-mode spread. Existing layout actions are untouched.
+  | { readonly kind: 'show-all-modes-stacked' }
   | { readonly kind: 'set-all-hidden'; readonly hidden: boolean }
   | { readonly kind: 'set-all-mode'; readonly mode: GTrackMode }
   | { readonly kind: 'set-voice-mode'; readonly voiceId: number; readonly mode: GTrackMode }

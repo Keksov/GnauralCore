@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GTrackPoint, GTrackVoice } from './gtrack-model'
-import { GTRACK_MODES, axisWithRange, ctrlStepValue, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit, type GTrackAxis } from './gtrack-render'
+import { GTRACK_MODES, axisWithRange, balanceEdgeToBalance, ctrlStepValue, gtrackAxis, pointValue, unitToValue, valuePatchForMode, valueToUnit, type GTrackAxis } from './gtrack-render'
 
 function pt(over: Partial<GTrackPoint>): GTrackPoint {
   return { timeSec: 0, baseFreq: 200, beatFreqHalf: 5, volL: 0.5, volR: 0.5, ...over }
@@ -155,6 +155,33 @@ describe('valuePatchForMode (GT3.2, inverse of pointValue)', () => {
     expect(full右.volR).toBeCloseTo(1, 6)
     expect(valuePatchForMode(p, 'balance', 0.5, true)).toEqual({}) // mono
     expect(valuePatchForMode(pt({ volL: 0, volR: 0 }), 'balance', 0.5, false)).toEqual({}) // silence
+  })
+})
+
+describe('balanceEdgeToBalance (VB1.1, corridor edge -> balance, VB-D3 variant A)', () => {
+  test('|balance| = |amp - V| / V, sign preserved, clamped to 1', () => {
+    // V = 0.5, right-heavy (sign +1): an edge at 0.75 -> half 0.25 -> |b| 0.5.
+    expect(balanceEdgeToBalance(0.5, 0.75, 1)).toBeCloseTo(0.5, 9)
+    // dragging past the centre line snaps back by |amp - V| (beat-identical abs mapping).
+    expect(balanceEdgeToBalance(0.5, 0.25, 1)).toBeCloseTo(0.5, 9)
+    // left-heavy keeps the negative sign.
+    expect(balanceEdgeToBalance(0.5, 0.75, -1)).toBeCloseTo(-0.5, 9)
+    // a quiet centre saturates fast -> clamp to |1|.
+    expect(balanceEdgeToBalance(0.2, 1, 1)).toBe(1)
+    // on the centre line the corridor is closed.
+    expect(balanceEdgeToBalance(0.5, 0.5, 1)).toBe(0)
+  })
+  test('degenerate: silence and centred points map to 0 (no corridor to grab)', () => {
+    expect(balanceEdgeToBalance(0, 0.5, 1)).toBe(0) // silence: volume 0
+    expect(balanceEdgeToBalance(0.5, 0.9, 0)).toBe(0) // sign 0: centred, no edge
+  })
+  test('round-trips through valuePatchForMode: volume fixed, dragged edge reaches the cursor', () => {
+    const p = pt({ volL: 0.3, volR: 0.5 }) // V = 0.4, right-heavy (sign +1), upper edge volR at 0.5
+    const b = balanceEdgeToBalance(0.4, 0.6, 1) // drag the upper edge up to 0.6 -> half 0.2 -> b 0.5
+    const np = { ...p, ...valuePatchForMode(p, 'balance', b, false) }
+    expect(pointValue(np, 'volume')).toBeCloseTo(0.4, 9) // volume unchanged
+    expect(np.volR).toBeCloseTo(0.6, 9) // upper edge now sits at the cursor
+    expect(np.volL).toBeCloseTo(0.2, 9) // lower edge moved symmetrically (0.4 - 0.2)
   })
 })
 

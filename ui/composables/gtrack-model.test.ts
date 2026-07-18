@@ -415,7 +415,7 @@ describe('clampPointTime (standalone, GT3.2 reuse)', () => {
   })
 })
 
-describe('undo journal export/adopt (project-store PR2.2 / PR-D8)', () => {
+describe('undo journal export/adopt v2 (undo-command-log)', () => {
   function editedModel(): GTrackModel {
     const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
     model.edit(() => model.movePoint(7, 1, 12))
@@ -425,10 +425,11 @@ describe('undo journal export/adopt (project-store PR2.2 / PR-D8)', () => {
 
   test('journal round-trips onto an identical model and restores undo/redo', () => {
     const source = editedModel()
-    source.undo() // one entry moves to the redo stack
+    source.undo() // move the cursor back one (one redo now available)
     const journal = source.exportUndoJournal()
-    expect(journal.undo.length).toBe(1)
-    expect(journal.redo.length).toBe(1)
+    expect(journal.version).toBe(2)
+    expect(journal.steps.length).toBe(2) // both steps kept
+    expect(journal.cursor).toBe(1) // one of them is undone
 
     // A fresh model in the SAME state as the exported one (same edits, same undo position).
     const target = editedModel()
@@ -447,22 +448,36 @@ describe('undo journal export/adopt (project-store PR2.2 / PR-D8)', () => {
     expect(fresh.canUndo).toBe(false)
   })
 
-  test('maxEntries bounds the exported stacks (oldest dropped)', () => {
+  test('maxEntries bounds the exported steps (oldest dropped)', () => {
     const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
     for (let i = 0; i < 10; i++) {
       model.edit(() => model.movePoint(7, 1, 10 + i * 0.5))
     }
     const journal = model.exportUndoJournal(3)
-    expect(journal.undo.length).toBe(3)
+    expect(journal.steps.length).toBe(3)
+    expect(journal.cursor).toBe(3) // all kept steps sit before the cursor (nothing redoable)
   })
 
-  test('isGTrackUndoJournal accepts the exported shape and rejects junk', async () => {
+  test('a step records only the edited voice, not the whole schedule (UC-D2)', () => {
+    const base = fixture([entry(0, 10), entry(10, 20)])
+    const v7 = base.voices[0]!
+    const model = new GTrackModel({ ...base, voiceCount: 2, voices: [v7, { ...v7, id: 9, description: 'v9' }] })
+    model.edit(() => model.movePoint(7, 1, 12)) // edit voice 7 only
+    const journal = model.exportUndoJournal()
+    expect(journal.steps.length).toBe(1)
+    expect(journal.steps[0]!.voices.length).toBe(1) // only the changed voice, not both
+    expect(journal.steps[0]!.voices[0]!.voiceId).toBe(7)
+  })
+
+  test('isGTrackUndoJournal accepts v2, rejects junk and v1 (UC-D5 migration)', async () => {
     const { isGTrackUndoJournal } = await import('./gtrack-model')
     const journal = editedModel().exportUndoJournal()
     expect(isGTrackUndoJournal(journal)).toBe(true)
     expect(isGTrackUndoJournal(JSON.parse(JSON.stringify(journal)))).toBe(true)
     expect(isGTrackUndoJournal(null)).toBe(false)
-    expect(isGTrackUndoJournal({ currentSig: 1, undo: [], redo: [] })).toBe(false)
-    expect(isGTrackUndoJournal({ currentSig: 'x', undo: [{}], redo: [] })).toBe(false)
+    // v1 snapshot journal: no `version` -> rejected -> discarded on load (UC-D5 migration).
+    expect(isGTrackUndoJournal({ currentSig: 'x', undo: [], redo: [] })).toBe(false)
+    expect(isGTrackUndoJournal({ version: 2, currentSig: 1, cursor: 0, steps: [] })).toBe(false)
+    expect(isGTrackUndoJournal({ version: 2, currentSig: 'x', cursor: 0, steps: [{ voices: [{ voiceId: 'no' }] }] })).toBe(false)
   })
 })

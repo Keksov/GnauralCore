@@ -62,6 +62,22 @@ export function valuePatchForMode(
   }
 }
 
+/**
+ * VB1.1 (VB-D3, variant A): the stereo balance a dragged **balance-corridor edge** maps to, keeping
+ * the point's `volume` = (volL+volR)/2 FIXED and the balance SIGN (which channel is louder) unchanged
+ * — the faithful mirror of the beat band, whose edge drag sets beatFreqHalf = |value − base| keeping
+ * the base fixed. The corridor edges sit at volume ± volume·|balance|, so an edge dragged to
+ * `amplitude` (a value on the 0..1 volume axis) sets the half-width to |amplitude − volume| and hence
+ * |balance| = |amplitude − volume| / volume, clamped to 1. `sign` is captured at drag start
+ * (Math.sign(pointBalance)); a centred point (sign 0, no corridor to grab) and silence (volume ≤ 0)
+ * both map to 0. Feed the result to valuePatchForMode(p, 'balance', result, mono) for the volL/volR patch.
+ */
+export function balanceEdgeToBalance(volume: number, amplitude: number, sign: number): number {
+  if (volume <= 0 || sign === 0) return 0
+  const magnitude = Math.min(1, Math.abs(amplitude - volume) / volume)
+  return sign < 0 ? -magnitude : magnitude
+}
+
 export interface GTrackAxis {
   readonly min: number
   readonly max: number

@@ -13,6 +13,8 @@ export interface TrackListGtracksApi {
   readonly mergeAllIntoOneLane: () => void
   readonly spreadPerVoiceLanes: () => void
   readonly showAllModesPerVoice: () => void
+  /** VS4.1: one lane per voice with every display mode checked (a per-mode graph stack). */
+  readonly allModesOneLanePerVoice: () => void
   readonly setAllLanesHidden: (hidden: boolean) => void
   readonly setAllLanesMode: (mode: GTrackMode) => void
   readonly setVoiceMode: (voiceId: number, mode: GTrackMode) => void
@@ -46,6 +48,9 @@ export function applyTrackListAction(action: TrackListAction, ctx: TrackListActi
       break
     case 'show-all-modes':
       ctx.gtracks.showAllModesPerVoice()
+      break
+    case 'show-all-modes-stacked':
+      ctx.gtracks.allModesOneLanePerVoice()
       break
     case 'set-all-hidden':
       ctx.gtracks.setAllLanesHidden(action.hidden)

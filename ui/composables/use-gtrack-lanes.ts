@@ -23,14 +23,21 @@ import {
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
-export type GTrackSoloMode = 'off' | 'wave' | 'spectrum' | 'both'
-const SOLO_MODES: readonly GTrackSoloMode[] = ['off', 'wave', 'spectrum', 'both']
+export type GTrackSoloMode = 'off' | 'wave' | 'spectrum' | 'both' | 'overlay'
+// VS4.6 (owner): 'overlay' = «Волна+Спектр» — ONE combined graph, the wave drawn over the spectrum
+// (the lane mirror of the overall 'overlay' view mode), unlike 'both' = two separate sub-graphs.
+const SOLO_MODES: readonly GTrackSoloMode[] = ['off', 'wave', 'spectrum', 'both', 'overlay']
 
 export interface GTrackLane {
   id: number
   voiceIds: number[]
-  mode: GTrackMode
+  /** VS4.1 (owner phase 4): the CHECKED display modes — the lane renders one curve graph per mode,
+   *  stacked (canonical GTRACK_MODES order). Empty = the lane is hidden from the stack (VS-D5). */
+  modes: GTrackMode[]
   hidden: boolean
+  /** VS4.1: per-mode graph heights (px); unset entries fall back to curveHeight (the legacy single
+   *  curve height, kept as the seed/default). */
+  modeHeights?: Partial<Record<GTrackMode, number>>
   /** GT4.3: show the solo audio of this lane's voices ('off' when absent). */
   soloMode?: GTrackSoloMode
   /** GT4.2 (GT-D17): true = solo audio UNDER the curves (inline underlay); false = below as a sub-lane. */
@@ -44,6 +51,9 @@ export interface GTrackLane {
   /** owner 2026-07-14: on a Base-freq lane, shade the binaural beat band (base ± beat/2), like the
    *  Schedule tab. Only rendered in 'base' mode. */
   beatBand?: boolean
+  /** VB-D1 (owner 2026-07-17): on a Volume lane, shade the stereo-balance corridor [volL, volR] around
+   *  the volume mean line V=(volL+volR)/2 (mirror of beatBand). Only rendered in 'volume' mode. */
+  balanceBand?: boolean
   /** GT11.5 (owner 2026-07-14): collapse this track's graphs (curve + solo wave/spectrum sub-lanes)
    *  down to just its header bar. Persisted per file. */
   folded?: boolean
@@ -80,6 +90,11 @@ export interface GTrackBeatDragMove {
   readonly point: GTrackPointRef
   readonly beatFreqHalf: number
 }
+/** VB2.1 (owner 2026-07-17): payload emitted by GTrackView while dragging a balance-corridor edge. */
+export interface GTrackBalanceDragMove {
+  readonly point: GTrackPointRef
+  readonly balance: number
+}
 
 /** GT3.10 (GT-D16): point-drag behaviour — clamp within neighbours, or cross over them. */
 export type GTrackPointDragMode = 'clamp' | 'crossover'
@@ -92,7 +107,10 @@ export interface GTrackAddPoint {
 
 export interface ResolvedGTrackLane {
   readonly id: number
-  readonly mode: GTrackMode
+  /** VS4.1: checked display modes in canonical order (may be empty — such a lane is not rendered). */
+  readonly modes: readonly GTrackMode[]
+  /** VS4.1: resolved per-mode graph heights (every checked mode has an entry). */
+  readonly modeHeights: Readonly<Partial<Record<GTrackMode, number>>>
   readonly voiceIds: readonly number[]
   readonly voices: readonly GTrackVoice[]
   readonly soloMode: GTrackSoloMode
@@ -101,6 +119,7 @@ export interface ResolvedGTrackLane {
   readonly soloWaveOpacity: number
   readonly soloWaveScale: 'linear' | 'db'
   readonly beatBand: boolean
+  readonly balanceBand: boolean
   readonly folded: boolean
   readonly soloWaveHidden: boolean
   readonly soloSpectrumHidden: boolean
@@ -112,7 +131,11 @@ export interface ResolvedGTrackLane {
 interface StoredLane {
   id: number
   voiceIds: number[]
+  /** Pre-VS4.1 single mode — still WRITTEN (modes[0]) for downgrade safety, READ as the fallback. */
   mode: string
+  /** VS4.1: the checked display modes. */
+  modes?: string[]
+  modeHeights?: Record<string, number>
   hidden: boolean
   soloMode?: string
   soloInline?: boolean
@@ -120,6 +143,7 @@ interface StoredLane {
   soloWaveOpacity?: number
   soloWaveScale?: string
   beatBand?: boolean
+  balanceBand?: boolean
   folded?: boolean
   soloWaveHidden?: boolean
   soloSpectrumHidden?: boolean
@@ -160,6 +184,24 @@ function loadAllStored(): Record<string, StoredLane[]> {
 
 function toMode(v: unknown): GTrackMode {
   return typeof v === 'string' && (GTRACK_MODES as readonly string[]).includes(v) ? (v as GTrackMode) : 'base'
+}
+/** VS4.1: sanitize stored per-mode heights (junk-tolerant, numbers only). */
+function sanitizeModeHeights(v: unknown): Partial<Record<GTrackMode, number>> | undefined {
+  if (typeof v !== 'object' || v === null) return undefined
+  const out: Partial<Record<GTrackMode, number>> = {}
+  for (const m of GTRACK_MODES) {
+    const h = (v as Record<string, unknown>)[m]
+    if (typeof h === 'number' && Number.isFinite(h)) out[m] = h
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+/** VS4.1: sanitize a stored modes list; falls back to the legacy single `mode` field. */
+function toModes(v: unknown, legacyMode: unknown): GTrackMode[] {
+  if (Array.isArray(v)) {
+    const valid = GTRACK_MODES.filter((m) => v.includes(m))
+    if (valid.length > 0 || v.length === 0) return valid // an explicit [] means "hidden by modes"
+  }
+  return [toMode(legacyMode)]
 }
 
 export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePath: Ref<string | null>) {
@@ -215,18 +257,26 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return voices.value.find((v) => v.id === id)
   }
 
+  // VS4.1 (VS-D5): a lane with NO checked modes is hidden from the stack (and listed with the
+  // hidden ones so the eye menu can bring it back — setLaneHidden(false) re-seeds a mode).
   const visibleLanes = computed<ResolvedGTrackLane[]>(() =>
     lanes.value
-      .filter((lane) => !lane.hidden)
+      .filter((lane) => !lane.hidden && lane.modes.length > 0)
       .map((lane) => resolveLane(lane)),
   )
   const hiddenLanes = computed<ResolvedGTrackLane[]>(() =>
-    lanes.value.filter((lane) => lane.hidden).map((lane) => resolveLane(lane)),
+    lanes.value.filter((lane) => lane.hidden || lane.modes.length === 0).map((lane) => resolveLane(lane)),
   )
   function resolveLane(lane: GTrackLane): ResolvedGTrackLane {
+    // Canonical GTRACK_MODES order — the stack renders top-to-bottom in this order regardless of
+    // the order the checkboxes were ticked in.
+    const modes = GTRACK_MODES.filter((m) => lane.modes.includes(m))
+    const modeHeights: Partial<Record<GTrackMode, number>> = {}
+    for (const m of modes) modeHeights[m] = clampHeight(lane.modeHeights?.[m] ?? lane.curveHeight ?? laneHeight.value)
     return {
       id: lane.id,
-      mode: lane.mode,
+      modes,
+      modeHeights,
       voiceIds: lane.voiceIds,
       voices: lane.voiceIds.map(voiceById).filter((v): v is GTrackVoice => v !== undefined),
       soloMode: lane.soloMode ?? 'off',
@@ -236,6 +286,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloWaveOpacity: lane.soloWaveOpacity ?? 0.6,
       soloWaveScale: lane.soloWaveScale ?? 'linear',
       beatBand: lane.beatBand ?? false,
+      balanceBand: lane.balanceBand ?? false,
       folded: lane.folded ?? false,
       soloWaveHidden: lane.soloWaveHidden ?? false,
       soloSpectrumHidden: lane.soloSpectrumHidden ?? false,
@@ -247,7 +298,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
   // --- persistence ---
   function storedLanesSnapshot(): StoredLane[] {
-    return lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.mode, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, soloWaveScale: l.soloWaveScale, beatBand: l.beatBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
+    return lanes.value.map((l) => ({ id: l.id, voiceIds: l.voiceIds.slice(), mode: l.modes[0] ?? 'base', modes: l.modes.slice(), modeHeights: l.modeHeights === undefined ? undefined : { ...l.modeHeights }, hidden: l.hidden, soloMode: l.soloMode ?? 'off', soloInline: l.soloInline ?? false, soloWaveColor: l.soloWaveColor, soloWaveOpacity: l.soloWaveOpacity, soloWaveScale: l.soloWaveScale, beatBand: l.beatBand ?? false, balanceBand: l.balanceBand ?? false, folded: l.folded ?? false, soloWaveHidden: l.soloWaveHidden ?? false, soloSpectrumHidden: l.soloSpectrumHidden ?? false, curveHeight: l.curveHeight, soloWaveHeight: l.soloWaveHeight, soloSpectrumHeight: l.soloSpectrumHeight }))
   }
   function persist(): void {
     const key = filePath.value
@@ -383,7 +434,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
 
   function laneForVoice(v: GTrackVoice): GTrackLane {
-    return { id: nextLaneId++, voiceIds: [v.id], mode: (isTonal(v) ? 'base' : 'volume') as GTrackMode, hidden: false }
+    return { id: nextLaneId++, voiceIds: [v.id], modes: [isTonal(v) ? 'base' : 'volume'], hidden: false }
   }
 
   // GT-D13 refined (2026-07-11): the DEFAULT layout gives each TONAL voice its own Base-freq lane.
@@ -396,7 +447,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const tonal = voices.value.filter(isTonal)
     if (tonal.length > 0) return tonal.map(laneForVoice)
     const cfg = defaultLaneConfig()
-    return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, mode: cfg.mode, hidden: false }]
+    return [{ id: nextLaneId++, voiceIds: cfg.voiceIds, modes: [cfg.mode], hidden: false }]
   }
 
   /** Sanitize a persisted lane list (project section or localStorage) into live lanes; null when
@@ -407,7 +458,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const restored = (stored as StoredLane[]).map((s) => ({
       id: s.id,
       voiceIds: (Array.isArray(s.voiceIds) ? s.voiceIds : []).filter((id) => validIds.has(id)),
-      mode: toMode(s.mode),
+      modes: toModes(s.modes, s.mode),
+      modeHeights: sanitizeModeHeights(s.modeHeights),
       hidden: s.hidden === true,
       soloMode: (SOLO_MODES.includes(s.soloMode as GTrackSoloMode) ? s.soloMode : 'off') as GTrackSoloMode,
       soloInline: s.soloInline === true,
@@ -415,6 +467,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloWaveOpacity: typeof s.soloWaveOpacity === 'number' ? s.soloWaveOpacity : undefined,
       soloWaveScale: (s.soloWaveScale === 'db' || s.soloWaveScale === 'linear' ? s.soloWaveScale : undefined) as 'linear' | 'db' | undefined,
       beatBand: s.beatBand === true,
+      balanceBand: s.balanceBand === true,
       folded: s.folded === true,
       soloWaveHidden: s.soloWaveHidden === true,
       soloSpectrumHidden: s.soloSpectrumHidden === true,
@@ -500,17 +553,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (persistJournal) persistUndoJournal()
   }
 
-  // Journal size is bounded by BYTES, not just entries: snapshots serialize without structural
-  // sharing, so 50 entries of a huge schedule could blow the server's 5 MB cap. One snapshot is
-  // stringified as the estimate (cheap); the full serialization happens once per debounced send.
-  const UNDO_JOURNAL_BYTE_BUDGET = 4_000_000
+  // undo-command-log (UC2.1, Вариант A): the v2 journal is a compact action log (voice-deltas per step),
+  // so a fixed 50-step cap is tiny — the old schedule-size byte heuristic is gone (it wrongly shrank undo
+  // depth on big schedules). The server's 5 MB cap (project-store) backstops a pathological voice, and
+  // keepalive is off for this debounced write (UC-D4), so there is no 64 KB browser limit either.
+  const UNDO_JOURNAL_MAX_STEPS = 50
   function persistUndoJournal(): void {
     const m = model.value
     const key = filePath.value
     if (m === null || key === null) return
-    const oneSnapshotBytes = Math.max(JSON.stringify(m.schedule).length, 1)
-    const maxEntries = Math.max(1, Math.min(50, Math.floor(UNDO_JOURNAL_BYTE_BUDGET / (2 * oneSnapshotBytes))))
-    writeProjectUndoJournalFor(key, m.exportUndoJournal(maxEntries))
+    writeProjectUndoJournalFor(key, m.exportUndoJournal(UNDO_JOURNAL_MAX_STEPS))
   }
 
   // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump
@@ -570,7 +622,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const id = nextLaneId++
     lanes.value = [
       ...lanes.value,
-      { id, voiceIds: [], mode: defaultLaneConfig().mode, hidden: false },
+      { id, voiceIds: [], modes: [defaultLaneConfig().mode], hidden: false },
     ]
     persist()
     return id
@@ -595,7 +647,19 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persist()
   }
   function setLaneMode(id: number, mode: GTrackMode): void {
-    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, mode } : l))
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, modes: [mode] } : l))
+    persist()
+  }
+  // VS4.1 (owner phase 4): check/uncheck one display mode. Unchecking the LAST mode is allowed —
+  // such a lane leaves the visible stack (VS-D5; setLaneHidden(false) re-seeds a default mode).
+  function toggleLaneMode(id: number, mode: GTrackMode, on: boolean): void {
+    lanes.value = lanes.value.map((l) => {
+      if (l.id !== id) return l
+      const set = new Set(l.modes)
+      if (on) set.add(mode)
+      else set.delete(mode)
+      return { ...l, modes: GTRACK_MODES.filter((m) => set.has(m)) }
+    })
     persist()
   }
   // GT4.3 (GT-D17): the lane's solo audio (off / wave / spectrum / both of its voice set).
@@ -613,6 +677,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, beatBand } : l))
     persist()
   }
+  // VB-D1 (owner 2026-07-17): toggle the balance-corridor shading on a Volume lane (per-lane, persisted).
+  function setLaneBalanceBand(id: number, balanceBand: boolean): void {
+    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, balanceBand } : l))
+    persist()
+  }
   // GT11.5 (owner 2026-07-14): fold/unfold a track (its curve + solo sub-lanes) from the header bar.
   function toggleLaneFolded(id: number): void {
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, folded: !(l.folded ?? false) } : l))
@@ -626,7 +695,15 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
   // GT11.7 (owner 2026-07-14): resize a single gtrack graph (curve / solo wave / solo spectrum),
   // clamped, persisted per file.
-  function setLaneGraphHeight(id: number, which: 'curve' | 'wave' | 'spectrum', h: number): void {
+  function setLaneGraphHeight(id: number, which: 'curve' | 'wave' | 'spectrum', h: number, mode?: GTrackMode): void {
+    // VS4.1: a curve resize targets ONE mode graph of the stack when `mode` is given.
+    if (which === 'curve' && mode !== undefined) {
+      lanes.value = lanes.value.map((l) =>
+        l.id === id ? { ...l, modeHeights: { ...(l.modeHeights ?? {}), [mode]: clampHeight(h) } } : l,
+      )
+      persist()
+      return
+    }
     const key = which === 'curve' ? 'curveHeight' : which === 'wave' ? 'soloWaveHeight' : 'soloSpectrumHeight'
     lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, [key]: clampHeight(h) } : l))
     persist()
@@ -640,7 +717,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const clamped = clampHeight(h)
     lanes.value = lanes.value.map((l) =>
       l.voiceIds.some((v) => voiceSet.has(v))
-        ? { ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped }
+        // VS4.1: clearing modeHeights makes every mode graph follow the uniform curveHeight.
+        ? { ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped, modeHeights: undefined }
         : l,
     )
     persist()
@@ -649,7 +727,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // wave/spectrum) to one height. The overall wave/spectrum are handled by the panel.
   function setAllLanesGraphsHeight(h: number): void {
     const clamped = clampHeight(h)
-    lanes.value = lanes.value.map((l) => ({ ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped }))
+    lanes.value = lanes.value.map((l) => ({ ...l, curveHeight: clamped, soloWaveHeight: clamped, soloSpectrumHeight: clamped, modeHeights: undefined }))
     persist()
   }
   // GT10.4 (owner req. 48): solo-wave colour + opacity.
@@ -671,7 +749,15 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persist()
   }
   function setLaneHidden(id: number, hidden: boolean): void {
-    lanes.value = lanes.value.map((l) => (l.id === id ? { ...l, hidden } : l))
+    lanes.value = lanes.value.map((l) => {
+      if (l.id !== id) return l
+      // VS4.1 (VS-D5): un-hiding a lane whose modes were all unchecked re-seeds its default mode —
+      // otherwise "show" would produce a lane that still renders nothing.
+      const modes = !hidden && l.modes.length === 0
+        ? [l.voiceIds.length > 0 ? defaultModeForVoice(l.voiceIds[0]!) : defaultLaneConfig().mode]
+        : l.modes
+      return { ...l, hidden, modes }
+    })
     persist()
   }
   /** Reorder: move lane `dragId` to the position of `targetId` (swap-through as the pointer moves). */
@@ -904,7 +990,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   }
   /** The graph type shown for a voice (its first lane's mode), or null when it has no lane. */
   function voiceMode(voiceId: number): GTrackMode | null {
-    return lanesForVoice(voiceId)[0]?.mode ?? null
+    // VS4.1: a multi-mode lane has no single representative mode -> null (the list shows "mixed").
+    const l = lanesForVoice(voiceId)[0]
+    if (l === undefined) return null
+    return l.modes.length === 1 ? l.modes[0]! : null
   }
   function defaultModeForVoice(voiceId: number): GTrackMode {
     const v = voiceById(voiceId)
@@ -914,7 +1003,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const owned = lanesForVoice(voiceId)
     if (owned.length === 0) {
       if (visible) {
-        lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], mode: defaultModeForVoice(voiceId), hidden: false }]
+        lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], modes: [defaultModeForVoice(voiceId)], hidden: false }]
       }
     } else {
       lanes.value = lanes.value.map((l) => (l.voiceIds.includes(voiceId) ? { ...l, hidden: !visible } : l))
@@ -924,17 +1013,17 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function setVoiceMode(voiceId: number, mode: GTrackMode): void {
     const owned = lanesForVoice(voiceId)
     if (owned.length === 0) {
-      lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], mode, hidden: false }]
+      lanes.value = [...lanes.value, { id: nextLaneId++, voiceIds: [voiceId], modes: [mode], hidden: false }]
     } else {
-      lanes.value = lanes.value.map((l) => (l.voiceIds.includes(voiceId) ? { ...l, mode } : l))
+      lanes.value = lanes.value.map((l) => (l.voiceIds.includes(voiceId) ? { ...l, modes: [mode] } : l))
     }
     persist()
   }
   // Bulk actions (owner req. 20).
   /** All voices merged into ONE lane (mode = the first visible lane's, else the default). */
   function mergeAllIntoOneLane(): void {
-    const mode = lanes.value.find((l) => !l.hidden)?.mode ?? defaultLaneConfig().mode
-    lanes.value = [{ id: nextLaneId++, voiceIds: voices.value.map((v) => v.id), mode, hidden: false }]
+    const modes = lanes.value.find((l) => !l.hidden && l.modes.length > 0)?.modes ?? [defaultLaneConfig().mode]
+    lanes.value = [{ id: nextLaneId++, voiceIds: voices.value.map((v) => v.id), modes: modes.slice(), hidden: false }]
     persist()
   }
   /** One lane per voice — EVERY voice (the explicit "spread everything", incl. audiofile/noise). */
@@ -951,15 +1040,23 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const next: GTrackLane[] = []
     for (const v of voices.value) {
       for (const mode of GTRACK_MODES) {
-        next.push({ id: nextLaneId++, voiceIds: [v.id], mode, hidden: false })
+        next.push({ id: nextLaneId++, voiceIds: [v.id], modes: [mode], hidden: false })
       }
     }
     lanes.value = next
     persist()
   }
+  /**
+   * VS4.1 (owner, VS-D5г): the NEW track-list layout — ONE lane per voice with EVERY display mode
+   * checked (a per-mode graph stack inside the lane), unlike showAllModesPerVoice's lane-per-mode.
+   */
+  function allModesOneLanePerVoice(): void {
+    lanes.value = voices.value.map((v) => ({ id: nextLaneId++, voiceIds: [v.id], modes: [...GTRACK_MODES], hidden: false }))
+    persist()
+  }
   /** Show every voice in the given graph type (applies to all lanes). */
   function setAllLanesMode(mode: GTrackMode): void {
-    lanes.value = lanes.value.map((l) => ({ ...l, mode }))
+    lanes.value = lanes.value.map((l) => ({ ...l, modes: [mode] }))
     persist()
   }
   function setAllLanesHidden(hidden: boolean): void {
@@ -1072,6 +1169,22 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const p = voice?.points[ref_.pointIndex]
     if (voice === undefined || p === undefined) return
     m.setPointFields(ref_.voiceId, ref_.pointIndex, { beatFreqHalf: Math.max(0, beatFreqHalf) })
+    syncSchedule()
+  }
+  /**
+   * VB2.1 (VB-D3 variant A): live-set the dragged balance-corridor edge — re-splits volL/volR to the
+   * new stereo `balance` at FIXED total (volume unchanged), so the corridor stays centred on the
+   * volume line and only its width changes. Runs inside the SAME transaction opened by beginPointDrag
+   * (one undo unit); GTrackModel is the single source (GT-D16), so a Balance lane of the same voice
+   * updates automatically. Time/index untouched. A mono voice or silence yields an empty patch.
+   */
+  function dragPointBalance(ref_: GTrackPointRef, balance: number): void {
+    const m = model.value
+    if (m === null || !m.inTransaction) return
+    const voice = m.schedule.voices.find((v) => v.id === ref_.voiceId)
+    const p = voice?.points[ref_.pointIndex]
+    if (voice === undefined || p === undefined) return
+    m.setPointFields(ref_.voiceId, ref_.pointIndex, valuePatchForMode(p, 'balance', balance, voice.mono))
     syncSchedule()
   }
   function endPointDrag(): void {
@@ -1252,6 +1365,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     beginPointDrag,
     dragPoint,
     dragPointBeat,
+    dragPointBalance,
     endPointDrag,
     cancelPointDrag,
     undoEdit,
@@ -1294,6 +1408,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     mergeAllIntoOneLane,
     spreadPerVoiceLanes,
     showAllModesPerVoice,
+    allModesOneLanePerVoice,
     setAllLanesMode,
     setAllLanesHidden,
     allLanesHidden,
@@ -1312,9 +1427,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     removeLane,
     restoreLane,
     setLaneMode,
+    toggleLaneMode,
     setLaneSolo,
     setLaneSoloInline,
     setLaneBeatBand,
+    setLaneBalanceBand,
     toggleLaneFolded,
     setLaneSoloGraphHidden,
     setLaneGraphHeight,

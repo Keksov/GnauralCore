@@ -8,7 +8,7 @@
       :class="{
         'gtrack-view__canvas--seekable': seekable || pointMode,
         'gtrack-view__canvas--point': pointMode && hoverPoint !== null,
-        'gtrack-view__canvas--beat-edge': pointMode && hoverEdge !== null,
+        'gtrack-view__canvas--value-edge': pointMode && hoverEdge !== null,
       }"
       @wheel.prevent="onWheel"
       @click="onClick"
@@ -30,8 +30,9 @@
     >{{ label }}</span>
     <!-- GT3.7 (owner req. 10): mark a lane that contains a generated (preparse) voice. -->
     <span v-if="hasPreparse" class="gtrack-view__badge">{{ t('audio.gtrackGenerated') }}</span>
-    <!-- SF28.4-style chrome: drag grip + hide stacked on the LEFT. -->
-    <div class="gtrack-view__side-actions">
+    <!-- SF28.4-style chrome: drag grip + hide stacked on the LEFT. VS4.3: only the FIRST graph of a
+         multi-mode stack shows them (they act on the whole lane, not one mode graph). -->
+    <div v-if="showSideActions" class="gtrack-view__side-actions">
       <q-icon
         name="drag_indicator"
         size="18px"
@@ -111,6 +112,7 @@ import AppTooltip from '@tooltip/AppTooltip.vue'
 import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
 import {
   axisWithRange,
+  balanceEdgeToBalance,
   gtrackAxis,
   pointValue,
   unitToValue,
@@ -151,6 +153,15 @@ interface BeatEdgeRef {
   readonly edge: 'upper' | 'lower'
 }
 
+/** VB2.1: a balance-corridor edge reference — a point plus WHICH CHANNEL edge (volR = right, volL =
+ *  left), per-channel rather than max/min so a left-heavy point reads differently from a right-heavy
+ *  one. Structurally like BeatEdgeRef; shares the hoverEdge state (whose beat edge is 'upper'|'lower'). */
+interface BalanceEdgeRef {
+  readonly voiceId: number
+  readonly pointIndex: number
+  readonly edge: 'volR' | 'volL'
+}
+
 interface Props {
   voices: readonly GTrackVoice[]
   mode: GTrackMode
@@ -183,6 +194,12 @@ interface Props {
   /** owner 2026-07-14: shade the binaural beat band (base ± beat/2) around the base curve, like the
    *  Schedule tab. Only has an effect in 'base' mode. Controlled by a per-lane setting. */
   showBeatBand?: boolean
+  /** VB-D1 (owner 2026-07-17): shade the stereo-balance corridor [volL, volR] around the volume mean
+   *  line. Only has an effect in 'volume' mode. Controlled by a per-lane setting. */
+  showBalanceBand?: boolean
+  /** VS4.3: the left lane-chrome (grip/mute/hide/mix/delete) — shown only on the FIRST graph of a
+   *  multi-mode stack (the buttons act on the whole lane). Defaults to true. */
+  showSideActions?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   playheadSec: null,
@@ -197,6 +214,8 @@ const props = withDefaults(defineProps<Props>(), {
   muted: false,
   inMix: true,
   showBeatBand: false,
+  showBalanceBand: false,
+  showSideActions: true,
 })
 const emit = defineEmits<{
   (event: 'seek', sec: number): void
@@ -213,6 +232,8 @@ const emit = defineEmits<{
   (event: 'drag-move', payload: { point: GTrackPointRef; timeSec: number; value: number }): void
   /** GT11.4: drag a beat-band edge (base ± beat/2) on the Base graph — sets the point's beatFreqHalf. */
   (event: 'drag-beat-move', payload: { point: GTrackPointRef; beatFreqHalf: number }): void
+  /** VB2.1: drag a balance-corridor edge on the Volume graph — sets the point's stereo balance. */
+  (event: 'drag-balance-move', payload: { point: GTrackPointRef; balance: number }): void
   (event: 'drag-end'): void
   /** GT3.3: double-click on a vertex — open the point parameters dialog. */
   (event: 'edit-point', point: GTrackPointRef): void
@@ -236,8 +257,9 @@ const canvasEl = ref<HTMLCanvasElement | null>(null)
 const overlayEl = ref<HTMLCanvasElement | null>(null)
 // GT3.1: the vertex under the cursor (null = none). GT3.17: tracked regardless of point mode.
 const hoverPoint = ref<GTrackPointRef | null>(null)
-// GT11.4: the beat-band edge (base ± beat/2 at a point) under the cursor, or null. Vertex hover wins.
-const hoverEdge = ref<BeatEdgeRef | null>(null)
+// GT11.4 / VB2.1: the value-axis edge under the cursor (beat band in Base mode, balance corridor in
+// Volume mode), or null. Vertex hover wins. The two shapes are identical; hoverEdge holds either.
+const hoverEdge = ref<BeatEdgeRef | BalanceEdgeRef | null>(null)
 // GT3.13/3.17: cursor VIEWPORT position (clientX/Y) for the hover tooltip; null while not hovering /
 // while dragging. Viewport coords because the tooltip is teleported to <body> + position:fixed.
 const hoverPos = ref<{ x: number; y: number } | null>(null)
@@ -453,6 +475,72 @@ function draw(): void {
       ctx.globalAlpha = 0.22
       ctx.fill()
       ctx.globalAlpha = 1
+    }
+    // VB fix (owner 2026-07-18): the balance corridor draws the L and R channel envelopes as DISTINCT
+    // colours (cyan = L, orange = R), with a light fill between them. Its WIDTH (|volR−volL| =
+    // 2·volume·|balance|) is identical for +balance and −balance, so max/min shading alone made a
+    // left-heavy point look exactly like a right-heavy one — the two coloured lines swap instead. The
+    // per-channel handles are draggable (VB-D3 A: symmetric, volume fixed). 'volume' mode only.
+    if (props.mode === 'volume' && props.showBalanceBand) {
+      const balCh = [
+        { key: 'volR' as const, col: '#fb923c', label: 'R' },
+        { key: 'volL' as const, col: '#38bdf8', label: 'L' },
+      ]
+      // fill between the two channel envelopes — the balance spread (magnitude)
+      ctx.beginPath()
+      for (let i = 0; i < pts.length; i += 1) {
+        const x = timeToX(pts[i]!.timeSec)
+        if (i === 0) ctx.moveTo(x, valueToY(pts[i]!.volR))
+        else ctx.lineTo(x, valueToY(pts[i]!.volR))
+      }
+      for (let i = pts.length - 1; i >= 0; i -= 1) {
+        ctx.lineTo(timeToX(pts[i]!.timeSec), valueToY(pts[i]!.volL))
+      }
+      ctx.closePath()
+      ctx.fillStyle = color
+      ctx.globalAlpha = 0.12
+      ctx.fill()
+      ctx.globalAlpha = 1
+      // each channel as its own coloured envelope line + an L/R label at the right edge
+      for (const ch of balCh) {
+        ctx.beginPath()
+        for (let i = 0; i < pts.length; i += 1) {
+          const x = timeToX(pts[i]!.timeSec)
+          const y = valueToY(pts[i]![ch.key])
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.strokeStyle = ch.col
+        ctx.lineWidth = 1.25
+        ctx.stroke()
+        ctx.fillStyle = ch.col
+        ctx.font = '9px sans-serif'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(ch.label, Math.min(timeToX(pts[pts.length - 1]!.timeSec) + 3, plotX + plotW - 8), valueToY(pts[pts.length - 1]![ch.key]))
+      }
+      // draggable per-channel handles; the hovered/dragged one grows + gets a white ring. Centred
+      // points (volL == volR, no spread) and locked (preparse) voices get none.
+      if (!voice.preparse) {
+        for (let i = 0; i < pts.length; i += 1) {
+          if (pts[i]!.volL === pts[i]!.volR) continue
+          const hx = timeToX(pts[i]!.timeSec)
+          for (const ch of balCh) {
+            const active = (hoverEdge.value?.voiceId === voice.id && hoverEdge.value?.pointIndex === i && hoverEdge.value?.edge === ch.key)
+              || (balanceDragRef?.voiceId === voice.id && balanceDragRef?.pointIndex === i)
+            ctx.beginPath()
+            ctx.arc(hx, valueToY(pts[i]![ch.key]), active ? 3.5 : 2, 0, Math.PI * 2)
+            ctx.fillStyle = ch.col
+            ctx.globalAlpha = active ? 1 : 0.8
+            ctx.fill()
+            ctx.globalAlpha = 1
+            if (active) {
+              ctx.strokeStyle = '#ffffff'
+              ctx.lineWidth = 1.5
+              ctx.stroke()
+            }
+          }
+        }
+      }
     }
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
@@ -722,6 +810,35 @@ function beatEdgeAtPixel(offsetX: number, offsetY: number): BeatEdgeRef | null {
   return best
 }
 
+// VB2.1: find the balance-corridor edge (max/min of volL,volR at a point) nearest a canvas pixel,
+// within HIT_RADIUS_PX. Only in Volume mode with the corridor shown; skips locked (preparse) voices
+// and centred points (volL == volR, edges coincide with the volume line).
+function balanceEdgeAtPixel(offsetX: number, offsetY: number): BalanceEdgeRef | null {
+  if (props.mode !== 'volume' || !props.showBalanceBand) return null
+  const rect = plotRect()
+  if (rect === null || !hasData.value) return null
+  const { plotX, plotY, plotW, plotH } = rect
+  const win = view.value
+  const ax = axis.value
+  let best: BalanceEdgeRef | null = null
+  let bestDist = HIT_RADIUS_PX
+  for (const voice of props.voices) {
+    if (voice.preparse) continue
+    for (let i = 0; i < voice.points.length; i += 1) {
+      const p = voice.points[i]!
+      if (p.volL === p.volR) continue
+      const x = plotX + timeToFraction(p.timeSec, win) * plotW
+      const yR = valueUnitToY(plotY, plotH, valueToUnit(p.volR, ax))
+      const yL = valueUnitToY(plotY, plotH, valueToUnit(p.volL, ax))
+      const dR = Math.hypot(x - offsetX, yR - offsetY)
+      if (dR <= bestDist) { bestDist = dR; best = { voiceId: voice.id, pointIndex: i, edge: 'volR' } }
+      const dL = Math.hypot(x - offsetX, yL - offsetY)
+      if (dL <= bestDist) { bestDist = dL; best = { voiceId: voice.id, pointIndex: i, edge: 'volL' } }
+    }
+  }
+  return best
+}
+
 // GT3.2: map a cursor pixel to (time, mode-value), clamped to the plot + axis range.
 function cursorToTimeValue(offsetX: number, offsetY: number): { timeSec: number; value: number } | null {
   const rect = plotRect()
@@ -748,6 +865,14 @@ let beatDragRef: GTrackPointRef | null = null
 let beatDragStart: { x: number; y: number } | null = null
 let beatDragMoved = false
 
+// VB2.1: separate drag state for a balance-corridor edge — the move sets the point's balance (volume
+// fixed), not the mode value. balanceDragSign captures which channel was louder at drag start (VB-D3
+// A: the sign is preserved; the corridor only changes width).
+let balanceDragRef: GTrackPointRef | null = null
+let balanceDragStart: { x: number; y: number } | null = null
+let balanceDragMoved = false
+let balanceDragSign = 1
+
 function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
   emit('select-point', hit)
   dragging.value = true
@@ -773,6 +898,25 @@ function beginBeatEdgeDrag(aEvent: PointerEvent, edge: BeatEdgeRef): void {
   emit('drag-start', ref_)
 }
 
+// VB2.1: start dragging a balance-corridor edge. Reuses the drag-start/drag-end transaction (one undo
+// unit), but the move maps to the point's balance (via drag-balance-move), not the mode value. The
+// louder-channel sign is captured now and preserved for the whole drag (VB-D3 A).
+function beginBalanceEdgeDrag(aEvent: PointerEvent, edge: BalanceEdgeRef): void {
+  const ref_: GTrackPointRef = { voiceId: edge.voiceId, pointIndex: edge.pointIndex }
+  const voice = props.voices.find((v) => v.id === edge.voiceId)
+  const p = voice?.points[edge.pointIndex]
+  const sign = p === undefined ? 1 : Math.sign(pointBalance(p))
+  balanceDragSign = sign === 0 ? 1 : sign
+  emit('select-point', ref_)
+  dragging.value = true
+  balanceDragRef = ref_
+  balanceDragStart = { x: aEvent.offsetX, y: aEvent.offsetY }
+  balanceDragMoved = false
+  ;(aEvent.currentTarget as HTMLElement).setPointerCapture(aEvent.pointerId)
+  aEvent.preventDefault()
+  emit('drag-start', ref_)
+}
+
 function onPointerDown(aEvent: PointerEvent): void {
   if (!hasData.value || aEvent.button !== 0) return
   // GT10.10 (owner reqs 57-58): NORMAL mode + Ctrl — click a vertex to drag it, click a curve to
@@ -788,6 +932,12 @@ function onPointerDown(aEvent: PointerEvent): void {
       const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
       if (beatEdge !== null) {
         beginBeatEdgeDrag(aEvent, beatEdge)
+        return
+      }
+      // VB2.1: Ctrl-drag a balance-corridor edge to edit the balance (Volume mode), like the beat edge.
+      const balanceEdge = balanceEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
+      if (balanceEdge !== null) {
+        beginBalanceEdgeDrag(aEvent, balanceEdge)
         return
       }
       const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
@@ -821,6 +971,12 @@ function onPointerDown(aEvent: PointerEvent): void {
       beginBeatEdgeDrag(aEvent, beatEdge)
       return
     }
+    // VB2.1: a plain drag of a balance-corridor edge edits the balance, before deselecting.
+    const balanceEdge = balanceEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (balanceEdge !== null) {
+      beginBalanceEdgeDrag(aEvent, balanceEdge)
+      return
+    }
     emit('select-point', null) // deselect on empty space
     return
   }
@@ -845,6 +1001,23 @@ function onPointerMove(aEvent: PointerEvent): void {
     hoverPos.value = null
     return
   }
+  // VB2.1: an active balance-corridor-edge drag maps the cursor amplitude to the point's balance,
+  // keeping the volume line fixed and the louder-channel sign captured at drag start (VB-D3 A).
+  if (balanceDragRef !== null) {
+    const ref_ = balanceDragRef
+    if (!balanceDragMoved && balanceDragStart !== null) {
+      if (Math.hypot(aEvent.offsetX - balanceDragStart.x, aEvent.offsetY - balanceDragStart.y) < DRAG_THRESHOLD_PX) return
+      balanceDragMoved = true
+    }
+    const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
+    const voice = props.voices.find((v) => v.id === ref_.voiceId)
+    const p = voice?.points[ref_.pointIndex]
+    if (tv !== null && p !== undefined) {
+      emit('drag-balance-move', { point: ref_, balance: balanceEdgeToBalance(pointVolume(p), tv.value, balanceDragSign) })
+    }
+    hoverPos.value = null
+    return
+  }
   if (dragRef !== null) {
     // GT10.10: ignore sub-threshold jitter so a plain click stays a click (opens the dialog).
     if (!dragMoved && dragStart !== null) {
@@ -865,7 +1038,7 @@ function onPointerMove(aEvent: PointerEvent): void {
     scheduleDraw()
   }
   // GT11.4: track the hovered beat-band edge (vertex hover wins) for the resize cursor + highlight.
-  const nextEdge = next === null ? beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY) : null
+  const nextEdge = next === null ? (beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY) ?? balanceEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)) : null
   const prevEdge = hoverEdge.value
   if (nextEdge?.voiceId !== prevEdge?.voiceId || nextEdge?.pointIndex !== prevEdge?.pointIndex || nextEdge?.edge !== prevEdge?.edge) {
     hoverEdge.value = nextEdge
@@ -885,6 +1058,19 @@ function onPointerUp(aEvent: PointerEvent): void {
     const moved = beatDragMoved
     beatDragRef = null
     beatDragStart = null
+    dragging.value = false
+    try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
+    if (moved) emit('drag-end')
+    else { emit('drag-cancel'); emit('edit-point', ref_) }
+    return
+  }
+  // VB2.1: finish a balance-corridor-edge drag (commit = one undo unit). A press-release with no
+  // movement opens the point dialog (Balance field), mirroring the beat-edge and vertex behaviour.
+  if (balanceDragRef !== null) {
+    const ref_ = balanceDragRef
+    const moved = balanceDragMoved
+    balanceDragRef = null
+    balanceDragStart = null
     dragging.value = false
     try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
     if (moved) emit('drag-end')
@@ -1133,8 +1319,9 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* GT11.4: over a draggable beat-band edge (base ± beat/2) in Base mode — vertical resize. */
-.gtrack-view__canvas--beat-edge {
+/* GT11.4 / VB2.1: over a draggable value-axis edge (beat band in Base mode, balance corridor in
+   Volume mode) — vertical resize. */
+.gtrack-view__canvas--value-edge {
   cursor: ns-resize;
 }
 

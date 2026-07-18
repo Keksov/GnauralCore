@@ -204,27 +204,49 @@ function signature(schedule: GTrackSchedule): string {
   return JSON.stringify(schedule)
 }
 
-/** project-store PR2.2 (PR-D8): the persistable undo/redo history. Snapshots are plain JSON
- *  (signature() relies on that already); currentSig pins the state the stacks chain to, so a
- *  journal is only ever adopted onto the exact schedule it was exported from. */
+/** UC-D1/UC-D2 (undo-command-log): one undo STEP = the changed-voice deltas of a transaction. The
+ *  editor never adds/removes voices (only their points change), so a step maps voiceId -> the voice
+ *  before and after; undo swaps in `before`, redo swaps in `after`. */
+export interface GTrackVoiceDelta {
+  readonly voiceId: number
+  readonly before: GTrackVoice
+  readonly after: GTrackVoice
+}
+export interface GTrackUndoStep {
+  readonly voices: readonly GTrackVoiceDelta[]
+}
+
+/** project-store PR2.2 (PR-D8) + UC-D3/UC-D5: the persistable undo history, v2 — a compact action log
+ *  (steps of voice-deltas) + a cursor, instead of full-schedule snapshots, so a one-point edit
+ *  persists one voice, not the whole schedule. currentSig pins the state the log chains to, so a
+ *  journal is only ever adopted onto the exact schedule it was exported from. v1 (snapshot) journals
+ *  lack `version` and are rejected by isGTrackUndoJournal -> discarded on load. */
 export interface GTrackUndoJournal {
+  readonly version: 2
   readonly currentSig: string
-  readonly undo: readonly GTrackSchedule[]
-  readonly redo: readonly GTrackSchedule[]
+  readonly cursor: number
+  readonly steps: readonly GTrackUndoStep[]
 }
 
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
-  const candidate = value as { currentSig?: unknown; undo?: unknown; redo?: unknown }
-  const isScheduleArray = (entries: unknown): boolean =>
-    Array.isArray(entries) && entries.every((e) => e !== null && typeof e === 'object' && Array.isArray((e as GTrackSchedule).voices))
-  return typeof candidate.currentSig === 'string' && isScheduleArray(candidate.undo) && isScheduleArray(candidate.redo)
+  const c = value as { version?: unknown; currentSig?: unknown; cursor?: unknown; steps?: unknown }
+  if (c.version !== 2 || typeof c.currentSig !== 'string' || typeof c.cursor !== 'number') return false
+  const isVoiceLike = (v: unknown): boolean =>
+    v !== null && typeof v === 'object' && typeof (v as GTrackVoice).id === 'number' && Array.isArray((v as GTrackVoice).points)
+  return Array.isArray(c.steps) && c.steps.every((s) =>
+    s !== null && typeof s === 'object' && Array.isArray((s as GTrackUndoStep).voices)
+    && (s as GTrackUndoStep).voices.every((d) =>
+      d !== null && typeof d === 'object' && typeof (d as GTrackVoiceDelta).voiceId === 'number'
+      && isVoiceLike((d as GTrackVoiceDelta).before) && isVoiceLike((d as GTrackVoiceDelta).after)))
 }
 
 export class GTrackModel {
   private current: GTrackSchedule
-  private readonly undoStack: GTrackSchedule[] = []
-  private readonly redoStack: GTrackSchedule[] = []
+  // UC-D1: the undo history is a linear action log + a cursor (not two snapshot stacks). steps[0..cursor)
+  // are undoable, steps[cursor..] redoable; a new commit truncates the redo tail and appends.
+  private readonly steps: GTrackUndoStep[] = []
+  private cursor = 0
   private savedSig: string
   private dirtyFlag = false
   // Open-transaction state: the snapshot taken at beginEdit, restored on cancel / pushed on commit.
@@ -245,11 +267,11 @@ export class GTrackModel {
   }
 
   public get canUndo(): boolean {
-    return this.undoStack.length > 0
+    return this.cursor > 0
   }
 
   public get canRedo(): boolean {
-    return this.redoStack.length > 0
+    return this.cursor < this.steps.length
   }
 
   public get inTransaction(): boolean {
@@ -288,14 +310,23 @@ export class GTrackModel {
     this.txnBefore = this.current
   }
 
-  /** Commit the open transaction. If nothing actually changed, it is dropped (no undo entry). */
+  /** Commit the open transaction. If nothing actually changed, it is dropped (no undo entry). The step
+   *  records only the voices whose reference changed (structural sharing -> exactly the edited voices,
+   *  usually one), each as before/after. */
   public commitEdit(): void {
     if (this.txnBefore === null) throw new Error('gtrack: no open transaction')
     const before = this.txnBefore
     this.txnBefore = null
     if (signature(before) === signature(this.current)) return
-    this.undoStack.push(before)
-    this.redoStack.length = 0
+    const afterById = new Map(this.current.voices.map((v) => [v.id, v]))
+    const deltas: GTrackVoiceDelta[] = []
+    for (const bv of before.voices) {
+      const av = afterById.get(bv.id)
+      if (av !== undefined && av !== bv) deltas.push({ voiceId: bv.id, before: bv, after: av })
+    }
+    this.steps.length = this.cursor // drop the redo tail
+    this.steps.push({ voices: deltas })
+    this.cursor = this.steps.length
     this.recomputeDirty()
   }
 
@@ -506,45 +537,59 @@ export class GTrackModel {
 
   public undo(): boolean {
     if (this.txnBefore !== null) throw new Error('gtrack: cannot undo during an open transaction')
-    const previous = this.undoStack.pop()
-    if (previous === undefined) return false
-    this.redoStack.push(this.current)
-    this.current = previous
+    if (this.cursor === 0) return false
+    this.cursor -= 1
+    this.applyDelta(this.steps[this.cursor]!, 'before')
     this.recomputeDirty()
     return true
   }
 
   public redo(): boolean {
     if (this.txnBefore !== null) throw new Error('gtrack: cannot redo during an open transaction')
-    const next = this.redoStack.pop()
-    if (next === undefined) return false
-    this.undoStack.push(this.current)
-    this.current = next
+    if (this.cursor >= this.steps.length) return false
+    this.applyDelta(this.steps[this.cursor]!, 'after')
+    this.cursor += 1
     this.recomputeDirty()
     return true
   }
 
-  // --- Undo journal persistence (project-store PR2.2, PR-D8) -----------------
-
-  /** Bounded snapshot of the undo/redo history for the project's undo.json. */
-  public exportUndoJournal(maxEntries = 50): GTrackUndoJournal {
-    return {
-      currentSig: signature(this.current),
-      undo: this.undoStack.slice(-maxEntries),
-      redo: this.redoStack.slice(-maxEntries),
+  /** Swap a step's voices into `current` (undo -> before, redo -> after), producing a fresh top-level
+   *  reference so the Vue layer re-reads. */
+  private applyDelta(step: GTrackUndoStep, side: 'before' | 'after'): void {
+    if (step.voices.length === 0) return
+    const replacement = new Map(step.voices.map((d) => [d.voiceId, side === 'before' ? d.before : d.after]))
+    this.current = {
+      ...this.current,
+      voices: this.current.voices.map((v) => replacement.get(v.id) ?? v),
     }
   }
 
-  /** Adopt a persisted journal — only when it chains to the CURRENT state (same signature), i.e.
-   *  the file content matches what the journal was exported against. Returns false (no-op) on a
-   *  signature mismatch (e.g. the file changed outside the editor or unsaved edits were lost). */
+  // --- Undo journal persistence (project-store PR2.2, PR-D8) -----------------
+
+  /** Bounded export of the action log for the project's undo.json (v2). Keeps up to `maxEntries` undo
+   *  steps (before the cursor) and `maxEntries` redo steps (after it); the exported cursor is the
+   *  number of kept undo steps. */
+  public exportUndoJournal(maxEntries = 50): GTrackUndoJournal {
+    const undoKeep = Math.min(this.cursor, maxEntries)
+    const redoKeep = Math.min(this.steps.length - this.cursor, maxEntries)
+    const start = this.cursor - undoKeep
+    return {
+      version: 2,
+      currentSig: signature(this.current),
+      cursor: undoKeep,
+      steps: this.steps.slice(start, this.cursor + redoKeep),
+    }
+  }
+
+  /** Adopt a persisted journal — only a v2 journal (UC-D5: v1 snapshot journals are rejected ->
+   *  discarded) that chains to the CURRENT state (same signature), i.e. the file content matches what
+   *  the journal was exported against. Returns false (no-op) otherwise. */
   public adoptUndoJournal(journal: GTrackUndoJournal): boolean {
     if (this.txnBefore !== null) return false
-    if (journal.currentSig !== signature(this.current)) return false
-    this.undoStack.length = 0
-    this.undoStack.push(...journal.undo)
-    this.redoStack.length = 0
-    this.redoStack.push(...journal.redo)
+    if (journal.version !== 2 || journal.currentSig !== signature(this.current)) return false
+    this.steps.length = 0
+    this.steps.push(...journal.steps)
+    this.cursor = Math.max(0, Math.min(journal.cursor, this.steps.length))
     return true
   }
 

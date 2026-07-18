@@ -15,6 +15,10 @@
       <q-btn dense flat round size="sm" icon="grid_view" :aria-label="t('audio.gtrackAllModes')" @click="emit('action', { kind: 'show-all-modes' })">
         <app-tooltip>{{ t('audio.gtrackAllModes') }}</app-tooltip>
       </q-btn>
+      <!-- VS4.1 (owner, VS-D5г): the stacked variant — one lane per voice, all modes checked. -->
+      <q-btn dense flat round size="sm" icon="view_agenda" :aria-label="t('audio.gtrackAllModesStacked')" @click="emit('action', { kind: 'show-all-modes-stacked' })">
+        <app-tooltip>{{ t('audio.gtrackAllModesStacked') }}</app-tooltip>
+      </q-btn>
       <q-btn
         dense flat round size="sm"
         :icon="snapshot.allLanesHidden ? 'visibility' : 'visibility_off'"
