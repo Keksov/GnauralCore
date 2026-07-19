@@ -226,3 +226,70 @@ describe("SpectrogramAudioSource -> worker open-analysis (U1.2)", () => {
     }
   })
 })
+
+describe("worker persistent coarse-tile disk cache (wave-spectrum-cache WC2.2)", () => {
+  const openMsg = (aCacheDir: string, aHash: string) => ({
+    cmd: "open-analysis",
+    analysisId: "wc22",
+    input: FIXTURE_WAV,
+    window: 2048,
+    hop: 512,
+    tileCacheDir: aCacheDir,
+    tileContentHash: aHash,
+  })
+  // zoom>0 on a lazy (magnitude) analysis takes the coarse display-res path — the one we persist.
+  const tileMsg = (aFrameCount: number) => ({
+    cmd: "get-tile",
+    analysisId: "wc22",
+    frameStart: 0,
+    frameCount: aFrameCount,
+    zoom: 3,
+    viewBinCount: 128,
+  })
+
+  test.skipIf(!canRunWorker)("a coarse tile is served from disk on a fresh worker (reload/restart) and a different content hash misses", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "tileblob-"))
+    try {
+      // First worker: cold — computes the STFT and persists the blob.
+      let firstB64 = ""
+      let frameCount = 0
+      const w1 = spawnSpectrogramWorker()
+      try {
+        const open1 = await w1.send(openMsg(cacheDir, "hashA"))
+        expect(open1.ok).toBe(true)
+        frameCount = open1.frameCount as number
+        const t1 = await w1.send(tileMsg(frameCount))
+        expect(t1.ok).toBe(true)
+        expect(t1.diskTileCacheHit).toBe(false) // cold: computed
+        firstB64 = t1.binsB64 as string
+        expect(firstB64.length).toBeGreaterThan(0)
+      } finally {
+        await w1.close()
+      }
+
+      // Second worker = a fresh process (simulates a reload / server restart): the same key is served
+      // from disk with no STFT, and the bytes are identical.
+      const w2 = spawnSpectrogramWorker()
+      try {
+        await w2.send(openMsg(cacheDir, "hashA"))
+        const t2 = await w2.send(tileMsg(frameCount))
+        expect(t2.diskTileCacheHit).toBe(true)
+        expect(t2.binsB64).toBe(firstB64)
+      } finally {
+        await w2.close()
+      }
+
+      // A different content hash must MISS (recompute) — never serve the wrong tile.
+      const w3 = spawnSpectrogramWorker()
+      try {
+        await w3.send(openMsg(cacheDir, "hashB"))
+        const t3 = await w3.send(tileMsg(frameCount))
+        expect(t3.diskTileCacheHit).toBe(false)
+      } finally {
+        await w3.close()
+      }
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  })
+})
