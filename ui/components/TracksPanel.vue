@@ -359,6 +359,23 @@
             />
           </template>
         </div>
+        <!-- Render-loading placeholders (owner req.: a placeholder for EACH graph that will render).
+             The overall wave + spectrum stacks below are BOTH gated on hasSpectrogramData — they need
+             the backend analysis (channel count + duration) before a real view can mount, which for a
+             big plan (e.g. ForestMeditation) is 20-30s after open. While that render is in flight
+             (renderPending) each visible graph gets a track-styled hourglass + message in its own slot,
+             mirroring the real group's show/hidden gating so the layout matches what will appear. -->
+        <div
+          v-if="renderPending && showWaveform && overallMixActive && !overallWaveHidden"
+          class="tracks-panel__graphs-loading"
+          role="status"
+          aria-live="polite"
+          :aria-label="`${t('audio.tracksOverallWave')}: ${t('audio.stageRender')}`"
+          :style="{ height: `${waveformTrackHeights[0] ?? WAVEFORM_TRACK_HEIGHT_DEFAULT}px` }"
+        >
+          <q-spinner-hourglass color="cyan-4" size="32px" />
+          <span class="tracks-panel__graphs-loading-label">{{ t('audio.tracksOverallWave') }} — {{ t('audio.stageRender') }}</span>
+        </div>
         <!-- SF22: waveform tracks above the spectrogram (Audacity-style), sharing the view.
              SF25: same resizers as the spectrogram (mutual divider + uniform bottom handle). -->
         <template v-if="showWaveform && hasSpectrogramData && overallMixActive && !overallWaveHidden">
@@ -461,6 +478,18 @@
         <!-- owner 2026-07-13: all voices excluded from the overall mix -> nothing to render. -->
         <div v-if="hasSpectrogramData && !overallMixActive" class="audio-page__empty text-grey-7">
           {{ t('audio.gtrackMixAllExcluded') }}
+        </div>
+        <!-- Render-loading placeholder for the spectrum graph (peer of the waveform one above). -->
+        <div
+          v-if="renderPending && showSpectrogram && overallMixActive && !overallSpectrumHidden"
+          class="tracks-panel__graphs-loading"
+          role="status"
+          aria-live="polite"
+          :aria-label="`${t('audio.tracksOverallSpectrum')}: ${t('audio.stageRender')}`"
+          :style="{ height: `${spectrogramTrackHeights[0] ?? SPECTROGRAM_TRACK_HEIGHT_DEFAULT}px` }"
+        >
+          <q-spinner-hourglass color="cyan-4" size="32px" />
+          <span class="tracks-panel__graphs-loading-label">{{ t('audio.tracksOverallSpectrum') }} — {{ t('audio.stageRender') }}</span>
         </div>
         <template v-if="showSpectrogram && hasSpectrogramData && overallMixActive && !overallSpectrumHidden">
           <!-- GT11.10 (owner 2026-07-14): fold header bar for the OVERALL spectrogram stack. -->
@@ -1805,13 +1834,22 @@ const backendAnalysis = computed(() => metaSpec.analysis.value)
 // GT7.4-R2 (owner 2026-07-13): bumped after a Save to force the spectrogram/waveform tracks to
 // re-open (fresh render) so they reflect the just-saved edit.
 const spectrogramReloadKey = ref(0)
+// The backend render+analysis that gates the overall graphs (hasSpectrogramData) is in flight. True
+// for exactly the metaSpec.open() span and cleared on BOTH success and failure (finally) so it can
+// never spin forever. Drives the loading-placeholder track shown under the curve lanes while a big
+// plan renders (the overall stacks below can't mount until backendAnalysis gives channel count +
+// duration; SpectrogramView's own isPreparing hourglass is unreachable until then).
+const metaRendering = ref(false)
 async function openMetaAnalysis(path: string | null): Promise<void> {
+  metaRendering.value = path !== null && path !== ''
   await metaSpec.close()
   if (path === null || path === '') return
   try {
     await metaSpec.open({ filePath: path, ...spectrogramStore.analysisParams, channel: 0 })
   } catch {
     // WS/analysis error -> no spectrogram (backend is the only source now)
+  } finally {
+    metaRendering.value = false
   }
 }
 // GT7.4-R2 + owner 2026-07-13: a Save or a voice mute edits the CURRENT .gnaural in place — the
@@ -1842,6 +1880,13 @@ watch(() => audio.gnauralSchedule, (schedule) => {
 })
 // Backend analysis is available -> render the stack.
 const hasSpectrogramData = computed(() => backendAnalysis.value !== null)
+// The backend render/analysis that gates the overall stacks is in flight and nothing is on screen yet
+// (no analysis, no error): show the per-graph loading placeholders. Uses metaRendering (cleared in a
+// finally on success AND failure) rather than metaSpec.preparing, which stays true forever because
+// the headless metaSpec never fetches tiles.
+const renderPending = computed(
+  () => metaRendering.value && !hasSpectrogramData.value && audio.spectrogramError === null,
+)
 // SF9.2: independent per-track heights; length is kept in sync with the track count
 // (1 mono / 2 stereo) by a watch below. Resized by the divider + bottom handle.
 const spectrogramTrackHeights = ref<number[]>(loadStoredSpectrogramTrackHeights())
@@ -3175,6 +3220,22 @@ onBeforeUnmount(() => {
 .tracks-panel__stage {
   align-items: center;
   display: flex;
+}
+
+/* Render-loading placeholder track: styled like a spectrogram track (dark plot bg) with a centred
+   hourglass + message, shown while the backend render/analysis is in flight (see the template). */
+.tracks-panel__graphs-loading {
+  align-items: center;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  width: 100%;
+}
+
+.tracks-panel__graphs-loading-label {
+  font-size: 13px;
 }
 
 .audio-page__empty {
