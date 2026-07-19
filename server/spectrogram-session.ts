@@ -49,6 +49,12 @@ export interface SpectrogramSessionOptions {
   readonly audioSource?: SpectrogramAudioSource
   /** True when this session owns (and should dispose) the manager/source. */
   readonly ownsDependencies?: boolean
+  /**
+   * wave-spectrum-cache WC2.3 (WC-D6): directory for the worker's persistent coarse-tile disk cache
+   * (e.g. <cacheRoot>/spectrogram-overview). Passed to the worker on open-analysis; empty (default)
+   * disables the cache. Injected by the host (MindWaveCore) so the location honours user settings.
+   */
+  readonly tileCacheDir?: string
 }
 
 const numberOf = (aValue: unknown): number => (typeof aValue === "number" ? aValue : Number.NaN)
@@ -227,6 +233,7 @@ export class SpectrogramSession {
   private readonly manager: SpectrogramWorkerManager
   private readonly audioSource: SpectrogramAudioSource
   private readonly ownsDependencies: boolean
+  private readonly tileCacheDir: string
   // Multiple concurrent analyses per session (e.g. stereo L/R = one analysis per
   // channel), keyed by the worker analysisId, kept warm as an LRU cache (SF7.3):
   // spectrogram:close keeps the entry alive; eviction happens on open past the caps.
@@ -240,6 +247,7 @@ export class SpectrogramSession {
     this.manager = aOptions.workerManager ?? new SpectrogramWorkerManager()
     this.audioSource = aOptions.audioSource ?? new SpectrogramAudioSource()
     this.ownsDependencies = aOptions.ownsDependencies ?? aOptions.workerManager === undefined
+    this.tileCacheDir = aOptions.tileCacheDir ?? ""
   }
 
   /** Route one client message; never rejects — failures become an error message. */
@@ -395,6 +403,8 @@ export class SpectrogramSession {
           cmd: "open-analysis",
           analysisId,
           input: wavHandle.wavPath,
+          tileCacheDir: this.tileCacheDir,
+          tileContentHash: wavHandle.contentHash,
           ...toWorkerParams(params),
         }, OPEN_ANALYSIS_TIMEOUT_MS),
         "open-analysis",
@@ -440,6 +450,8 @@ export class SpectrogramSession {
           cmd: "open-analysis",
           analysisId,
           input: existing.wavHandle.wavPath,
+          tileCacheDir: this.tileCacheDir,
+          tileContentHash: existing.wavHandle.contentHash,
           ...toWorkerParams(params),
         }, OPEN_ANALYSIS_TIMEOUT_MS),
         "reconfigure (reopen)",

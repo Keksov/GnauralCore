@@ -198,6 +198,75 @@ describe("SpectrogramSession contract (U1.3)", () => {
     }
   })
 
+  test("WC2.3: open-analysis carries tileCacheDir + the handle's tileContentHash", async () => {
+    const opens: Record<string, unknown>[] = []
+    const mockManager = {
+      send: async (aCmd: Record<string, unknown>) => {
+        if (aCmd.cmd === "open-analysis") {
+          opens.push(aCmd)
+          return {
+            ok: true, sampleRate: 44100, windowSize: 2048, hopSize: 512, fftLength: 2048,
+            zeroPaddingFactor: 1, binCount: 4, frameCount: 8, durationS: 1,
+            data: "magnitude", fscale: "log", scale: "log", startHz: 0, stopHz: 22050, mode: "combined",
+          }
+        }
+        return { ok: true }
+      },
+      shutdown: async () => undefined,
+    }
+    const mockSource = {
+      acquire: async () => ({ wavPath: "/fake.wav", mtimeMs: 1, contentHash: "content-abc", release: async () => undefined }),
+      dispose: async () => undefined,
+    }
+    const session = new SpectrogramSession({
+      resolveSource: async () => wavSource,
+      workerManager: mockManager as unknown as SpectrogramWorkerManager,
+      audioSource: mockSource as unknown as SpectrogramAudioSource,
+      tileCacheDir: "C:/cache/spectrogram-overview",
+    })
+    try {
+      await session.handle({ type: "spectrogram:open", requestId: "o", window: 2048, hop: 512 })
+      expect(opens.length).toBe(1)
+      expect(opens[0]!.tileCacheDir).toBe("C:/cache/spectrogram-overview")
+      expect(opens[0]!.tileContentHash).toBe("content-abc")
+    } finally {
+      await session.dispose()
+    }
+  })
+
+  test("WC2.3: tileCacheDir defaults to empty (cache disabled) when the host does not inject one", async () => {
+    const opens: Record<string, unknown>[] = []
+    const mockManager = {
+      send: async (aCmd: Record<string, unknown>) => {
+        if (aCmd.cmd === "open-analysis") {
+          opens.push(aCmd)
+          return {
+            ok: true, sampleRate: 44100, windowSize: 2048, hopSize: 512, fftLength: 2048,
+            zeroPaddingFactor: 1, binCount: 4, frameCount: 8, durationS: 1,
+            data: "magnitude", fscale: "log", scale: "log", startHz: 0, stopHz: 22050, mode: "combined",
+          }
+        }
+        return { ok: true }
+      },
+      shutdown: async () => undefined,
+    }
+    const mockSource = {
+      acquire: async () => ({ wavPath: "/fake.wav", mtimeMs: 1, contentHash: "content-abc", release: async () => undefined }),
+      dispose: async () => undefined,
+    }
+    const session = new SpectrogramSession({
+      resolveSource: async () => wavSource,
+      workerManager: mockManager as unknown as SpectrogramWorkerManager,
+      audioSource: mockSource as unknown as SpectrogramAudioSource,
+    })
+    try {
+      await session.handle({ type: "spectrogram:open", requestId: "o", window: 2048, hop: 512 })
+      expect(opens[0]!.tileCacheDir).toBe("")
+    } finally {
+      await session.dispose()
+    }
+  })
+
   test("GT4.3: soloVoiceIds is passed to acquire and keys distinct warm analyses", async () => {
     const acquired: Array<readonly number[] | undefined> = []
     let releaseCount = 0

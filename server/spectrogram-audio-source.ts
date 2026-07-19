@@ -64,6 +64,13 @@ export interface SpectrogramWavHandle {
    * pass-through wav/flac the wavPath is stable across edits, so mtime is the only signal.
    */
   readonly mtimeMs: number
+  /**
+   * wave-spectrum-cache WC2.3: a stable identity for the analyzed audio, sent to the worker as
+   * `tileContentHash` so the persistent coarse-tile disk cache is content-addressed. For a .gnaural
+   * it is sha1(schedule content + solo set) — a touch reuses tiles, an edit or a different solo does
+   * not. For a pass-through wav/flac it is sha1(kind + path + mtime).
+   */
+  readonly contentHash: string
   /** Release this acquisition; deletes the temp render when the last holder releases. */
   release(): Promise<void>
 }
@@ -160,6 +167,18 @@ export class SpectrogramAudioSource {
     const solo = [...new Set(aSoloVoiceIds)].sort((a, b) => a - b)
     const key = `${aFileKind}:${resolvedPath}:${mtimeMs}:solo=${solo.join(",")}`
 
+    // wave-spectrum-cache WC2.3: content-address identity for the tile disk cache. A .gnaural hashes
+    // its schedule content (+ solo), so a touch reuses tiles but an edit/solo change does not; a
+    // pass-through wav/flac hashes kind+path+mtime (mtime is the only edit signal for a raw file).
+    const contentHash =
+      aFileKind === "gnaural"
+        ? createHash("sha1")
+            .update(await readFile(resolvedPath, "utf8"))
+            .update("|solo:")
+            .update(solo.join(","))
+            .digest("hex")
+        : createHash("sha1").update(`${aFileKind}|${resolvedPath}|${mtimeMs}`).digest("hex")
+
     let entry = this.cache.get(key)
     if (entry === undefined) {
       entry = await this.createEntry(resolvedPath, aFileKind, solo)
@@ -188,6 +207,7 @@ export class SpectrogramAudioSource {
       fileKind: aFileKind,
       rendered: acquired.tempDir !== null,
       mtimeMs,
+      contentHash,
       release,
     }
   }
