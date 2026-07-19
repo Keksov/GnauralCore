@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs"
-import { resolve } from "node:path"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 import { describe, expect, test } from "bun:test"
 
 import { resolveSpectrogramWorkerExe, spawnSpectrogramWorker } from "./spectrogram-bridge"
-import { SpectrogramAudioSource, type GnauralRenderFn } from "./spectrogram-audio-source"
+import { SpectrogramAudioSource, type GnauralRenderFn, type SpectrogramWavCacheFn } from "./spectrogram-audio-source"
 
 const FIXTURE_WAV = resolve(
   import.meta.dir,
@@ -94,6 +97,106 @@ describe("SpectrogramAudioSource (U1.2)", () => {
     await second.release()
     expect(existsSync(second.wavPath)).toBe(false)
     expect(source.cachedCount).toBe(0)
+  })
+})
+
+describe("SpectrogramAudioSource + persistent disk cache (wave-spectrum-cache WC1.2/WC1.3)", () => {
+  // A stand-in for MindWaveCore's disk cache: keyed by (content fingerprint, discriminator), it runs
+  // the render closure only on a miss and returns a WAV OWNED by the cache (the source must not
+  // delete it). renders counts how many times a fresh render actually ran.
+  const makeFakeWavCache = () => {
+    const store = new Map<string, string>()
+    const requests: Array<{ sourcePath: string; fingerprint: string; discriminator: string }> = []
+    const dirs: string[] = []
+    const state = { renders: 0 }
+    const fn: SpectrogramWavCacheFn = async ({ sourcePath, fingerprint, discriminator, render }) => {
+      requests.push({ sourcePath, fingerprint, discriminator })
+      const key = `${fingerprint}:${discriminator}`
+      const hit = store.get(key)
+      if (hit !== undefined) return hit
+      const dir = await mkdtemp(join(tmpdir(), "fake-wavcache-"))
+      dirs.push(dir)
+      const out = join(dir, "cached.wav")
+      await render(out)
+      state.renders += 1
+      store.set(key, out)
+      return out
+    }
+    const cleanup = async () => {
+      await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true }).catch(() => undefined)))
+    }
+    return { fn, requests, state, cleanup }
+  }
+
+  const makeGnauralFixture = async (aXml: string): Promise<{ path: string; cleanup: () => Promise<void> }> => {
+    const dir = await mkdtemp(join(tmpdir(), "gnaural-src-"))
+    const path = join(dir, "schedule.gnaural")
+    await writeFile(path, aXml)
+    return { path, cleanup: () => rm(dir, { recursive: true, force: true }).catch(() => undefined) }
+  }
+
+  test.skipIf(!fixtureExists)("routes the gnaural render through the cache, keyed by content sha1; not deleted on release", async () => {
+    const cache = makeFakeWavCache()
+    const source = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(), wavCache: cache.fn })
+    const xml = "<gnaural><loops>5</loops></gnaural>"
+    const fx = await makeGnauralFixture(xml)
+    try {
+      const handle = await source.acquire(fx.path, "gnaural")
+      expect(cache.requests.length).toBe(1)
+      expect(cache.requests[0]!.fingerprint).toBe(createHash("sha1").update(xml).digest("hex"))
+      expect(cache.requests[0]!.discriminator).toBe("single-loop")
+      expect(handle.rendered).toBe(false) // cache-owned, not a source temp render
+      expect(existsSync(handle.wavPath)).toBe(true)
+
+      await handle.release()
+      expect(existsSync(handle.wavPath)).toBe(true) // the source must NOT delete a cache-owned WAV
+      expect(source.cachedCount).toBe(0)
+    } finally {
+      await fx.cleanup()
+      await cache.cleanup()
+    }
+  })
+
+  test.skipIf(!fixtureExists)("content-addressed reuse across source instances (reload/restart): renders once", async () => {
+    const cache = makeFakeWavCache()
+    const fx = await makeGnauralFixture("<gnaural/>")
+    try {
+      const s1 = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(), wavCache: cache.fn })
+      const h1 = await s1.acquire(fx.path, "gnaural")
+      const firstPath = h1.wavPath
+      await h1.release()
+      await s1.dispose() // simulates the socket closing / server restart
+
+      const s2 = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(), wavCache: cache.fn })
+      const h2 = await s2.acquire(fx.path, "gnaural")
+      expect(cache.state.renders).toBe(1) // second open reused the cached WAV — no re-render
+      expect(h2.wavPath).toBe(firstPath)
+      await h2.release()
+    } finally {
+      await fx.cleanup()
+      await cache.cleanup()
+    }
+  })
+
+  test.skipIf(!fixtureExists)("distinct solo sets produce distinct cache discriminators (normalized)", async () => {
+    const cache = makeFakeWavCache()
+    const source = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender(), wavCache: cache.fn })
+    const fx = await makeGnauralFixture("<gnaural/>")
+    try {
+      const a = await source.acquire(fx.path, "gnaural", [2, 1, 2]) // normalized -> 1,2
+      const b = await source.acquire(fx.path, "gnaural", [3])
+      expect(cache.requests.map((r) => r.discriminator).sort()).toEqual([
+        "single-loop|solo:1,2",
+        "single-loop|solo:3",
+      ])
+      expect(a.wavPath).not.toBe(b.wavPath)
+      expect(cache.state.renders).toBe(2)
+      await a.release()
+      await b.release()
+    } finally {
+      await fx.cleanup()
+      await cache.cleanup()
+    }
   })
 })
 

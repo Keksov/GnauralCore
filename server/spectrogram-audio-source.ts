@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs"
 import { mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
@@ -25,6 +25,21 @@ import type { AudioFileKind } from "./protocol"
 export type GnauralRenderFn = (aInputPath: string, aOutputWavPath: string) => Promise<void>
 export type StatFileFn = (aPath: string) => Promise<{ readonly mtimeMs: number }>
 
+/**
+ * wave-spectrum-cache WC1.2/WC1.3 (WC-D2/WC-D4): an injectable PERSISTENT (disk) render cache. Given
+ * the source identity — path (provenance), content fingerprint (sha1 of the .gnaural, so a touch /
+ * no-op re-save reuses the render) and a discriminator (solo set) — plus a `render` closure that
+ * produces the WAV on a cache miss, it returns a WAV path OWNED BY THE CACHE. The audio source must
+ * NOT delete that path (unlike its own mkdtemp renders). When no wavCache is injected, the audio
+ * source falls back to its ephemeral per-open render (unchanged behavior, e.g. in tests).
+ */
+export type SpectrogramWavCacheFn = (aRequest: {
+  readonly sourcePath: string
+  readonly fingerprint: string
+  readonly discriminator: string
+  readonly render: (aOutWavPath: string) => Promise<void>
+}) => Promise<string>
+
 export interface SpectrogramAudioSourceOptions {
   readonly gnauralExePath?: string
   readonly gnauralCwd?: string
@@ -33,6 +48,8 @@ export interface SpectrogramAudioSourceOptions {
   readonly renderGnaural?: GnauralRenderFn
   /** Injectable stat (tests); defaults to node:fs/promises stat. */
   readonly statFile?: StatFileFn
+  /** Persistent disk render cache (wave-spectrum-cache); when absent, renders are ephemeral. */
+  readonly wavCache?: SpectrogramWavCacheFn
 }
 
 export interface SpectrogramWavHandle {
@@ -111,6 +128,7 @@ export class SpectrogramAudioSource {
   private readonly tempRoot: string
   private readonly renderGnaural: GnauralRenderFn
   private readonly statFile: StatFileFn
+  private readonly wavCache?: SpectrogramWavCacheFn
   private readonly cache = new Map<string, CacheEntry>()
 
   constructor(aOptions: SpectrogramAudioSourceOptions = {}) {
@@ -121,6 +139,7 @@ export class SpectrogramAudioSource {
     this.renderGnaural =
       aOptions.renderGnaural ?? defaultRenderGnaural(this.gnauralExePath, this.gnauralCwd)
     this.statFile = aOptions.statFile ?? defaultStatFile
+    this.wavCache = aOptions.wavCache
   }
 
   /**
@@ -183,32 +202,64 @@ export class SpectrogramAudioSource {
       return { wavPath: aResolvedPath, tempDir: null, refs: 0 }
     }
     if (aFileKind === "gnaural") {
+      // wave-spectrum-cache WC1.3 (WC-D2): with a persistent disk cache, key the render on the
+      // .gnaural CONTENT (sha1) + solo discriminator, so a re-open across a reload/restart reuses the
+      // cached WAV instead of re-spawning Gnaural. The returned path is owned by the cache (tempDir
+      // null -> never deleted here). The single-loop key namespace matches the HTTP render path, so
+      // an unchanged full-mix schedule shares one WAV with the audio player/export.
+      if (this.wavCache !== undefined) {
+        const sourceXml = await readFile(aResolvedPath, "utf8")
+        const fingerprint = createHash("sha1").update(sourceXml).digest("hex")
+        const discriminator =
+          aSoloVoiceIds.length > 0 ? `single-loop|solo:${aSoloVoiceIds.join(",")}` : "single-loop"
+        const wavPath = await this.wavCache({
+          sourcePath: aResolvedPath,
+          fingerprint,
+          discriminator,
+          render: (aOutWavPath) => this.renderToWav(aResolvedPath, aSoloVoiceIds, aOutWavPath),
+        })
+        return { wavPath, tempDir: null, refs: 0 }
+      }
+
       const tempDir = await mkdtemp(join(this.tempRoot, "mindwave-spectrogram-"))
       const wavPath = join(tempDir, "source.wav")
-      // GT4.3: for a solo render, mute the non-solo voices in a temp copy and render that.
-      // GT10.11 (owner req. 59): that copy MUST live next to the source (not in tempDir) —
-      // Gnaural resolves preparse generators + pcm audio files relative to the schedule's dir.
-      let soloInput: string | null = null
       try {
-        let renderInput = aResolvedPath
-        if (aSoloVoiceIds.length > 0) {
-          const sourceXml = await readFile(aResolvedPath, "utf8")
-          soloInput = join(dirname(aResolvedPath), `.solo-${process.pid}-${randomUUID()}.gnaural`)
-          await writeFile(soloInput, muteNonSoloVoices(sourceXml, aSoloVoiceIds))
-          renderInput = soloInput
-        }
-        await this.renderGnaural(renderInput, wavPath)
+        await this.renderToWav(aResolvedPath, aSoloVoiceIds, wavPath)
       } catch (error) {
         await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
         throw error
-      } finally {
-        if (soloInput !== null) {
-          await unlink(soloInput).catch(() => undefined)
-        }
       }
       return { wavPath, tempDir, refs: 0 }
     }
     throw new Error(`spectrogram: unsupported audio kind "${aFileKind}"`)
+  }
+
+  /**
+   * Render a .gnaural to a single-loop WAV at aOutWavPath (via the injected/default renderGnaural).
+   * GT4.3: for a solo render, mute the non-solo voices in a temp copy and render that.
+   * GT10.11 (owner req. 59): the solo copy MUST live next to the source (not in a temp dir) — Gnaural
+   * resolves preparse generators + pcm audio files relative to the schedule's own directory.
+   */
+  private async renderToWav(
+    aResolvedPath: string,
+    aSoloVoiceIds: readonly number[],
+    aOutWavPath: string,
+  ): Promise<void> {
+    let soloInput: string | null = null
+    try {
+      let renderInput = aResolvedPath
+      if (aSoloVoiceIds.length > 0) {
+        const sourceXml = await readFile(aResolvedPath, "utf8")
+        soloInput = join(dirname(aResolvedPath), `.solo-${process.pid}-${randomUUID()}.gnaural`)
+        await writeFile(soloInput, muteNonSoloVoices(sourceXml, aSoloVoiceIds))
+        renderInput = soloInput
+      }
+      await this.renderGnaural(renderInput, aOutWavPath)
+    } finally {
+      if (soloInput !== null) {
+        await unlink(soloInput).catch(() => undefined)
+      }
+    }
   }
 
   /** Number of cached (live) entries — for tests/diagnostics. */
