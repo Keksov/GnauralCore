@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -196,6 +196,39 @@ describe("SpectrogramAudioSource + persistent disk cache (wave-spectrum-cache WC
     } finally {
       await fx.cleanup()
       await cache.cleanup()
+    }
+  })
+})
+
+describe("content-hash invalidation (wave-spectrum-cache WC3.2)", () => {
+  test.skipIf(!fixtureExists)("handle.contentHash is stable across a touch and changes on an edit / solo change", async () => {
+    const source = new SpectrogramAudioSource({ renderGnaural: copyFixtureAsRender() })
+    const dir = await mkdtemp(join(tmpdir(), "wc32-"))
+    const path = join(dir, "s.gnaural")
+    try {
+      await writeFile(path, "<gnaural><loops>3</loops></gnaural>")
+      const h1 = await source.acquire(path, "gnaural")
+      await h1.release()
+
+      // touch: bump mtime, identical content -> same identity (content-addressed cache stays valid).
+      const future = new Date(Date.now() + 5000)
+      await utimes(path, future, future)
+      const h2 = await source.acquire(path, "gnaural")
+      await h2.release()
+      expect(h2.contentHash).toBe(h1.contentHash)
+
+      // edit: content changes -> new identity -> the tile/render caches recompute.
+      await writeFile(path, "<gnaural><loops>3</loops><voice/></gnaural>")
+      const h3 = await source.acquire(path, "gnaural")
+      await h3.release()
+      expect(h3.contentHash).not.toBe(h1.contentHash)
+
+      // a different solo set is a different identity too.
+      const hSolo = await source.acquire(path, "gnaural", [1])
+      await hSolo.release()
+      expect(hSolo.contentHash).not.toBe(h3.contentHash)
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined)
     }
   })
 })
