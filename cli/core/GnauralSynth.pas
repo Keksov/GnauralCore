@@ -5,7 +5,7 @@ unit GnauralSynth;
 interface
 
 uses
-    SysUtils, Math, SyncObjs,
+    SysUtils, Classes, Math, SyncObjs,
     GnauralSchedule,
     GnauralVoiceSynth,
     GnauralAudioFileReader;
@@ -62,6 +62,13 @@ public
     function    getCurrentLoop: Integer;
     function    isCompleted: Boolean;
     function    getVoiceCount: Integer;
+
+    // PS2.1 (synth-parallel-render): offline-only. canRenderParallel = single-loop && all voices
+    // binaural/PCM (their update is decoupled from per-sample state). renderOfflineData renders the
+    // whole 16-bit stereo stream: the all-normal BULK via a voice-parallel path (aThreads workers),
+    // the completion/wrap TAIL via the unchanged fillBuffer — bit-identical to the sequential render.
+    function    canRenderParallel: Boolean;
+    function    renderOfflineData(aStream: TStream; aThreads: Integer): Boolean;
     end;
 
 implementation
@@ -684,6 +691,194 @@ begin
                 Inc(FcurrentSampleCount, BB_UPDATE_PERIOD);
         end;
     end; // for each frame
+end;
+
+{*******************************************************************************
+* canRenderParallel (PS2.1 / PS-D8) — offline parallel path is usable only when the schedule is
+* single-loop AND every voice is binaural or PCM (their periodic-update is decoupled from per-sample
+* state). iso/pink/water/external stay on the sequential fillBuffer (fallback).
+*******************************************************************************}
+function TGnauralSynth.canRenderParallel: Boolean;
+var
+    v: Integer;
+    vt: TVoiceType;
+begin
+    Result := False;
+    if Fschedule = nil then Exit;
+    if Fschedule.LoopCount <> 1 then Exit;
+    for v := 0 to FvoiceCount - 1 do
+    begin
+        if Fschedule.getVoice(v).IsExternalStdin then Exit;
+        vt := Fschedule.getVoice(v).VoiceType;
+        if (vt <> vtBinaural) and (vt <> vtPCM) then Exit;
+    end;
+    Result := True;
+end;
+
+{*******************************************************************************
+* renderOfflineData (PS2.1) — render the whole 16-bit stereo stream. The all-normal BULK (every
+* frame strictly before completion, no loop-wrap) is produced via a voice-parallel 3-pass path;
+* the completion/wrap TAIL runs through the unchanged fillBuffer (bit-identical there by construction).
+* Returns False without writing anything if the parallel path does not apply (caller renders
+* sequentially). aThreads is the worker count for the per-sample pass (1 = sequential; PS2.1 Stage A).
+*******************************************************************************}
+function TGnauralSynth.renderOfflineData(aStream: TStream; aThreads: Integer): Boolean;
+const
+    BLK   = 4096;
+    TICKS = BLK div BB_UPDATE_PERIOD;   // 256
+type
+    TVoiceCtrl = record
+        LfacL, LfacR, volL, volR: Double;
+        pcmPos: Cardinal;
+    end;
+var
+    v, i, k, tick, bi, bulkBlocks: Integer;
+    Emin, completionFrame, bulkFrames: Int64;
+    csc: Cardinal;
+    ctrl: array of array of TVoiceCtrl;    // [voice][tick]
+    accL, accR: array of array of Double;  // [voice][frame]
+    outBuf, tailBuf: array of SmallInt;    // BLK*2
+    voice: TVoice;
+    entry: TScheduleEntry;
+    ce: Integer;
+    factor, bfreq, bhalf: Double;
+    sL, sR, sumL, sumR: Double;
+    outL, outR: SmallInt;
+begin
+    Result := False;
+    if not canRenderParallel then Exit;
+    // PS2.1 Stage A: the parallel STRUCTURE is bit-identical but not yet threaded, so it only pays off
+    // once the per-sample pass runs on workers (Stage B). Until then stay dormant (caller falls back to
+    // the sequential fillBuffer) unless the knob explicitly asks for >1 thread — which exercises the
+    // structure for verification.
+    if aThreads <= 1 then Exit;
+
+    // Single-loop completion tick: first update tick where currentSampleCount > min last-entry end.
+    Emin := High(Int64);
+    for v := 0 to FvoiceCount - 1 do
+    begin
+        voice := Fschedule.getVoice(v);
+        if voice.EntryCount > 0 then
+            if voice.getEntry(voice.EntryCount - 1).absoluteEnd < Emin then
+                Emin := voice.getEntry(voice.EntryCount - 1).absoluteEnd;
+    end;
+    if Emin = High(Int64) then Exit;
+    completionFrame := ((Emin div BB_UPDATE_PERIOD) + 1) * BB_UPDATE_PERIOD;
+    bulkBlocks := (completionFrame div BLK) - 1;   // conservative: a full block before completion
+    if bulkBlocks < 1 then Exit;                   // too short to bother -> caller renders sequentially
+    bulkFrames := Int64(bulkBlocks) * BLK;
+
+    SetLength(ctrl, FvoiceCount, TICKS);
+    SetLength(accL, FvoiceCount, BLK);
+    SetLength(accR, FvoiceCount, BLK);
+    SetLength(outBuf, BLK * 2);
+    SetLength(tailBuf, BLK * 2);
+    Result := True;
+
+    for bi := 0 to bulkBlocks - 1 do
+    begin
+        // (a) sequential control pass: periodic-update -> per-voice per-tick snapshot.
+        for tick := 0 to TICKS - 1 do
+        begin
+            csc := Cardinal((Cardinal(bi) * TICKS + Cardinal(tick)) * BB_UPDATE_PERIOD);
+            for v := 0 to FvoiceCount - 1 do
+            begin
+                voice := Fschedule.getVoice(v);
+                ce := FvoiceStates[v].FcurEntry;
+                while (ce > 0) and (csc < voice.getEntry(ce).absoluteStart) do Dec(ce);
+                while (ce < voice.EntryCount - 1) and (csc > voice.getEntry(ce).absoluteEnd) do Inc(ce);
+                FvoiceStates[v].FcurEntry := ce;
+                entry := voice.getEntry(ce);
+                if entry.duration > 0 then
+                    factor := (csc - entry.absoluteStart) / (entry.duration * BB_AUDIOSAMPLERATE)
+                else
+                    factor := 0;
+                ctrl[v][tick].volL := entry.volLstart + entry.volLspread * factor;
+                ctrl[v][tick].volR := entry.volRstart + entry.volRspread * factor;
+                if voice.VoiceType = vtBinaural then
+                begin
+                    bfreq := entry.basefreqStart + entry.basefreqSpread * factor;
+                    bhalf := entry.beatfreqHalfStart + entry.beatfreqHalfSpread * factor;
+                    ctrl[v][tick].LfacL := (bfreq + bhalf) * BB_SAMPLE_FACTOR;
+                    ctrl[v][tick].LfacR := (bfreq - bhalf) * BB_SAMPLE_FACTOR;
+                end
+                else // vtPCM
+                begin
+                    if Length(FvoiceStates[v].FpcmData) > 0 then
+                    begin
+                        if csc >= entry.absoluteStart then
+                            ctrl[v][tick].pcmPos := csc - entry.absoluteStart
+                        else
+                            ctrl[v][tick].pcmPos := 0;
+                    end;
+                end;
+            end;
+        end;
+
+        // (b) per-voice per-sample pass (Stage A: sequential; Stage B threads this loop over v).
+        for v := 0 to FvoiceCount - 1 do
+        begin
+            voice := Fschedule.getVoice(v);
+            if FvoiceStates[v].Fmuted then
+            begin
+                for k := 0 to BLK - 1 do begin accL[v][k] := 0; accR[v][k] := 0; end;
+                Continue;
+            end;
+            for k := 0 to BLK - 1 do
+            begin
+                i := k div BB_UPDATE_PERIOD;
+                if (k mod BB_UPDATE_PERIOD) = 0 then
+                begin
+                    FvoiceStates[v].FcurBeatfreqLfactor := ctrl[v][i].LfacL;
+                    FvoiceStates[v].FcurBeatfreqRfactor := ctrl[v][i].LfacR;
+                    if voice.VoiceType = vtPCM then
+                        FvoiceStates[v].FpcmPos := ctrl[v][i].pcmPos;
+                end;
+                synthVoiceSample(FvoiceStates[v], voice.VoiceType, sL, sR);
+                if voice.Mono then
+                begin
+                    sL := (sL + sR) * 0.5;
+                    sR := sL;
+                end;
+                accL[v][k] := sL * ctrl[v][i].volL;
+                accR[v][k] := sR * ctrl[v][i].volR;
+            end;
+        end;
+
+        // (c) sequential sum in fixed voice order + master gain + clamp -> output block.
+        for k := 0 to BLK - 1 do
+        begin
+            sumL := 0;
+            sumR := 0;
+            for v := 0 to FvoiceCount - 1 do
+            begin
+                sumL := sumL + accL[v][k];
+                sumR := sumR + accR[v][k];
+            end;
+            outL := SmallInt(Max(-32767, Min(32767, Round(sumL * FmasterVolLeft))));
+            outR := SmallInt(Max(-32767, Min(32767, Round(sumR * FmasterVolRight))));
+            if not FstereoSwap then
+            begin
+                outBuf[k * 2]     := outL;
+                outBuf[k * 2 + 1] := outR;
+            end
+            else
+            begin
+                outBuf[k * 2]     := outR;
+                outBuf[k * 2 + 1] := outL;
+            end;
+        end;
+        aStream.WriteBuffer(outBuf[0], BLK * 2 * SizeOf(SmallInt));
+    end;
+
+    // Handoff: shared timeline state = bulk end; completion/wrap TAIL via the unchanged fillBuffer.
+    FcurrentSampleCount := Cardinal(bulkFrames);
+    FupdatePeriod := 1;
+    while not Fcompleted do
+    begin
+        fillBuffer(@tailBuf[0], BLK);
+        aStream.WriteBuffer(tailBuf[0], BLK * 2 * SizeOf(SmallInt));
+    end;
 end;
 
 { Real-time control methods }

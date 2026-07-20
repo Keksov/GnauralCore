@@ -90,19 +90,30 @@ var
     buf: array[0..RENDER_FRAMES * WAV_CHANNELS - 1] of SmallInt;
     dataSize: Cardinal;
     chunkBytes: Cardinal;
+    threads: Integer;
 begin
     fs := TFileStream.Create(aFileName, fmCreate);
     try
-        // Write placeholder header (will be patched at end)
+        // Write placeholder header (44 bytes; patched at end)
         writeHeader(fs, 0);
 
-        dataSize := 0;
-        while not Fsynth.isCompleted do
+        // PS2.1 (synth-parallel-render): the voice-parallel offline path when the schedule qualifies
+        // (single-loop, all binaural/PCM) and GNAURAL_RENDER_THREADS asks for >1; else the sequential
+        // loop. Bit-identical either way. Default 1 keeps production on the sequential path until the
+        // worker pool (Stage B) lands.
+        threads := StrToIntDef(GetEnvironmentVariable('GNAURAL_RENDER_THREADS'), 1);
+        if Fsynth.renderOfflineData(fs, threads) then
+            dataSize := Cardinal(fs.Position - 44)
+        else
         begin
-            Fsynth.fillBuffer(@buf[0], RENDER_FRAMES);
-            chunkBytes := RENDER_FRAMES * WAV_BLOCK_ALIGN;
-            fs.WriteBuffer(buf, chunkBytes);
-            Inc(dataSize, chunkBytes);
+            dataSize := 0;
+            while not Fsynth.isCompleted do
+            begin
+                Fsynth.fillBuffer(@buf[0], RENDER_FRAMES);
+                chunkBytes := RENDER_FRAMES * WAV_BLOCK_ALIGN;
+                fs.WriteBuffer(buf, chunkBytes);
+                Inc(dataSize, chunkBytes);
+            end;
         end;
 
         // Patch header with actual data size
