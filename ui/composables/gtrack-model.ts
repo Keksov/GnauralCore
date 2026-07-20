@@ -314,6 +314,15 @@ export class GTrackModel {
     return this.history.cursor < this.history.steps.length
   }
 
+  /** UG3.1: the full in-memory action log + cursor, read-only — the operations panel renders it. */
+  public get historySteps(): readonly GTrackUndoStep[] {
+    return this.history.steps
+  }
+
+  public get historyCursor(): number {
+    return this.history.cursor
+  }
+
   /** UG2.1: signature of the saved baseline this model was built from (or last markSaved). Used by
    *  the lanes content guard to recognize a re-emit of the unchanged file. */
   public get savedSignature(): string {

@@ -104,6 +104,19 @@
                duplicated gestures already available: Select = the default (plain drag moves a vertex),
                Add = Ctrl+click a curve, Delete = the Delete/Backspace hotkey on the selection. -->
           <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
+          <!-- UG3.1 (undo-global-journal): «Журнал операций» toggle — the AudioPage-hosted @panel
+               with the undo action log (two-step rollback). Only meaningful for a gnaural editor. -->
+          <q-btn
+            v-if="audio.displayMode === 'gnaural'"
+            dense flat round size="sm"
+            icon="history"
+            :color="undoJournalPanel.open ? 'primary' : undefined"
+            :aria-label="t('audio.undoJournalPanel')"
+            :aria-expanded="undoJournalPanel.open"
+            @click="undoJournalPanel.open = !undoJournalPanel.open"
+          >
+            <app-tooltip>{{ t('audio.undoJournalPanel') }}</app-tooltip>
+          </q-btn>
           <!-- PW5.3: «Список треков» toggle — RIGHTMOST in the toolbar, always visible (incl. wav/flac). -->
           <q-btn
             dense flat round size="sm"
@@ -1230,6 +1243,7 @@ import GTrackView from './GTrackView.vue'
 import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
+import { useUndoJournalPanelState } from '../stores/undo-journal-panel'
 import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-overrides'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
@@ -1375,6 +1389,8 @@ const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.vi
 // PW5.6c: «Список треков» is hosted at the AudioPage level (dockable full editor height, cross-tab);
 // this shared store is toggled by the header button below.
 const tracksListPanel = useTracksListPanelState()
+// UG3.1: «Журнал операций» — the same AudioPage-hosted pattern; the toolbar button only toggles.
+const undoJournalPanel = useUndoJournalPanelState()
 
 // GT9.2 (owner req. 42, GT-D21): schedule-problems (lint) panel. Diagnostics are live from the
 // composable (re-linted on every edit). Clicking one navigates to the offending point.

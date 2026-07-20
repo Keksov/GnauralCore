@@ -9,7 +9,7 @@ import type { GnauralScheduleData } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, type GTrackPoint, type GTrackSchedule, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
@@ -549,6 +549,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const dirty = ref(false)
   const canUndo = ref(false)
   const canRedo = ref(false)
+  // UG3.1 (req 3): a reactive mirror of the action log for the operations panel. The model mutates
+  // its history container in place, so a fresh array copy per refresh is what makes Vue re-render.
+  const undoSteps = shallowRef<readonly GTrackUndoStep[]>([])
+  const undoCursor = ref(0)
   // PR2.2 (PR-D8): every user-edit path already funnels through refreshEditState(), so it doubles
   // as the undo-journal persist hook. The model rebuild (and journal adoption itself) pass false —
   // persisting there would overwrite the stored journal with an empty baseline before it is adopted.
@@ -557,6 +561,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     dirty.value = m?.isDirty ?? false
     canUndo.value = m?.canUndo ?? false
     canRedo.value = m?.canRedo ?? false
+    undoSteps.value = m === null ? [] : [...m.historySteps] // UG3.1: new ref -> panel re-renders
+    undoCursor.value = m?.historyCursor ?? 0
     if (persistJournal) persistUndoJournal()
   }
 
@@ -1411,6 +1417,23 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
+  /** UG3.1 (req 3/8): jump the history to cursor position `target` (0 = the initial state,
+   *  steps.length = everything applied) — a run of undo()/redo() applied as ONE visual update.
+   *  The two-step confirmation (select, then «Применить») lives in the panel; this is the apply. */
+  function rollbackToCursor(target: number): boolean {
+    const m = model.value
+    if (m === null || m.inTransaction) return false
+    const clamped = Math.max(0, Math.min(Math.floor(target), m.historySteps.length))
+    let moved = false
+    while (m.historyCursor > clamped && m.undo()) moved = true
+    while (m.historyCursor < clamped && m.redo()) moved = true
+    if (moved) {
+      syncSchedule()
+      refreshEditState()
+    }
+    return moved
+  }
+
   // PW5.6: persist unsaved gtrack curve edits back to the .gnaural (extracted from TracksPanel so the
   // AudioPage voice-patch guard can reuse it). Throws on a server error; on success reloads the
   // schedule (rebuilds the model at the saved baseline). useAudioStore is read at CALL time so the
@@ -1457,6 +1480,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     dirty,
     canUndo,
     canRedo,
+    undoSteps,
+    undoCursor,
+    rollbackToCursor,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,

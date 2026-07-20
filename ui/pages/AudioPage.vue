@@ -164,6 +164,13 @@
         <LaneSpectrumSettingsDialog v-if="laneSpectrumPanel.open" />
       </Teleport>
 
+      <!-- UG3.1 (undo-global-journal, UG-D5): «Журнал операций» — the same dock-wrap: full editor
+           height, shared dock, survives tab switches (its toggle lives in the Треки toolbar). The
+           panel talks to the shared gtracks singleton directly, so nothing is plumbed. -->
+      <Teleport to="body" :disabled="!undoJournalFloating">
+        <UndoJournalDialog v-if="undoJournalPanel.open" />
+      </Teleport>
+
       <div class="audio-page__inner">
       <div class="audio-page__content">
         <q-card flat bordered class="audio-page__card audio-page__content-card">
@@ -291,6 +298,8 @@ import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel
 import { useLaneSpectrumPanelState } from '../stores/lane-spectrum-panel'
 import SpectrumSettingsDialog from '../components/SpectrumSettingsDialog.vue'
 import LaneSpectrumSettingsDialog from '../components/LaneSpectrumSettingsDialog.vue'
+import UndoJournalDialog from '../components/UndoJournalDialog.vue'
+import { useUndoJournalPanelState } from '../stores/undo-journal-panel'
 import AppMenuList from '../components/app-menu/AppMenuList.vue'
 import type { MenuNode } from '../components/app-menu/menu-node'
 import { menuNodeDisabled } from '../components/app-menu/menu-node'
@@ -409,12 +418,16 @@ const spectrumSettingsFloating = computed<boolean>(() => spectrumSettingsPanel.m
 // VS2.7 (VS-D3 rev 3): the per-lane solo-spectrum panel joins the same dock-wrap.
 const laneSpectrumPanel = useLaneSpectrumPanelState()
 const laneSpectrumFloating = computed<boolean>(() => laneSpectrumPanel.mode === 'floating')
+// UG3.1 (undo-global-journal): «Журнал операций» joins the same dock-wrap.
+const undoJournalPanel = useUndoJournalPanelState()
+const undoJournalFloating = computed<boolean>(() => undoJournalPanel.mode === 'floating')
 const dockWrapClass = computed<string>(() => {
   const anyVertical =
     filePanel.mode === 'top' || filePanel.mode === 'bottom' ||
     tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom' ||
     spectrumSettingsPanel.mode === 'top' || spectrumSettingsPanel.mode === 'bottom' ||
-    laneSpectrumPanel.mode === 'top' || laneSpectrumPanel.mode === 'bottom'
+    laneSpectrumPanel.mode === 'top' || laneSpectrumPanel.mode === 'bottom' ||
+    undoJournalPanel.mode === 'top' || undoJournalPanel.mode === 'bottom'
   return anyVertical ? 'audio-page__dock-wrap--col' : 'audio-page__dock-wrap--row'
 })
 
