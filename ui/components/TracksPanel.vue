@@ -1221,7 +1221,6 @@ import { useI18n } from 'vue-i18n'
 
 import type { SpectrogramAnalysisParams } from '@protocol'
 
-import { audioApi } from '../audio-api'
 import SpectrogramMinimap from './SpectrogramMinimap.vue'
 import SpectrogramView from './SpectrogramView.vue'
 import WaveformView from './WaveformView.vue'
@@ -1237,7 +1236,6 @@ import { useOverallGraphs } from '../composables/use-overall-graphs'
 // VS2.7 (VS-D3 rev 3): the lane solo-spectrum gear opens the standard dock/detach panel hosted in
 // AudioPage — this file only sets the target lane and flips the shared panel state open.
 import { useLaneSpectrumPanelState, useLaneSpectrumTarget } from '../stores/lane-spectrum-panel'
-import { findPreparseVoiceIds, patchGnauralXml } from '../composables/gtrack-xml'
 import { toAnalysisParams, toRenderOptions } from '../composables/spectrogram-settings'
 import { useSpectrogram } from '../composables/use-spectrogram'
 import { bindProjectViewState } from '../composables/use-project-view-state'
@@ -2945,31 +2943,22 @@ const SPECTROGRAM_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End'])
 const savingEdits = ref(false)
 
 async function saveGtrackEdits(): Promise<void> {
-  const model = gtracks.model.value
-  const filePath = audio.displayFilePath
-  if (model === null || filePath === null || audio.displayMode !== 'gnaural' || savingEdits.value) return
-  if (!gtracks.dirty.value) {
-    $q.notify({ type: 'info', message: t('audio.editorNoChanges') })
-    return
-  }
+  if (audio.displayMode !== 'gnaural' || savingEdits.value) return
   savingEdits.value = true
   try {
-    const doc = await audioApi.fetchEditorDocument(filePath)
-    const patched = patchGnauralXml(doc.content, model.schedule, {
-      preserveVoiceIds: findPreparseVoiceIds(doc.content),
-    })
-    const response = await audioApi.saveEditorDocument({
-      path: filePath,
-      content: patched,
-      expectedModifiedAtMs: doc.modifiedAtMs,
-    })
-    // Rebuilds the model from the freshly-dumped file (dirty/undo reset to the saved baseline). The
-    // same-path schedule change triggers the reload-key/meta re-open watch above (GT7.4-R2), so the
-    // backend wave/spectrum re-render to the just-saved edit — no explicit bump needed here.
-    await audio.loadGnauralSchedule(filePath, true)
+    // UG2.1 (undo-global-journal): SINGLE save path — gtracks.saveEdits() (PW5.6). It also arms the
+    // post-save history carry-over in buildModel; the inline copy this replaced bypassed that and
+    // silently dropped the undo history on every Ctrl+S. The same-path schedule change still
+    // triggers the reload-key/meta re-open watch above (GT7.4-R2), so wave/spectrum re-render.
+    const result = await gtracks.saveEdits()
+    if (result === 'skip') return
+    if (result === 'nochange') {
+      $q.notify({ type: 'info', message: t('audio.editorNoChanges') })
+      return
+    }
     $q.notify({
       type: 'positive',
-      message: response.changed ? t('audio.editorSaved') : t('audio.editorNoChanges'),
+      message: result === 'saved' ? t('audio.editorSaved') : t('audio.editorNoChanges'),
     })
   } catch (error) {
     $q.notify({

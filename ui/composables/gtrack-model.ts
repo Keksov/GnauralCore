@@ -228,6 +228,25 @@ export interface GTrackUndoJournal {
   readonly steps: readonly GTrackUndoStep[]
 }
 
+/** UG2.1 (undo-global-journal, UG-D1): the undo action log + cursor as a standalone container. It is
+ *  owned by the lanes layer and passed into every GTrackModel built for the same file, so a model
+ *  rebuild (save round-trip, schedule re-emit) no longer drops the history. Mutated in place by the
+ *  owning model. */
+export interface GTrackHistory {
+  steps: GTrackUndoStep[]
+  cursor: number
+}
+
+export function createGTrackHistory(): GTrackHistory {
+  return { steps: [], cursor: 0 }
+}
+
+/** UG2.1: signature of raw dump content as the editor would model it — directly comparable with a
+ *  model's savedSignature/currentSignature (the same scheduleToEditable path). */
+export function scheduleContentSignature(data: GnauralScheduleData, preparseIds: Iterable<number>): string {
+  return signature(scheduleToEditable(data, new Set(preparseIds)))
+}
+
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
   const c = value as { version?: unknown; currentSig?: unknown; cursor?: unknown; steps?: unknown }
@@ -245,16 +264,20 @@ export class GTrackModel {
   private current: GTrackSchedule
   // UC-D1: the undo history is a linear action log + a cursor (not two snapshot stacks). steps[0..cursor)
   // are undoable, steps[cursor..] redoable; a new commit truncates the redo tail and appends.
-  private readonly steps: GTrackUndoStep[] = []
-  private cursor = 0
+  // UG2.1 (UG-D1): the log lives in an EXTERNAL container owned by the caller — passing the same
+  // container into a rebuilt model carries the history across the rebuild.
+  private readonly history: GTrackHistory
   private savedSig: string
   private dirtyFlag = false
   // Open-transaction state: the snapshot taken at beginEdit, restored on cancel / pushed on commit.
   private txnBefore: GTrackSchedule | null = null
 
-  public constructor(data: GnauralScheduleData, preparseVoiceIds?: Iterable<number>) {
+  public constructor(data: GnauralScheduleData, preparseVoiceIds?: Iterable<number>, history?: GTrackHistory) {
     this.current = scheduleToEditable(data, new Set(preparseVoiceIds ?? []))
     this.savedSig = signature(this.current)
+    this.history = history ?? createGTrackHistory()
+    // A carried-over container is trusted (same file, same session); only the cursor is clamped.
+    this.history.cursor = Math.max(0, Math.min(this.history.cursor, this.history.steps.length))
   }
 
   /** The current schedule. A fresh top-level reference is produced on every change. */
@@ -267,11 +290,22 @@ export class GTrackModel {
   }
 
   public get canUndo(): boolean {
-    return this.cursor > 0
+    return this.history.cursor > 0
   }
 
   public get canRedo(): boolean {
-    return this.cursor < this.steps.length
+    return this.history.cursor < this.history.steps.length
+  }
+
+  /** UG2.1: signature of the saved baseline this model was built from (or last markSaved). Used by
+   *  the lanes content guard to recognize a re-emit of the unchanged file. */
+  public get savedSignature(): string {
+    return this.savedSig
+  }
+
+  /** UG2.1: signature of the current (possibly edited) state. */
+  public get currentSignature(): string {
+    return signature(this.current)
   }
 
   public get inTransaction(): boolean {
@@ -324,9 +358,9 @@ export class GTrackModel {
       const av = afterById.get(bv.id)
       if (av !== undefined && av !== bv) deltas.push({ voiceId: bv.id, before: bv, after: av })
     }
-    this.steps.length = this.cursor // drop the redo tail
-    this.steps.push({ voices: deltas })
-    this.cursor = this.steps.length
+    this.history.steps.length = this.history.cursor // drop the redo tail
+    this.history.steps.push({ voices: deltas })
+    this.history.cursor = this.history.steps.length
     this.recomputeDirty()
   }
 
@@ -537,18 +571,18 @@ export class GTrackModel {
 
   public undo(): boolean {
     if (this.txnBefore !== null) throw new Error('gtrack: cannot undo during an open transaction')
-    if (this.cursor === 0) return false
-    this.cursor -= 1
-    this.applyDelta(this.steps[this.cursor]!, 'before')
+    if (this.history.cursor === 0) return false
+    this.history.cursor -= 1
+    this.applyDelta(this.history.steps[this.history.cursor]!, 'before')
     this.recomputeDirty()
     return true
   }
 
   public redo(): boolean {
     if (this.txnBefore !== null) throw new Error('gtrack: cannot redo during an open transaction')
-    if (this.cursor >= this.steps.length) return false
-    this.applyDelta(this.steps[this.cursor]!, 'after')
-    this.cursor += 1
+    if (this.history.cursor >= this.history.steps.length) return false
+    this.applyDelta(this.history.steps[this.history.cursor]!, 'after')
+    this.history.cursor += 1
     this.recomputeDirty()
     return true
   }
@@ -570,14 +604,14 @@ export class GTrackModel {
    *  steps (before the cursor) and `maxEntries` redo steps (after it); the exported cursor is the
    *  number of kept undo steps. */
   public exportUndoJournal(maxEntries = 50): GTrackUndoJournal {
-    const undoKeep = Math.min(this.cursor, maxEntries)
-    const redoKeep = Math.min(this.steps.length - this.cursor, maxEntries)
-    const start = this.cursor - undoKeep
+    const undoKeep = Math.min(this.history.cursor, maxEntries)
+    const redoKeep = Math.min(this.history.steps.length - this.history.cursor, maxEntries)
+    const start = this.history.cursor - undoKeep
     return {
       version: 2,
       currentSig: signature(this.current),
       cursor: undoKeep,
-      steps: this.steps.slice(start, this.cursor + redoKeep),
+      steps: this.history.steps.slice(start, this.history.cursor + redoKeep),
     }
   }
 
@@ -603,9 +637,9 @@ export class GTrackModel {
       )
       return false
     }
-    this.steps.length = 0
-    this.steps.push(...journal.steps)
-    this.cursor = Math.max(0, Math.min(journal.cursor, this.steps.length))
+    this.history.steps.length = 0
+    this.history.steps.push(...journal.steps)
+    this.history.cursor = Math.max(0, Math.min(journal.cursor, this.history.steps.length))
     return true
   }
 

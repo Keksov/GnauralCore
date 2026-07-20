@@ -9,7 +9,7 @@ import type { GnauralScheduleData } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, isGTrackUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, type GTrackPoint, type GTrackSchedule, type GTrackVoice } from './gtrack-model'
 import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
@@ -577,18 +577,64 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // distinctly, until the user explicitly fixes them.
   const preparseVoiceIds = ref<number[]>([])
 
+  // UG2.1 (undo-global-journal, UG-D1): the undo history container SURVIVES model rebuilds — one
+  // container per file, passed into every model built for it; a genuine content change resets it.
+  // postSaveReloadPath marks the reload that follows OUR OWN save: the dump differs from the edited
+  // state only by float formatting, so the history is carried over and the dump becomes the base.
+  let history = createGTrackHistory()
+  let modelPath: string | null = null
+  let postSaveReloadPath: string | null = null
+
   function buildModel(data: GnauralScheduleData | null): void {
-    // UG1.1 (undo-global-journal): a rebuild replaces the model and drops the in-memory undo
-    // history; the trigger is whoever replaced the schedule object (logged in the audio store as
-    // [undo-diag] "schedule object replaced"). Log what is being lost for the owner's repro.
+    const path = filePath.value
     const prev = model.value
+    const samePath = prev !== null && path !== null && path === modelPath
+    modelPath = path
+    const postSave = samePath && postSaveReloadPath !== null && postSaveReloadPath === path
+    postSaveReloadPath = null
+
+    if (data !== null && prev !== null && samePath) {
+      const newSig = scheduleContentSignature(data, preparseVoiceIds.value)
+      // UG2.1 content guard: the store re-emits the schedule with UNCHANGED file content on every
+      // load/play (ws schedule-changed -> forced reload) — the owner-confirmed history killer
+      // (UG1.1). Content equal to the model's saved base means there is nothing to rebuild: keep
+      // the model, its unsaved edits and its history.
+      if (newSig === prev.savedSignature) {
+        console.info('[undo-diag] buildModel: skip — content equals the model base (edits+history kept)')
+        return
+      }
+      // The file caught up with the edited state byte-exactly (save round-trip without float
+      // drift): just move the saved baseline.
+      if (newSig === prev.currentSignature) {
+        prev.markSaved()
+        refreshEditState()
+        console.info('[undo-diag] buildModel: skip — content equals the edited state; markSaved')
+        return
+      }
+      // Our own save round-trip WITH float drift (the dump reformats numbers): rebuild on the dump
+      // but KEEP the history (UG-D4: the in-memory carry-over needs no signature gate — same file,
+      // same session; steps swap whole voices, so they stay applicable). refreshEditState() then
+      // re-persists the journal signed against the dump, so it survives a session restart too.
+      if (postSave) {
+        model.value = new GTrackModel(data, preparseVoiceIds.value, history)
+        selection.value = null
+        syncSchedule()
+        refreshEditState()
+        console.info('[undo-diag] buildModel: post-save rebase — history carried over, dump is the new base')
+        return
+      }
+    }
+
+    // Genuine content change (file switch / external edit / preparse or voiceState overlay):
+    // full rebuild. UG1.1: log what is lost; the disk journal may still be re-adopted below.
     if (prev !== null) {
       console.info(
         `[undo-diag] buildModel: model rebuilt (prev: canUndo=${prev.canUndo} canRedo=${prev.canRedo} dirty=${prev.isDirty})`
         + ' — in-memory undo history dropped, journal re-adoption pending',
       )
     }
-    model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value)
+    history = createGTrackHistory()
+    model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value, history)
     selection.value = null
     syncSchedule()
     refreshEditState(false) // reset dirty/undo/redo to the freshly-loaded (saved) baseline
@@ -1381,6 +1427,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       const patched = patchGnauralXml(doc.content, m.schedule, { preserveVoiceIds: findPreparseVoiceIds(doc.content) })
       const res = await audioApi.saveEditorDocument({ path: fp, content: patched, expectedModifiedAtMs: doc.modifiedAtMs })
       const audio = useAudioStore()
+      // UG2.1: the reload below is our own save round-trip — arm buildModel to carry the undo
+      // history over (post-save rebase) instead of dropping it.
+      postSaveReloadPath = fp
       await audio.loadGnauralSchedule(fp, true)
       return res.changed ? 'saved' : 'unchanged'
     } finally {

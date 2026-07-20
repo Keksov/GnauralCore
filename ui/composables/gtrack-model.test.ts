@@ -5,11 +5,13 @@ import type { GnauralScheduleData, GnauralScheduleEntry } from '@protocol'
 import {
   GTrackModel,
   clampPointTime,
+  createGTrackHistory,
   editableToSchedule,
   pointBalance,
   pointBeatFreq,
   pointVolume,
   pointsToSegments,
+  scheduleContentSignature,
   segmentsToPoints,
   type GTrackPoint,
 } from './gtrack-model'
@@ -479,5 +481,56 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     expect(isGTrackUndoJournal({ currentSig: 'x', undo: [], redo: [] })).toBe(false)
     expect(isGTrackUndoJournal({ version: 2, currentSig: 1, cursor: 0, steps: [] })).toBe(false)
     expect(isGTrackUndoJournal({ version: 2, currentSig: 'x', cursor: 0, steps: [{ voices: [{ voiceId: 'no' }] }] })).toBe(false)
+  })
+})
+
+describe('external history container (undo-global-journal UG2.1, UG-D1)', () => {
+  test('scheduleContentSignature matches a fresh model savedSignature/currentSignature', () => {
+    const data = fixture([entry(0, 10), entry(10, 20)])
+    const model = new GTrackModel(data, [])
+    expect(scheduleContentSignature(data, [])).toBe(model.savedSignature)
+    expect(model.currentSignature).toBe(model.savedSignature)
+    model.edit(() => model.movePoint(7, 1, 12))
+    expect(model.currentSignature).not.toBe(model.savedSignature)
+    expect(model.savedSignature).toBe(scheduleContentSignature(data, [])) // base unchanged by edits
+  })
+
+  test('preparse ids участвуют в сигнатуре (preparse rebuild must not be skipped)', () => {
+    const data = fixture([entry(0, 10)])
+    expect(scheduleContentSignature(data, [7])).not.toBe(scheduleContentSignature(data, []))
+  })
+
+  test('a rebuilt model given the same container keeps undo/redo (post-save rebase)', () => {
+    const data = fixture([entry(0, 10), entry(10, 20)])
+    const history = createGTrackHistory()
+    const m1 = new GTrackModel(data, [], history)
+    m1.edit(() => m1.setPointField(7, 1, 'baseFreq', 250))
+    expect(m1.canUndo).toBe(true)
+    // The save round-trip rebuilds from the dump with the SAME container.
+    const dump = editableToSchedule(m1.schedule)
+    const m2 = new GTrackModel(dump, [], history)
+    expect(m2.canUndo).toBe(true)
+    expect(m2.isDirty).toBe(false) // the dump IS the new saved baseline
+    expect(m2.undo()).toBe(true)
+    expect(m2.schedule.voices[0]!.points[1]!.baseFreq).toBe(200)
+    expect(m2.canRedo).toBe(true)
+    expect(m2.redo()).toBe(true)
+    expect(m2.schedule.voices[0]!.points[1]!.baseFreq).toBe(250)
+  })
+
+  test('without a container each model starts with an empty history (old behaviour)', () => {
+    const data = fixture([entry(0, 10), entry(10, 20)])
+    const m1 = new GTrackModel(data)
+    m1.edit(() => m1.movePoint(7, 1, 12))
+    const m2 = new GTrackModel(editableToSchedule(m1.schedule))
+    expect(m2.canUndo).toBe(false)
+  })
+
+  test('constructor clamps a stale cursor in an adopted container', () => {
+    const history = createGTrackHistory()
+    history.cursor = 5 // corrupt: points past the (empty) step list
+    const model = new GTrackModel(fixture([entry(0, 10)]), [], history)
+    expect(model.canUndo).toBe(false)
+    expect(model.canRedo).toBe(false)
   })
 })
