@@ -6,8 +6,21 @@
 // (keepalive fetch). Concurrency model is last-write-wins per section (PR-D7): sections are small
 // and each is owned by exactly one subsystem.
 import { computed, ref } from 'vue'
-import type { ProjectInfo } from '@protocol'
+import type {
+  ProjectInfo,
+  ProjectUndoLogAppendResponse,
+  ProjectUndoLogChainResponse,
+  ProjectUndoLogCommitInput,
+  ProjectUndoLogCommitType,
+  ProjectUndoLogGcPolicy,
+} from '@protocol'
 import { projectApi } from '../project-api'
+import {
+  dropAcknowledgedUndoLogCommits,
+  mergeUndoLogRefsPatch,
+  planKeepaliveUndoLogBatch,
+  type UndoLogRefsPatch,
+} from './undo-log-sync'
 
 const SECTION_PUT_DEBOUNCE_MS = 500
 // PR2.2 (PR-D8): the undo journal used to be heavier than a section (v1 snapshots) — hence a long
@@ -53,6 +66,187 @@ function sendUndoJournal(projectId: string, journal: unknown, keepalive = false)
   })
 }
 
+// --- undo-log queue (undo-versioned-log VL4.1, VL-D4) ----------------------------------------
+// Commits are batched per project with the same short debounce as the v3 journal had; a batch is
+// sent WHOLE and the server acknowledges an (appended + skipped) prefix — re-sending is safe
+// because appends are idempotent by cid (S2). Snapshot commits are written eagerly (flush: true)
+// so the unload flush normally carries deltas only.
+
+interface PendingUndoLogState {
+  commits: ProjectUndoLogCommitInput[]
+  gc: ProjectUndoLogGcPolicy | undefined
+  timer: ReturnType<typeof setTimeout> | null
+  inFlight: boolean
+}
+
+const pendingUndoLog = new Map<string, PendingUndoLogState>() // key = projectId
+const pendingUndoLogRefs = new Map<string, { patch: UndoLogRefsPatch; timer: ReturnType<typeof setTimeout> }>()
+
+let undoLogAppendResultHandler: ((projectId: string, result: ProjectUndoLogAppendResponse) => void) | null = null
+
+/** The lanes layer registers here to track the synced tip and react to a 409 resync (VL4.2). */
+export function setUndoLogAppendResultHandler(
+  handler: ((projectId: string, result: ProjectUndoLogAppendResponse) => void) | null,
+): void {
+  undoLogAppendResultHandler = handler
+}
+
+function getPendingUndoLog(projectId: string): PendingUndoLogState {
+  let state = pendingUndoLog.get(projectId)
+  if (state === undefined) {
+    state = { commits: [], gc: undefined, timer: null, inFlight: false }
+    pendingUndoLog.set(projectId, state)
+  }
+  return state
+}
+
+async function sendUndoLogBatch(projectId: string): Promise<void> {
+  const state = pendingUndoLog.get(projectId)
+  if (state === undefined || state.inFlight || state.commits.length === 0) {
+    return
+  }
+
+  const request = {
+    id: projectId,
+    commits: state.commits.slice(),
+    advanceMain: true,
+    ...(state.gc === undefined ? {} : { gc: state.gc }),
+  }
+  state.inFlight = true
+  let result: ProjectUndoLogAppendResponse | null = null
+  try {
+    result = await projectApi.appendUndoLog(request)
+    state.commits = dropAcknowledgedUndoLogCommits(state.commits, result)
+    undoLogAppendResultHandler?.(projectId, result)
+  } catch (error) {
+    // Network failure: keep the batch pending — the next queue call re-schedules, duplicates
+    // are skipped server-side.
+    console.warn('[use-project] appendUndoLog failed:', error instanceof Error ? error.message : error)
+  } finally {
+    state.inFlight = false
+  }
+
+  // A cut batch (409) is NOT retried blindly: the handler above owns the resync (VL4.2).
+  if (result !== null && result.rejectedFrom === null && state.commits.length > 0) {
+    scheduleUndoLogSend(projectId)
+  }
+}
+
+function scheduleUndoLogSend(projectId: string): void {
+  const state = getPendingUndoLog(projectId)
+  if (state.timer !== null) {
+    clearTimeout(state.timer)
+  }
+  state.timer = setTimeout(() => {
+    state.timer = null
+    void sendUndoLogBatch(projectId)
+  }, UNDO_PUT_DEBOUNCE_MS)
+}
+
+/** Queue commits for the file's project. flush: true sends immediately (snapshots — they must
+ *  not sit in a debounce the unload flush would refuse to carry). gc is sticky per project. */
+export function queueProjectUndoLogCommitsFor(
+  path: string,
+  commits: readonly ProjectUndoLogCommitInput[],
+  options: { gc?: ProjectUndoLogGcPolicy; flush?: boolean } = {},
+): void {
+  void getProjectForPath(path).then((project) => {
+    if (project === null) {
+      return
+    }
+    const state = getPendingUndoLog(project.id)
+    state.commits.push(...commits)
+    if (options.gc !== undefined) {
+      state.gc = options.gc
+    }
+    if (options.flush === true) {
+      if (state.timer !== null) {
+        clearTimeout(state.timer)
+        state.timer = null
+      }
+      void sendUndoLogBatch(project.id)
+    } else {
+      scheduleUndoLogSend(project.id)
+    }
+  })
+}
+
+/** Debounced last-write-wins refs update (head on undo/redo, tags from the panel). */
+export function queueProjectUndoLogRefsFor(path: string, patch: UndoLogRefsPatch): void {
+  void getProjectForPath(path).then((project) => {
+    if (project === null) {
+      return
+    }
+    const existing = pendingUndoLogRefs.get(project.id)
+    const merged = mergeUndoLogRefsPatch(existing?.patch ?? {}, patch)
+    if (existing !== undefined) {
+      clearTimeout(existing.timer)
+    }
+    pendingUndoLogRefs.set(project.id, {
+      patch: merged,
+      timer: setTimeout(() => {
+        pendingUndoLogRefs.delete(project.id)
+        void projectApi.putUndoLogRefs({ id: project.id, ...merged }).catch((error: unknown) => {
+          console.warn('[use-project] putUndoLogRefs failed:', error instanceof Error ? error.message : error)
+        })
+      }, UNDO_PUT_DEBOUNCE_MS),
+    })
+  })
+}
+
+export async function readProjectUndoLogChainFor(
+  path: string,
+  options: { from?: string; limit?: number; untilType?: ProjectUndoLogCommitType } = {},
+): Promise<ProjectUndoLogChainResponse | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
+  }
+  try {
+    return await projectApi.fetchUndoLogChain(project.id, options)
+  } catch (error) {
+    console.warn('[use-project] fetchUndoLogChain failed:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
+/** Drop everything queued for the file's project (the 409-resync path re-reads the chain). */
+export function discardPendingUndoLogFor(path: string): void {
+  void getProjectForPath(path).then((project) => {
+    if (project === null) {
+      return
+    }
+    const state = pendingUndoLog.get(project.id)
+    if (state !== undefined) {
+      if (state.timer !== null) {
+        clearTimeout(state.timer)
+      }
+      pendingUndoLog.delete(project.id)
+    }
+  })
+}
+
+export async function clearProjectUndoLogFor(path: string): Promise<boolean> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return false
+  }
+  const state = pendingUndoLog.get(project.id)
+  if (state !== undefined) {
+    if (state.timer !== null) {
+      clearTimeout(state.timer)
+    }
+    pendingUndoLog.delete(project.id)
+  }
+  try {
+    await projectApi.clearUndoLog(project.id)
+    return true
+  } catch (error) {
+    console.warn('[use-project] clearUndoLog failed:', error instanceof Error ? error.message : error)
+    return false
+  }
+}
+
 export function flushPendingProjectWrites(): void {
   for (const pending of pendingWrites.values()) {
     clearTimeout(pending.timer)
@@ -65,6 +259,30 @@ export function flushPendingProjectWrites(): void {
     sendUndoJournal(projectId, pending.journal, true) // UC-D4: keepalive only on the unload flush
   }
   pendingUndoWrites.clear()
+
+  // undo-log (VL4.1): fire the keepalive-sized PREFIX of each pending batch and keep the queue
+  // as-is — if the page survives (file switch), the normal debounce re-sends everything and the
+  // server skips the duplicates (S2); if the page dies, the prefix is what survives.
+  for (const [projectId, state] of pendingUndoLog) {
+    if (state.timer !== null) {
+      clearTimeout(state.timer)
+      state.timer = null
+    }
+    if (state.commits.length === 0) {
+      continue
+    }
+    const batch = planKeepaliveUndoLogBatch(state.commits)
+    if (batch.length === 0) {
+      continue
+    }
+    void projectApi.appendUndoLog({ id: projectId, commits: batch, advanceMain: true }, undefined, true).catch(() => undefined)
+  }
+
+  for (const [projectId, pending] of pendingUndoLogRefs) {
+    clearTimeout(pending.timer)
+    pendingUndoLogRefs.delete(projectId)
+    void projectApi.putUndoLogRefs({ id: projectId, ...pending.patch }, undefined, true).catch(() => undefined)
+  }
 }
 
 /** Called from the audio store on file selection: flushes writes belonging to the previous file,

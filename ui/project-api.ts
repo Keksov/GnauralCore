@@ -9,6 +9,12 @@ import type {
   ProjectSectionResponse,
   ProjectSettingsPatchRequest,
   ProjectSettingsResponse,
+  ProjectUndoLogAppendRequest,
+  ProjectUndoLogAppendResponse,
+  ProjectUndoLogChainResponse,
+  ProjectUndoLogCommitType,
+  ProjectUndoLogRefsRequest,
+  ProjectUndoLogRefsResponse,
   ProjectUndoPutRequest,
   ProjectUndoResponse,
 } from '@protocol'
@@ -108,6 +114,75 @@ export const projectApi = {
       method: 'POST',
       body: JSON.stringify(request),
       keepalive,
+      signal,
+    })
+  },
+
+  // undo-versioned-log VL4.1 (VL-D4): the append-only commit log transport (/api/projects/undo-log*).
+  fetchUndoLogChain(
+    id: string,
+    options: { from?: string; limit?: number; untilType?: ProjectUndoLogCommitType } = {},
+    signal?: AbortSignal,
+  ): Promise<ProjectUndoLogChainResponse> {
+    const search = new URLSearchParams({ id })
+    if (options.from !== undefined) {
+      search.set('from', options.from)
+    }
+    if (options.limit !== undefined) {
+      search.set('limit', String(options.limit))
+    }
+    if (options.untilType !== undefined) {
+      search.set('untilType', options.untilType)
+    }
+    return requestJson<ProjectUndoLogChainResponse>(`/api/projects/undo-log?${search.toString()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+    })
+  },
+
+  /** A 409 (batch cut at rejectedFrom, S3) carries the same body and is RETURNED, not thrown —
+   *  the accepted prefix IS persisted and the caller reconciles by re-reading the chain.
+   *  keepalive only for the unload flush (see putSection). */
+  async appendUndoLog(
+    request: ProjectUndoLogAppendRequest,
+    signal?: AbortSignal,
+    keepalive = false,
+  ): Promise<ProjectUndoLogAppendResponse> {
+    const response = await fetch('/api/projects/undo-log/append', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+      keepalive,
+      signal,
+    })
+    const text = await response.text()
+    const payload = parseJsonText(text, 'Invalid JSON response from /api/projects/undo-log/append')
+
+    if (!response.ok && response.status !== 409) {
+      if (isRecord(payload) && typeof payload.error === 'string') {
+        throw new Error(payload.error)
+      }
+      throw new Error(`Request failed with status ${response.status}`)
+    }
+
+    return payload as ProjectUndoLogAppendResponse
+  },
+
+  /** keepalive only for the unload flush — a refs body is tiny, but the rule stays uniform. */
+  putUndoLogRefs(request: ProjectUndoLogRefsRequest, signal?: AbortSignal, keepalive = false): Promise<ProjectUndoLogRefsResponse> {
+    return requestJson<ProjectUndoLogRefsResponse>('/api/projects/undo-log/refs', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      keepalive,
+      signal,
+    })
+  },
+
+  async clearUndoLog(id: string, signal?: AbortSignal): Promise<void> {
+    await requestJson<null>('/api/projects/undo-log/clear', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
       signal,
     })
   },
