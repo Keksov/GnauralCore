@@ -97,11 +97,19 @@ begin
         // Write placeholder header (44 bytes; patched at end)
         writeHeader(fs, 0);
 
-        // PS2.1 (synth-parallel-render): the voice-parallel offline path when the schedule qualifies
-        // (single-loop, all binaural/PCM) and GNAURAL_RENDER_THREADS asks for >1; else the sequential
-        // loop. Bit-identical either way. Default 1 keeps production on the sequential path until the
-        // worker pool (Stage B) lands.
-        threads := StrToIntDef(GetEnvironmentVariable('GNAURAL_RENDER_THREADS'), 1);
+        // PS3.1 (synth-parallel-render): the voice-parallel offline path when the schedule qualifies
+        // (single-loop, all binaural/PCM); else the sequential loop. Bit-identical either way
+        // (verified: sha256-equal outputs). Default = auto (cores-1); GNAURAL_RENDER_THREADS
+        // overrides (1 = force the sequential path). WAV only — the FLAC export path stays
+        // sequential (PS-D9: libsndfile writes via its own handle, not a TStream, and export is
+        // not the latency pain the spectrogram render is).
+        threads := StrToIntDef(GetEnvironmentVariable('GNAURAL_RENDER_THREADS'), 0);
+        if threads <= 0 then
+        begin
+            threads := Integer(TThread.ProcessorCount) - 1;
+            if threads < 1 then
+                threads := 1;
+        end;
         if Fsynth.renderOfflineData(fs, threads) then
             dataSize := Cardinal(fs.Position - 44)
         else
