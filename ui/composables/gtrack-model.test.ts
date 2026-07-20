@@ -6,6 +6,7 @@ import {
   GTrackModel,
   clampPointTime,
   createGTrackHistory,
+  describeStepChanges,
   editableToSchedule,
   pointBalance,
   pointBeatFreq,
@@ -545,6 +546,34 @@ describe('external history container (undo-global-journal UG2.1, UG-D1)', () => 
     m1.edit(() => m1.movePoint(7, 1, 12))
     const m2 = new GTrackModel(editableToSchedule(m1.schedule))
     expect(m2.canUndo).toBe(false)
+  })
+
+  test('describeStepChanges: field edit / insert / remove (UG3.2b, req 12)', () => {
+    const data = fixture([entry(0, 10), entry(10, 20)])
+
+    const edited = new GTrackModel(data)
+    edited.edit(() => edited.setPointFields(7, 1, { baseFreq: 250, volL: 0.5 }))
+    const changed = describeStepChanges(edited.exportUndoJournal().steps[0]!)
+    expect(changed.length).toBe(1)
+    expect(changed[0]!.change).toBe('changed')
+    expect(changed[0]!.index).toBe(1)
+    expect(changed[0]!.point.timeSec).toBe(10)
+    expect(changed[0]!.fields.map((f) => f.field).sort()).toEqual(['baseFreq', 'volL'])
+    expect(changed[0]!.fields.find((f) => f.field === 'baseFreq')).toEqual({ field: 'baseFreq', before: 200, after: 250 })
+
+    const inserted = new GTrackModel(data)
+    inserted.edit(() => inserted.insertPoint(7, 5))
+    const added = describeStepChanges(inserted.exportUndoJournal().steps[0]!)
+    expect(added.length).toBe(1)
+    expect(added[0]!.change).toBe('added')
+    expect(added[0]!.point.timeSec).toBe(5)
+
+    const removed = new GTrackModel(data)
+    removed.edit(() => removed.removePoint(7, 1))
+    const gone = describeStepChanges(removed.exportUndoJournal().steps[0]!)
+    expect(gone.length).toBe(1)
+    expect(gone[0]!.change).toBe('removed')
+    expect(gone[0]!.point.timeSec).toBe(10)
   })
 
   test('clearHistory: all / before / redo-tail (UG3.2, req 7-8)', () => {

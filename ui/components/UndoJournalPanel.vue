@@ -30,6 +30,10 @@
           </q-badge>
           <span v-else-if="row.time !== ''" class="undo-journal-panel__time">{{ row.time }}</span>
         </q-item-section>
+        <!-- UG3.2b (req 12): hover shows the point-level diff — number, time, was/became fields. -->
+        <app-tooltip v-if="row.changes.length > 0" max-width="360px">
+          <div v-for="(line, li) in row.changes" :key="li" class="undo-journal-panel__tip-line">{{ line }}</div>
+        </app-tooltip>
       </q-item>
     </q-list>
     <q-separator />
@@ -74,8 +78,10 @@
 // only SELECTS (highlight); the state rolls back exclusively via «Применить» (rollbackToCursor).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
+import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange } from '../composables/gtrack-model'
 
 const { t } = useI18n()
 const gtracks = useSharedGtrackLanes()
@@ -108,6 +114,37 @@ interface JournalRow {
   title: string
   subtitle: string
   time: string
+  changes: string[] // UG3.2b (req 12): the hover diff, one line per changed/added/removed point
+}
+
+// UG3.2b: value formatting for the diff lines — beat is displayed as the FULL beat (2x half,
+// GT-D6), everything else trimmed to 3 decimals like the inspector fields.
+function fmt(n: number): number {
+  return Number(n.toFixed(3))
+}
+
+function fieldShort(field: string): string {
+  return t(`audio.undoField_${field}`)
+}
+
+function changeLine(c: GTrackStepPointChange): string {
+  const head = `#${c.index + 1} · ${t('audio.undoField_timeSec')} ${fmt(c.point.timeSec)}`
+  if (c.change === 'changed') {
+    const parts = c.fields.map((f) => {
+      const scale = f.field === 'beatFreqHalf' ? 2 : 1
+      return `${fieldShort(f.field)} ${fmt(f.before * scale)} → ${fmt(f.after * scale)}`
+    })
+    return `${head}: ${parts.join(', ')}`
+  }
+  const p: GTrackPoint = c.point
+  const values = [
+    `${t('audio.undoField_baseFreq')} ${fmt(p.baseFreq)}`,
+    `${t('audio.undoField_beatFreqHalf')} ${fmt(p.beatFreqHalf * 2)}`,
+    `${t('audio.undoField_volL')} ${fmt(p.volL)}`,
+    `${t('audio.undoField_volR')} ${fmt(p.volR)}`,
+  ].join(', ')
+  const verb = c.change === 'added' ? t('audio.undoJournalPointAdded') : t('audio.undoJournalPointRemoved')
+  return `${head} — ${verb} (${values})`
 }
 
 const rows = computed<JournalRow[]>(() => {
@@ -118,6 +155,7 @@ const rows = computed<JournalRow[]>(() => {
     title: t('audio.undoJournalInitial'),
     subtitle: '',
     time: '',
+    changes: [],
   }]
   gtracks.undoSteps.value.forEach((step, i) => {
     out.push({
@@ -127,6 +165,7 @@ const rows = computed<JournalRow[]>(() => {
       title: kindLabel(step.kind),
       subtitle: step.label,
       time: formatTime(step.atMs),
+      changes: describeStepChanges(step, 8).map(changeLine),
     })
   })
   return out
@@ -193,6 +232,10 @@ function clearBeforeSelection(): void {
 .undo-journal-panel__time {
   font-size: 11px;
   opacity: 0.7;
+}
+
+.undo-journal-panel__tip-line {
+  white-space: nowrap;
 }
 
 .undo-journal-panel__actions {

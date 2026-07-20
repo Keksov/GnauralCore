@@ -257,6 +257,63 @@ export function scheduleContentSignature(data: GnauralScheduleData, preparseIds:
   return signature(scheduleToEditable(data, new Set(preparseIds)))
 }
 
+/** UG3.2b (undo-global-journal, req 12): a human-oriented diff of one step — WHICH points changed
+ *  and HOW (was/became), for the operations-panel hover tooltip. Pure and bounded. Same-length
+ *  point lists are paired by index (field edits, clamp moves); a length change is resolved as
+ *  added/removed points via a time-multiset diff (stable enough for display under crossover). */
+export interface GTrackStepFieldChange {
+  readonly field: GTrackPointField
+  readonly before: number
+  readonly after: number
+}
+
+export interface GTrackStepPointChange {
+  readonly voiceId: number
+  readonly change: 'changed' | 'added' | 'removed'
+  /** Point index (in `after` for changed/added, in `before` for removed). */
+  readonly index: number
+  /** The point shown (the after-state for changed/added, the removed point for 'removed'). */
+  readonly point: GTrackPoint
+  /** Field-level was/became — non-empty only for 'changed'. */
+  readonly fields: readonly GTrackStepFieldChange[]
+}
+
+export function describeStepChanges(step: GTrackUndoStep, maxChanges = 8): GTrackStepPointChange[] {
+  const out: GTrackStepPointChange[] = []
+  for (const d of step.voices) {
+    if (out.length >= maxChanges) break
+    const b = d.before.points
+    const a = d.after.points
+    if (b.length === a.length) {
+      for (let i = 0; i < a.length && out.length < maxChanges; i += 1) {
+        const fields: GTrackStepFieldChange[] = []
+        for (const f of POINT_FIELDS) {
+          if (b[i]![f] !== a[i]![f]) fields.push({ field: f, before: b[i]![f], after: a[i]![f] })
+        }
+        if (fields.length > 0) out.push({ voiceId: d.voiceId, change: 'changed', index: i, point: a[i]!, fields })
+      }
+      continue
+    }
+    // A length change: report the surplus side. Times present in the shorter list are matched away
+    // as a multiset; what remains in the longer list is what was added (or removed).
+    const grew = a.length > b.length
+    const longer = grew ? a : b
+    const shorter = grew ? b : a
+    const remaining = new Map<number, number>()
+    for (const p of shorter) remaining.set(p.timeSec, (remaining.get(p.timeSec) ?? 0) + 1)
+    for (let i = 0; i < longer.length && out.length < maxChanges; i += 1) {
+      const t = longer[i]!.timeSec
+      const n = remaining.get(t) ?? 0
+      if (n > 0) {
+        remaining.set(t, n - 1)
+        continue
+      }
+      out.push({ voiceId: d.voiceId, change: grew ? 'added' : 'removed', index: i, point: longer[i]!, fields: [] })
+    }
+  }
+  return out
+}
+
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
   const c = value as { version?: unknown; currentSig?: unknown; cursor?: unknown; steps?: unknown }
