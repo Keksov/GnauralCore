@@ -206,6 +206,103 @@ begin
         FvoiceStates[v].FcurEntry := 0;
 end;
 
+{*******************************************************************************
+* synthVoiceSample — one voice's per-sample stereo synthesis (PS1.1 / PS-D7).
+* Extracted verbatim from fillBuffer's per-sample section so the SAME routine is
+* reused by the future parallel offline renderer. Pure w.r.t. this voice's state
+* (aSt) + type; the only global read is bbRand (pink noise). Mono mixing, volume
+* and accumulation stay in the caller. Advances per-voice per-sample state
+* (FsinPosL/R, FpcmPos, iso phase/envelope).
+*******************************************************************************}
+procedure synthVoiceSample(var aSt: TVoiceSynthState; aVoiceType: TVoiceType;
+    out aSampleL, aSampleR: Double);
+begin
+    aSampleL := 0;
+    aSampleR := 0;
+
+    case aVoiceType of
+        vtBinaural:
+        begin
+            aSt.FsinPosL := aSt.FsinPosL + aSt.FcurBeatfreqLfactor;
+            if aSt.FsinPosL >= BB_TWO_PI then
+                aSt.FsinPosL := aSt.FsinPosL - BB_TWO_PI;
+            aSt.FsinPosR := aSt.FsinPosR + aSt.FcurBeatfreqRfactor;
+            if aSt.FsinPosR >= BB_TWO_PI then
+                aSt.FsinPosR := aSt.FsinPosR - BB_TWO_PI;
+            aSampleL := sin(aSt.FsinPosL) * BB_SIN_SCALER;
+            aSampleR := sin(aSt.FsinPosR) * BB_SIN_SCALER;
+        end;
+
+        vtPinkNoise:
+        begin
+            aSampleL := bbLoPass(aSt.FnoiseL, SarLongInt(bbRand, 15));
+            aSampleR := bbLoPass(aSt.FnoiseR, SarLongInt(bbRand, 15));
+        end;
+
+        vtPCM:
+        begin
+            if Length(aSt.FpcmData) > 0 then
+            begin
+                if aSt.FpcmPos < Cardinal(Length(aSt.FpcmData)) then
+                begin
+                    aSampleL := SmallInt(aSt.FpcmData[aSt.FpcmPos] shr 16);
+                    aSampleR := SmallInt(aSt.FpcmData[aSt.FpcmPos]);
+                    Inc(aSt.FpcmPos);
+                end;
+            end;
+        end;
+
+        vtIsoPulse, vtIsoPulseAlt:
+        begin
+            aSt.FsinPosL := aSt.FsinPosL + aSt.FcurBeatfreqLfactor;
+            if aSt.FsinPosL >= BB_TWO_PI then
+                aSt.FsinPosL := aSt.FsinPosL - BB_TWO_PI;
+            aSt.FsinPosR := aSt.FsinPosL;
+
+            Dec(aSt.FphaseSampleCount);
+            if aSt.FphaseSampleCount < 1 then
+            begin
+                aSt.FphaseSampleCount := aSt.FphaseSampleCountStart;
+                if aSt.FphaseFlag <> 0 then
+                    aSt.FphaseFlag := 0
+                else
+                    aSt.FphaseFlag := 1;
+                aSt.FphaseEnvelope := 0;
+            end;
+
+            aSampleL := sin(aSt.FsinPosL) * BB_SIN_SCALER;
+
+            if aSt.FphaseFlag <> 0 then
+            begin
+                aSampleL := aSampleL * (1.0 - aSt.FphaseEnvelope);
+                if aVoiceType = vtIsoPulse then
+                    aSampleR := aSampleL
+                else
+                    aSampleR := sin(aSt.FsinPosR) * BB_SIN_SCALER * aSt.FphaseEnvelope;
+            end
+            else
+            begin
+                aSampleL := aSampleL * aSt.FphaseEnvelope;
+                if aVoiceType = vtIsoPulse then
+                    aSampleR := aSampleL
+                else
+                    aSampleR := sin(aSt.FsinPosR) * BB_SIN_SCALER * (1.0 - aSt.FphaseEnvelope);
+            end;
+
+            aSt.FphaseEnvelope := aSt.FphaseEnvelope + 0.01;
+            if aSt.FphaseEnvelope > 1.0 then
+                aSt.FphaseEnvelope := 1.0;
+        end;
+
+        vtWaterdrops, vtRain:
+        begin
+            // Water is computed in periodic section; reuse cached value
+            aSampleL := aSt.FwaterMixL;
+            aSampleR := aSt.FwaterMixR;
+        end;
+    end; // case voice type
+end;
+
 procedure TGnauralSynth.fillBuffer(aOutput: Pointer; aFrameCount: Cardinal);
 var
     k, v: Integer;
@@ -539,90 +636,9 @@ begin
                 // ===== PER-SAMPLE SYNTHESIS =====
                 if not FvoiceStates[v].Fmuted then
                 begin
-                    sampleL := 0;
-                    sampleR := 0;
-
-                    case voice.VoiceType of
-                        vtBinaural:
-                        begin
-                            FvoiceStates[v].FsinPosL := FvoiceStates[v].FsinPosL + FvoiceStates[v].FcurBeatfreqLfactor;
-                            if FvoiceStates[v].FsinPosL >= BB_TWO_PI then
-                                FvoiceStates[v].FsinPosL := FvoiceStates[v].FsinPosL - BB_TWO_PI;
-                            FvoiceStates[v].FsinPosR := FvoiceStates[v].FsinPosR + FvoiceStates[v].FcurBeatfreqRfactor;
-                            if FvoiceStates[v].FsinPosR >= BB_TWO_PI then
-                                FvoiceStates[v].FsinPosR := FvoiceStates[v].FsinPosR - BB_TWO_PI;
-                            sampleL := sin(FvoiceStates[v].FsinPosL) * BB_SIN_SCALER;
-                            sampleR := sin(FvoiceStates[v].FsinPosR) * BB_SIN_SCALER;
-                        end;
-
-                        vtPinkNoise:
-                        begin
-                            sampleL := bbLoPass(FvoiceStates[v].FnoiseL, SarLongInt(bbRand, 15));
-                            sampleR := bbLoPass(FvoiceStates[v].FnoiseR, SarLongInt(bbRand, 15));
-                        end;
-
-                        vtPCM:
-                        begin
-                            if Length(FvoiceStates[v].FpcmData) > 0 then
-                            begin
-                                if FvoiceStates[v].FpcmPos < Cardinal(Length(FvoiceStates[v].FpcmData)) then
-                                begin
-                                    sampleL := SmallInt(FvoiceStates[v].FpcmData[FvoiceStates[v].FpcmPos] shr 16);
-                                    sampleR := SmallInt(FvoiceStates[v].FpcmData[FvoiceStates[v].FpcmPos]);
-                                    Inc(FvoiceStates[v].FpcmPos);
-                                end;
-                            end;
-                        end;
-
-                        vtIsoPulse, vtIsoPulseAlt:
-                        begin
-                            FvoiceStates[v].FsinPosL := FvoiceStates[v].FsinPosL + FvoiceStates[v].FcurBeatfreqLfactor;
-                            if FvoiceStates[v].FsinPosL >= BB_TWO_PI then
-                                FvoiceStates[v].FsinPosL := FvoiceStates[v].FsinPosL - BB_TWO_PI;
-                            FvoiceStates[v].FsinPosR := FvoiceStates[v].FsinPosL;
-
-                            Dec(FvoiceStates[v].FphaseSampleCount);
-                            if FvoiceStates[v].FphaseSampleCount < 1 then
-                            begin
-                                FvoiceStates[v].FphaseSampleCount := FvoiceStates[v].FphaseSampleCountStart;
-                                if FvoiceStates[v].FphaseFlag <> 0 then
-                                    FvoiceStates[v].FphaseFlag := 0
-                                else
-                                    FvoiceStates[v].FphaseFlag := 1;
-                                FvoiceStates[v].FphaseEnvelope := 0;
-                            end;
-
-                            sampleL := sin(FvoiceStates[v].FsinPosL) * BB_SIN_SCALER;
-
-                            if FvoiceStates[v].FphaseFlag <> 0 then
-                            begin
-                                sampleL := sampleL * (1.0 - FvoiceStates[v].FphaseEnvelope);
-                                if voice.VoiceType = vtIsoPulse then
-                                    sampleR := sampleL
-                                else
-                                    sampleR := sin(FvoiceStates[v].FsinPosR) * BB_SIN_SCALER * FvoiceStates[v].FphaseEnvelope;
-                            end
-                            else
-                            begin
-                                sampleL := sampleL * FvoiceStates[v].FphaseEnvelope;
-                                if voice.VoiceType = vtIsoPulse then
-                                    sampleR := sampleL
-                                else
-                                    sampleR := sin(FvoiceStates[v].FsinPosR) * BB_SIN_SCALER * (1.0 - FvoiceStates[v].FphaseEnvelope);
-                            end;
-
-                            FvoiceStates[v].FphaseEnvelope := FvoiceStates[v].FphaseEnvelope + 0.01;
-                            if FvoiceStates[v].FphaseEnvelope > 1.0 then
-                                FvoiceStates[v].FphaseEnvelope := 1.0;
-                        end;
-
-                        vtWaterdrops, vtRain:
-                        begin
-                            // Water is computed in periodic section; reuse cached value
-                            sampleL := FvoiceStates[v].FwaterMixL;
-                            sampleR := FvoiceStates[v].FwaterMixR;
-                        end;
-                    end; // case voice type
+                    // PS1.1: per-sample synthesis extracted to synthVoiceSample (reused by the
+                    // future parallel renderer); mono mix + volume + accumulation stay below.
+                    synthVoiceSample(FvoiceStates[v], voice.VoiceType, sampleL, sampleR);
 
                     // Mono mixing
                     if voice.Mono then
