@@ -565,6 +565,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoSteps.value = m === null ? [] : [...m.historySteps] // UG3.1: new ref -> panel re-renders
     undoCursor.value = m?.historyCursor ?? 0
     if (persistJournal) persistUndoJournal()
+    else refreshPersistedIds(computePersistedJournal()) // UG4.1b: keep the marking fresh w/o a write
   }
 
   // UG4.1 (req 5): the persisted-journal bounds come from the settings dialog; the default is
@@ -574,22 +575,41 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // then lives only in memory for the session, and nothing survives a restart by construction.
   const { settings: undoJournalSettings } = useUndoJournalSettings()
   const EMPTY_JOURNAL: GTrackUndoJournal = { version: 3, currentSig: '', cursor: 0, steps: [] }
-  function persistUndoJournal(): void {
+
+  /** What the CURRENT settings would let survive on disk — the single source of truth shared by the
+   *  actual write and the panel's doomed-row marking (UG4.1b, req 13). */
+  function computePersistedJournal(): GTrackUndoJournal | null {
     const m = model.value
-    const key = filePath.value
-    if (m === null || key === null) return
+    if (m === null) return null
     const s = undoJournalSettings.value
-    if (s.clearOnClose) {
-      writeProjectUndoJournalFor(key, EMPTY_JOURNAL)
-      return
-    }
-    const journal = trimUndoJournal(m.exportUndoJournal(s.maxSteps > 0 ? s.maxSteps : Number.MAX_SAFE_INTEGER), {
+    if (s.clearOnClose) return EMPTY_JOURNAL
+    return trimUndoJournal(m.exportUndoJournal(s.maxSteps > 0 ? s.maxSteps : Number.MAX_SAFE_INTEGER), {
       maxAgeMs: s.maxAgeDays > 0 ? s.maxAgeDays * 24 * 60 * 60 * 1000 : undefined,
       maxBytes: s.maxSizeKb > 0 ? s.maxSizeKb * 1024 : undefined,
       nowMs: Date.now(),
     })
+  }
+
+  // UG4.1b (req 13): ids of the steps that WILL survive closing the file under the current
+  // settings. The panel marks everything else as doomed (amber stripe + divider).
+  const persistedUndoStepIds = shallowRef<ReadonlySet<string>>(new Set())
+  function refreshPersistedIds(journal: GTrackUndoJournal | null): void {
+    persistedUndoStepIds.value = new Set((journal?.steps ?? []).map((st) => st.id))
+  }
+
+  function persistUndoJournal(): void {
+    const key = filePath.value
+    const journal = computePersistedJournal()
+    if (journal === null || key === null) return
+    refreshPersistedIds(journal)
     writeProjectUndoJournalFor(key, journal)
   }
+
+  // UG4.1b: changing the auto-clean settings applies to the disk copy (and the panel marking)
+  // immediately, not on the next edit.
+  watch(undoJournalSettings, () => {
+    if (model.value !== null) persistUndoJournal()
+  })
 
   // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump
   // does not flag provenance). Fed into the model so those voices are edit-locked and rendered
@@ -1506,6 +1526,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoCursor,
     rollbackToCursor,
     clearUndoHistory,
+    persistedUndoStepIds,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,

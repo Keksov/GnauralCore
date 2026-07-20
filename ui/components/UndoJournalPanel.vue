@@ -7,13 +7,20 @@
       {{ t('audio.undoJournalEmpty') }}
     </div>
     <q-list v-else dense class="undo-journal-panel__list">
+      <template v-for="row in rows" :key="row.key">
+        <!-- UG4.1b (req 13, вариант а): the watershed line — everything above it will NOT survive
+             closing the file under the current auto-clean settings. -->
+        <div v-if="row.cursor === doomedBoundaryCursor" class="undo-journal-panel__doomed-divider">
+          {{ t('audio.undoJournalDoomedAbove') }}
+        </div>
       <q-item
-        v-for="row in rows"
-        :key="row.key"
         clickable
         :active="pendingTarget === row.cursor"
         active-class="undo-journal-panel__row--pending"
-        :class="{ 'undo-journal-panel__row--undone': row.cursor > gtracks.undoCursor.value }"
+        :class="{
+          'undo-journal-panel__row--undone': row.cursor > gtracks.undoCursor.value,
+          'undo-journal-panel__row--doomed': row.doomed,
+        }"
         @click="selectRow(row.cursor)"
       >
         <q-item-section avatar class="undo-journal-panel__icon">
@@ -63,6 +70,11 @@
           </div>
         </app-tooltip>
       </q-item>
+      </template>
+      <!-- UG4.1b: every step is doomed (e.g. «очищать при закрытии») — the watershed closes the list. -->
+      <div v-if="doomedBoundaryCursor === ALL_DOOMED" class="undo-journal-panel__doomed-divider">
+        {{ t('audio.undoJournalDoomedAbove') }}
+      </div>
     </q-list>
     <q-separator />
     <div class="undo-journal-panel__actions">
@@ -143,6 +155,7 @@ interface JournalRow {
   subtitle: string
   time: string
   changes: GTrackStepPointChange[] // UG3.2b (req 12): the structured hover diff per point
+  doomed: boolean // UG4.1b (req 13): will NOT survive closing the file under the current settings
 }
 
 // UG3.2b: value formatting for the diff — beat is displayed as the FULL beat (2x half, GT-D6),
@@ -176,6 +189,7 @@ function pointRows(p: GTrackPoint): Array<[string, number]> {
 }
 
 const rows = computed<JournalRow[]>(() => {
+  const kept = gtracks.persistedUndoStepIds.value
   const out: JournalRow[] = [{
     key: 'initial',
     cursor: 0,
@@ -184,6 +198,7 @@ const rows = computed<JournalRow[]>(() => {
     subtitle: '',
     time: '',
     changes: [],
+    doomed: false,
   }]
   gtracks.undoSteps.value.forEach((step, i) => {
     out.push({
@@ -194,9 +209,21 @@ const rows = computed<JournalRow[]>(() => {
       subtitle: step.label,
       time: formatTime(step.atMs),
       changes: describeStepChanges(step, 8),
+      doomed: !kept.has(step.id),
     })
   })
   return out
+})
+
+// UG4.1b (req 13, вариант а): where the watershed line sits — before the first SURVIVING step row
+// that follows the doomed prefix. ALL_DOOMED when every step row is doomed (line closes the list);
+// null when nothing is doomed at the front (no line).
+const ALL_DOOMED = -1
+const doomedBoundaryCursor = computed<number | null>(() => {
+  const stepRows = rows.value.slice(1)
+  if (stepRows.length === 0 || !stepRows[0]!.doomed) return null
+  const firstKept = stepRows.find((r) => !r.doomed)
+  return firstKept !== undefined ? firstKept.cursor : ALL_DOOMED
 })
 
 // req 8: pending selection (highlight only). Reset whenever the log itself changes shape (a new
@@ -255,6 +282,22 @@ function clearBeforeSelection(): void {
 
 .undo-journal-panel__row--undone {
   opacity: 0.45;
+}
+
+/* UG4.1b (req 13, вариант б): the amber left stripe on rows that will not survive closing the
+   file — the same left-stripe idiom as the voice grouping (GT-D20). */
+.undo-journal-panel__row--doomed {
+  border-left: 3px solid #f2c037;
+}
+
+/* UG4.1b (вариант а): the watershed line — rows above it are not persisted. */
+.undo-journal-panel__doomed-divider {
+  border-top: 1px dashed #f2c037;
+  color: #b28704;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+  padding: 2px 8px 4px;
 }
 
 .undo-journal-panel__time {

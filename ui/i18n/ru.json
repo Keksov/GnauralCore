@@ -46,6 +46,7 @@
     "undoJournalClearAll": "Всю историю",
     "undoJournalClearBefore": "Старше выделенного",
     "undoJournalClearTail": "Отменённые шаги",
+    "undoJournalDoomedAbove": "Строки выше не сохранятся при закрытии файла (настройки журнала)",
     "undoTipPointChanged": "Точка #{n} · t {time} с",
     "undoTipPointAdded": "Добавлена точка #{n} · t {time} с",
     "undoTipPointRemoved": "Удалена точка #{n} · t {time} с",
