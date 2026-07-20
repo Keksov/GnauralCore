@@ -63,34 +63,40 @@ export const isPathInsideBase = (aBasePath: string, aCandidatePath: string): boo
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
-// audio-panel-cleanup AC3.1/AC-D2: the single configured `presetsRoot` was removed. Callers now pass
-// the explicit set of allowed roots (on the MindWaveCore side these are the fs-browser roots — the
-// whole machine, AC-D6 — while the LAN exposure of the byte-serving endpoints is closed by a separate
-// loopback gate, AC3.2). A file is allowed iff it resolves inside ANY allowed root.
+// access-preset-root AR2.1 (AR-D2): the allow-set is either a restriction or absent.
+//   - aAllowedRoots === null  => UNRESTRICTED: any path with a supported audio extension is allowed
+//     (the default now that the server is loopback-only, AR-D1; the OS enforces real permissions).
+//   - aAllowedRoots is an array => RESTRICT: allow only files resolving inside one of these roots
+//     (this is how a configured presetRoot narrows access, AR-D3). An EMPTY array stays deny-all — it
+//     is NOT the same as unrestricted, so an unpopulated restrict-list can never silently open the box.
+// (Supersedes audio-panel-cleanup AC3.1's whole-machine fs-browser root set as the audio allow-list.)
 export const resolveAllowedAudioFilePath = (
   aRequestedPath: string,
-  aAllowedRoots: readonly string[],
+  aAllowedRoots: readonly string[] | null,
 ): ResolvedAudioFile | null => {
   const resolvedPath = resolve(aRequestedPath)
-  const canonicalResolvedPath = canonicalizePathForCheck(resolvedPath)
-  const allowedRoots = aAllowedRoots
-    .map((rootPath) => canonicalizePathForCheck(resolve(rootPath)))
-    .filter((rootPath, index, rootPaths) => {
-      return rootPath !== "" && rootPaths.indexOf(rootPath) === index
-    })
-
-  if (allowedRoots.length === 0) {
-    return null
-  }
-
-  const isAllowed = allowedRoots.some((rootPath) => isPathInsideBase(rootPath, canonicalResolvedPath))
-  if (!isAllowed) {
-    return null
-  }
 
   const fileKind = getAudioFileKind(resolvedPath)
   if (fileKind === null) {
     return null
+  }
+
+  if (aAllowedRoots !== null) {
+    const canonicalResolvedPath = canonicalizePathForCheck(resolvedPath)
+    const allowedRoots = aAllowedRoots
+      .map((rootPath) => canonicalizePathForCheck(resolve(rootPath)))
+      .filter((rootPath, index, rootPaths) => {
+        return rootPath !== "" && rootPaths.indexOf(rootPath) === index
+      })
+
+    if (allowedRoots.length === 0) {
+      return null
+    }
+
+    const isAllowed = allowedRoots.some((rootPath) => isPathInsideBase(rootPath, canonicalResolvedPath))
+    if (!isAllowed) {
+      return null
+    }
   }
 
   return {
