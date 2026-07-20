@@ -583,10 +583,26 @@ export class GTrackModel {
 
   /** Adopt a persisted journal — only a v2 journal (UC-D5: v1 snapshot journals are rejected ->
    *  discarded) that chains to the CURRENT state (same signature), i.e. the file content matches what
-   *  the journal was exported against. Returns false (no-op) otherwise. */
+   *  the journal was exported against. Returns false (no-op) otherwise.
+   *  UG1.1 (undo-global-journal): a refusal is no longer silent — the console gets the reason, so the
+   *  owner's repro shows WHY a rebuilt model lost its history (version vs signature divergence). */
   public adoptUndoJournal(journal: GTrackUndoJournal): boolean {
     if (this.txnBefore !== null) return false
-    if (journal.version !== 2 || journal.currentSig !== signature(this.current)) return false
+    if (journal.version !== 2) {
+      console.warn(`[undo-diag] adopt refused: journal version ${journal.version} (want 2)`)
+      return false
+    }
+    const sig = signature(this.current)
+    if (journal.currentSig !== sig) {
+      let i = 0
+      const js = journal.currentSig
+      while (i < js.length && i < sig.length && js[i] === sig[i]) i += 1
+      console.warn(
+        `[undo-diag] adopt refused: signature mismatch (journal ${js.length} ch, model ${sig.length} ch, first diff at ${i}: `
+        + `…${js.slice(Math.max(0, i - 60), i + 60)}… vs …${sig.slice(Math.max(0, i - 60), i + 60)}…)`,
+      )
+      return false
+    }
     this.steps.length = 0
     this.steps.push(...journal.steps)
     this.cursor = Math.max(0, Math.min(journal.cursor, this.steps.length))

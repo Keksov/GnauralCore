@@ -502,9 +502,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
     // PR2.2: adopt the persisted undo history — only when it chains to the freshly-loaded state
     // (adoptUndoJournal verifies the signature; unsaved-and-lost edits leave it untouched).
+    // UG1.1 (undo-global-journal): log the outcome — success here vs the [undo-diag] refusal
+    // reasons logged inside adoptUndoJournal.
     const m = model.value
-    if (m !== null && isGTrackUndoJournal(storedJournal) && m.adoptUndoJournal(storedJournal)) {
-      refreshEditState(false)
+    if (m !== null && storedJournal !== null) {
+      if (!isGTrackUndoJournal(storedJournal)) {
+        console.warn('[undo-diag] stored undo journal rejected by the shape check (not a v2 journal)')
+      } else if (m.adoptUndoJournal(storedJournal)) {
+        console.info(`[undo-diag] stored undo journal adopted: ${storedJournal.steps.length} steps, cursor ${storedJournal.cursor}`)
+        refreshEditState(false)
+      }
     }
 
     if (storedLanes === null) {
@@ -571,6 +578,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const preparseVoiceIds = ref<number[]>([])
 
   function buildModel(data: GnauralScheduleData | null): void {
+    // UG1.1 (undo-global-journal): a rebuild replaces the model and drops the in-memory undo
+    // history; the trigger is whoever replaced the schedule object (logged in the audio store as
+    // [undo-diag] "schedule object replaced"). Log what is being lost for the owner's repro.
+    const prev = model.value
+    if (prev !== null) {
+      console.info(
+        `[undo-diag] buildModel: model rebuilt (prev: canUndo=${prev.canUndo} canRedo=${prev.canRedo} dirty=${prev.isDirty})`
+        + ' — in-memory undo history dropped, journal re-adoption pending',
+      )
+    }
     model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value)
     selection.value = null
     syncSchedule()

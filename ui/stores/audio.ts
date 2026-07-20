@@ -334,7 +334,12 @@ export const useAudioStore = defineStore('audio', () => {
     gnauralScheduleLoadingPath.value = null
   }
 
-  function setGnauralSchedule(filePath: string, schedule: GnauralScheduleData): void {
+  function setGnauralSchedule(filePath: string, schedule: GnauralScheduleData, source = 'unknown'): void {
+    // UG1.1 (undo-global-journal): replacing an EXISTING cache entry changes gnauralSchedule's
+    // identity -> the gtrack model rebuilds and drops its undo history. Log the trigger.
+    if (gnauralScheduleCache.value[filePath] !== undefined) {
+      console.info(`[undo-diag] schedule object replaced (${source}) for ${filePath}`)
+    }
     gnauralScheduleCache.value = {
       ...gnauralScheduleCache.value,
       [filePath]: schedule,
@@ -355,6 +360,7 @@ export const useAudioStore = defineStore('audio', () => {
     // merge from clobbering a newer schedule.
     void applyProjectVoiceState(filePath, schedule).then((merged) => {
       if (merged !== schedule && gnauralScheduleCache.value[filePath] === schedule) {
+        console.info(`[undo-diag] schedule object replaced (voiceState merge) for ${filePath}`) // UG1.1
         gnauralScheduleCache.value = { ...gnauralScheduleCache.value, [filePath]: merged }
       }
     }).catch(() => undefined)
@@ -379,6 +385,7 @@ export const useAudioStore = defineStore('audio', () => {
         muted: patch.muted ?? voice.muted,
       }
     })
+    console.info(`[undo-diag] schedule object replaced (voice-state patch) for ${filePath}`) // UG1.1
     gnauralScheduleCache.value = { ...gnauralScheduleCache.value, [filePath]: { ...current, voices } }
   }
 
@@ -413,7 +420,7 @@ export const useAudioStore = defineStore('audio', () => {
         return
       }
 
-      setGnauralSchedule(filePath, schedule)
+      setGnauralSchedule(filePath, schedule, 'load fetch')
 
       if (
         (displayMode.value === 'gnaural' && displayFilePath.value === filePath) ||
@@ -859,7 +866,7 @@ export const useAudioStore = defineStore('audio', () => {
   }
 
   function handleScheduleLoaded(event: AudioScheduleLoadedEvent): void {
-    setGnauralSchedule(event.filePath, event.schedule)
+    setGnauralSchedule(event.filePath, event.schedule, 'ws schedule-loaded event (play/load)')
 
     if (
       selectedPath.value === event.filePath ||
