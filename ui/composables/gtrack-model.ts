@@ -633,6 +633,23 @@ export class GTrackModel {
     }
   }
 
+  /** UG3.2 (req 7/8): forget history WITHOUT touching the current state. 'all' clears everything;
+   *  'before' drops the steps OLDER than cursor position `cursorPos` (bounded by the current cursor
+   *  — applied steps only); 'redo-tail' drops the undone steps past the cursor (req 8: after a
+   *  rollback the user may discard the rolled-back future). */
+  public clearHistory(mode: 'all' | 'before' | 'redo-tail', cursorPos = 0): void {
+    if (mode === 'all') {
+      this.history.steps.length = 0
+      this.history.cursor = 0
+    } else if (mode === 'before') {
+      const k = Math.max(0, Math.min(Math.floor(cursorPos), this.history.cursor))
+      this.history.steps.splice(0, k)
+      this.history.cursor -= k
+    } else {
+      this.history.steps.length = this.history.cursor
+    }
+  }
+
   // --- Undo journal persistence (project-store PR2.2, PR-D8) -----------------
 
   /** Bounded export of the action log for the project's undo.json (v2). Keeps up to `maxEntries` undo

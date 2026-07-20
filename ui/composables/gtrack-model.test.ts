@@ -547,6 +547,32 @@ describe('external history container (undo-global-journal UG2.1, UG-D1)', () => 
     expect(m2.canUndo).toBe(false)
   })
 
+  test('clearHistory: all / before / redo-tail (UG3.2, req 7-8)', () => {
+    const make = (): GTrackModel => {
+      const m = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+      for (let i = 0; i < 4; i++) m.edit(() => m.movePoint(7, 1, 11 + i))
+      m.undo() // cursor 3, one redoable
+      return m
+    }
+    const all = make()
+    all.clearHistory('all')
+    expect(all.canUndo).toBe(false)
+    expect(all.canRedo).toBe(false)
+
+    const before = make()
+    before.clearHistory('before', 2) // forget the two oldest applied steps
+    expect(before.historySteps.length).toBe(2) // 1 undoable + 1 redoable kept
+    expect(before.historyCursor).toBe(1)
+    expect(before.canRedo).toBe(true)
+
+    const tail = make()
+    tail.clearHistory('redo-tail')
+    expect(tail.historyCursor).toBe(3)
+    expect(tail.historySteps.length).toBe(3)
+    expect(tail.canRedo).toBe(false)
+    expect(tail.canUndo).toBe(true)
+  })
+
   test('constructor clamps a stale cursor in an adopted container', () => {
     const history = createGTrackHistory()
     history.cursor = 5 // corrupt: points past the (empty) step list

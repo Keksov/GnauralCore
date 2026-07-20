@@ -1417,6 +1417,15 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
+  /** UG3.2 (req 7/8): clear the history (whole / older-than / undone tail). State is untouched;
+   *  the journal re-persists so the disk copy shrinks too. */
+  function clearUndoHistory(mode: 'all' | 'before' | 'redo-tail', cursorPos = 0): void {
+    const m = model.value
+    if (m === null || m.inTransaction) return
+    m.clearHistory(mode, cursorPos)
+    refreshEditState()
+  }
+
   /** UG3.1 (req 3/8): jump the history to cursor position `target` (0 = the initial state,
    *  steps.length = everything applied) — a run of undo()/redo() applied as ONE visual update.
    *  The two-step confirmation (select, then «Применить») lives in the panel; this is the apply. */
@@ -1483,6 +1492,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoSteps,
     undoCursor,
     rollbackToCursor,
+    clearUndoHistory,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,

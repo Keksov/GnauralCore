@@ -34,6 +34,28 @@
     </q-list>
     <q-separator />
     <div class="undo-journal-panel__actions">
+      <!-- UG3.2 (req 7/8): clearing forgets history only — the schedule state is untouched. -->
+      <q-btn-dropdown dense flat no-caps :label="t('audio.undoJournalClear')" :disable="rows.length === 1">
+        <q-list dense>
+          <q-item v-close-popup clickable @click="gtracks.clearUndoHistory('all')">
+            <q-item-section>{{ t('audio.undoJournalClearAll') }}</q-item-section>
+          </q-item>
+          <q-item
+            v-close-popup clickable
+            :disable="pendingTarget === null || pendingTarget === 0"
+            @click="clearBeforeSelection"
+          >
+            <q-item-section>{{ t('audio.undoJournalClearBefore') }}</q-item-section>
+          </q-item>
+          <q-item
+            v-close-popup clickable
+            :disable="gtracks.undoCursor.value >= gtracks.undoSteps.value.length"
+            @click="gtracks.clearUndoHistory('redo-tail')"
+          >
+            <q-item-section>{{ t('audio.undoJournalClearTail') }}</q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
       <q-space />
       <!-- UG3.1 (req 8): the TWO-STEP rollback — the state moves ONLY here, never on row click. -->
       <q-btn
@@ -123,6 +145,14 @@ function applyRollback(): void {
   const target = pendingTarget.value
   if (target === null) return
   gtracks.rollbackToCursor(target)
+  pendingTarget.value = null
+}
+
+// UG3.2 (req 7): forget the steps OLDER than the selected row (the selection marks the kept base).
+function clearBeforeSelection(): void {
+  const target = pendingTarget.value
+  if (target === null || target === 0) return
+  gtracks.clearUndoHistory('before', target)
   pendingTarget.value = null
 }
 </script>
