@@ -53,18 +53,9 @@ function sendSection(projectId: string, name: string, value: unknown, keepalive 
   })
 }
 
-interface PendingUndoWrite {
-  readonly journal: unknown
-  readonly timer: ReturnType<typeof setTimeout>
-}
-
-const pendingUndoWrites = new Map<string, PendingUndoWrite>() // key = projectId
-
-function sendUndoJournal(projectId: string, journal: unknown, keepalive = false): void {
-  void projectApi.putUndoJournal({ id: projectId, journal }, undefined, keepalive).catch((error: unknown) => {
-    console.warn('[use-project] putUndoJournal failed:', error instanceof Error ? error.message : error)
-  })
-}
+// undo-versioned-log VL4.4 (VL-D8): the debounced whole-journal v3 write queue is gone — the
+// undo history flows through the undo-log queue below. undo.json survives only as a read-only
+// migration source; the delete after a confirmed replay is the one remaining legacy write.
 
 // --- undo-log queue (undo-versioned-log VL4.1, VL-D4) ----------------------------------------
 // Commits are batched per project with the same short debounce as the v3 journal had; a batch is
@@ -272,12 +263,6 @@ export function flushPendingProjectWrites(): void {
   }
   pendingWrites.clear()
 
-  for (const [projectId, pending] of pendingUndoWrites) {
-    clearTimeout(pending.timer)
-    sendUndoJournal(projectId, pending.journal, true) // UC-D4: keepalive only on the unload flush
-  }
-  pendingUndoWrites.clear()
-
   // undo-log (VL4.1): fire the keepalive-sized PREFIX of each pending batch and keep the queue
   // as-is — if the page survives (file switch), the normal debounce re-sends everything and the
   // server skips the duplicates (S2); if the page dies, the prefix is what survives.
@@ -434,16 +419,11 @@ export function writeProjectSectionFor(path: string, name: string, value: unknow
   })
 }
 
-/** Undo-journal transport (PR2.2, PR-D8): same shape as sections, longer debounce, own endpoint. */
+/** Legacy v3 journal READER (VL4.4): feeds the one-time migration only. */
 export async function readProjectUndoJournalFor(path: string): Promise<unknown | null> {
   const project = await getProjectForPath(path)
   if (project === null) {
     return null
-  }
-
-  const pending = pendingUndoWrites.get(project.id)
-  if (pending !== undefined) {
-    return pending.journal ?? null
   }
 
   try {
@@ -455,25 +435,17 @@ export async function readProjectUndoJournalFor(path: string): Promise<unknown |
   }
 }
 
-export function writeProjectUndoJournalFor(path: string, journal: unknown): void {
-  void getProjectForPath(path).then((project) => {
-    if (project === null) {
-      return
-    }
-
-    const existing = pendingUndoWrites.get(project.id)
-    if (existing !== undefined) {
-      clearTimeout(existing.timer)
-    }
-
-    pendingUndoWrites.set(project.id, {
-      journal,
-      timer: setTimeout(() => {
-        pendingUndoWrites.delete(project.id)
-        sendUndoJournal(project.id, journal)
-      }, UNDO_PUT_DEBOUNCE_MS),
-    })
-  })
+/** Delete undo.json after a confirmed migration replay (S14) — the last legacy write verb. */
+export async function deleteProjectUndoJournalFor(path: string): Promise<void> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return
+  }
+  try {
+    await projectApi.putUndoJournal({ id: project.id, journal: null })
+  } catch (error) {
+    console.warn('[use-project] putUndoJournal(null) failed:', error instanceof Error ? error.message : error)
+  }
 }
 
 // Pending writes must survive a tab close: keepalive fetches issued here still complete.

@@ -18,6 +18,7 @@ import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-set
 import {
   appendProjectUndoLogNowFor,
   clearProjectUndoLogFor,
+  deleteProjectUndoJournalFor,
   discardPendingUndoLogFor,
   queueProjectUndoLogCommitsFor,
   queueProjectUndoLogRefsFor,
@@ -26,7 +27,6 @@ import {
   readProjectUndoLogChainFor,
   setUndoLogAppendResultHandler,
   writeProjectSectionFor,
-  writeProjectUndoJournalFor,
 } from './use-project'
 import { planUndoLogAdoption, planV3Migration, stepToCommitInput } from './undo-log-adoption'
 
@@ -768,7 +768,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
     undoLogPositions = plan.positionCids
     undoLogMainTip = result.refs.main
-    writeProjectUndoJournalFor(key, null) // delete undo.json — the log is the journal now
+    void deleteProjectUndoJournalFor(key) // delete undo.json — the log is the journal now
     const s = undoJournalSettings.value
     if (s.maxSteps > 0 || s.maxAgeDays > 0 || s.maxSizeKb > 0) {
       // VL-D6 (owner quiz): the old limits now govern the SERVER deep history — a stale
