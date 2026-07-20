@@ -212,17 +212,24 @@ export interface GTrackVoiceDelta {
   readonly before: GTrackVoice
   readonly after: GTrackVoice
 }
+/** UG2.2 (undo-global-journal, UG-D2): a step is a COMMIT — voice deltas plus metadata for the
+ *  operations panel (kind + label) and a stable id + timestamp as the groundwork for a future
+ *  git-like version model (the linear log is the "main branch" special case). */
 export interface GTrackUndoStep {
+  readonly id: string
+  readonly kind: string
+  readonly label: string
+  readonly atMs: number
   readonly voices: readonly GTrackVoiceDelta[]
 }
 
-/** project-store PR2.2 (PR-D8) + UC-D3/UC-D5: the persistable undo history, v2 — a compact action log
- *  (steps of voice-deltas) + a cursor, instead of full-schedule snapshots, so a one-point edit
- *  persists one voice, not the whole schedule. currentSig pins the state the log chains to, so a
- *  journal is only ever adopted onto the exact schedule it was exported from. v1 (snapshot) journals
- *  lack `version` and are rejected by isGTrackUndoJournal -> discarded on load. */
+/** project-store PR2.2 (PR-D8) + UC-D3/UC-D5 + UG-D3: the persistable undo history, v3 — a compact
+ *  action log (steps of voice-deltas + commit metadata) + a cursor. currentSig pins the state the
+ *  log chains to, so a journal is only ever adopted onto the exact schedule it was exported from.
+ *  v1 (snapshot) and v2 (no step metadata) journals are rejected by isGTrackUndoJournal ->
+ *  discarded on load (UG-D3: history is best-effort per file, no converter). */
 export interface GTrackUndoJournal {
-  readonly version: 2
+  readonly version: 3
   readonly currentSig: string
   readonly cursor: number
   readonly steps: readonly GTrackUndoStep[]
@@ -241,6 +248,9 @@ export function createGTrackHistory(): GTrackHistory {
   return { steps: [], cursor: 0 }
 }
 
+// UG2.2: session-unique step-id suffix (ids arriving from an adopted journal are kept as-is).
+let stepSeq = 0
+
 /** UG2.1: signature of raw dump content as the editor would model it — directly comparable with a
  *  model's savedSignature/currentSignature (the same scheduleToEditable path). */
 export function scheduleContentSignature(data: GnauralScheduleData, preparseIds: Iterable<number>): string {
@@ -250,11 +260,16 @@ export function scheduleContentSignature(data: GnauralScheduleData, preparseIds:
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
   const c = value as { version?: unknown; currentSig?: unknown; cursor?: unknown; steps?: unknown }
-  if (c.version !== 2 || typeof c.currentSig !== 'string' || typeof c.cursor !== 'number') return false
+  if (c.version !== 3 || typeof c.currentSig !== 'string' || typeof c.cursor !== 'number') return false
   const isVoiceLike = (v: unknown): boolean =>
     v !== null && typeof v === 'object' && typeof (v as GTrackVoice).id === 'number' && Array.isArray((v as GTrackVoice).points)
   return Array.isArray(c.steps) && c.steps.every((s) =>
-    s !== null && typeof s === 'object' && Array.isArray((s as GTrackUndoStep).voices)
+    s !== null && typeof s === 'object'
+    && typeof (s as GTrackUndoStep).id === 'string'
+    && typeof (s as GTrackUndoStep).kind === 'string'
+    && typeof (s as GTrackUndoStep).label === 'string'
+    && typeof (s as GTrackUndoStep).atMs === 'number'
+    && Array.isArray((s as GTrackUndoStep).voices)
     && (s as GTrackUndoStep).voices.every((d) =>
       d !== null && typeof d === 'object' && typeof (d as GTrackVoiceDelta).voiceId === 'number'
       && isVoiceLike((d as GTrackVoiceDelta).before) && isVoiceLike((d as GTrackVoiceDelta).after)))
@@ -271,6 +286,8 @@ export class GTrackModel {
   private dirtyFlag = false
   // Open-transaction state: the snapshot taken at beginEdit, restored on cancel / pushed on commit.
   private txnBefore: GTrackSchedule | null = null
+  // UG2.2 (UG-D2): the operation kind declared at beginEdit, recorded on the committed step.
+  private txnKind = 'edit'
 
   public constructor(data: GnauralScheduleData, preparseVoiceIds?: Iterable<number>, history?: GTrackHistory) {
     this.current = scheduleToEditable(data, new Set(preparseVoiceIds ?? []))
@@ -337,16 +354,18 @@ export class GTrackModel {
   // A transaction groups a run of edits into a single undo unit. Drag interactions open a
   // transaction on pointerdown, mutate on each move, and commit on pointerup.
 
-  public beginEdit(): void {
+  public beginEdit(kind = 'edit'): void {
     if (this.txnBefore !== null) throw new Error('gtrack: a transaction is already open')
     // Mutations replace objects immutably (never mutate in place), so the current reference is a
     // safe snapshot — no deep clone required.
     this.txnBefore = this.current
+    this.txnKind = kind
   }
 
   /** Commit the open transaction. If nothing actually changed, it is dropped (no undo entry). The step
    *  records only the voices whose reference changed (structural sharing -> exactly the edited voices,
-   *  usually one), each as before/after. */
+   *  usually one), each as before/after. UG2.2 (UG-D2): the step is stamped as a commit — stable id,
+   *  the kind declared at beginEdit, a label from the changed voices' names, and a timestamp. */
   public commitEdit(): void {
     if (this.txnBefore === null) throw new Error('gtrack: no open transaction')
     const before = this.txnBefore
@@ -358,8 +377,15 @@ export class GTrackModel {
       const av = afterById.get(bv.id)
       if (av !== undefined && av !== bv) deltas.push({ voiceId: bv.id, before: bv, after: av })
     }
+    const atMs = Date.now()
     this.history.steps.length = this.history.cursor // drop the redo tail
-    this.history.steps.push({ voices: deltas })
+    this.history.steps.push({
+      id: `${atMs.toString(36)}-${(stepSeq++).toString(36)}`,
+      kind: this.txnKind,
+      label: deltas.map((d) => (d.after.description.trim() !== '' ? d.after.description : `#${d.voiceId}`)).join(', '),
+      atMs,
+      voices: deltas,
+    })
     this.history.cursor = this.history.steps.length
     this.recomputeDirty()
   }
@@ -372,8 +398,8 @@ export class GTrackModel {
   }
 
   /** Convenience: run a single atomic edit (begin -> mutate -> commit). */
-  public edit(mutator: () => void): void {
-    this.beginEdit()
+  public edit(mutator: () => void, kind = 'edit'): void {
+    this.beginEdit(kind)
     try {
       mutator()
     } catch (error) {
@@ -564,7 +590,7 @@ export class GTrackModel {
     if (!this.findVoice(voiceId).preparse) return
     this.edit(() => {
       this.replaceVoice(voiceId, (v) => ({ ...v, preparse: false }))
-    })
+    }, 'fix-preparse')
   }
 
   // --- Undo / redo ----------------------------------------------------------
@@ -608,22 +634,22 @@ export class GTrackModel {
     const redoKeep = Math.min(this.history.steps.length - this.history.cursor, maxEntries)
     const start = this.history.cursor - undoKeep
     return {
-      version: 2,
+      version: 3,
       currentSig: signature(this.current),
       cursor: undoKeep,
       steps: this.history.steps.slice(start, this.history.cursor + redoKeep),
     }
   }
 
-  /** Adopt a persisted journal — only a v2 journal (UC-D5: v1 snapshot journals are rejected ->
-   *  discarded) that chains to the CURRENT state (same signature), i.e. the file content matches what
-   *  the journal was exported against. Returns false (no-op) otherwise.
+  /** Adopt a persisted journal — only a v3 journal (UC-D5/UG-D3: v1 snapshot and v2 metadata-less
+   *  journals are rejected -> discarded) that chains to the CURRENT state (same signature), i.e. the
+   *  file content matches what the journal was exported against. Returns false (no-op) otherwise.
    *  UG1.1 (undo-global-journal): a refusal is no longer silent — the console gets the reason, so the
    *  owner's repro shows WHY a rebuilt model lost its history (version vs signature divergence). */
   public adoptUndoJournal(journal: GTrackUndoJournal): boolean {
     if (this.txnBefore !== null) return false
-    if (journal.version !== 2) {
-      console.warn(`[undo-diag] adopt refused: journal version ${journal.version} (want 2)`)
+    if (journal.version !== 3) {
+      console.warn(`[undo-diag] adopt refused: journal version ${journal.version} (want 3; older journals are discarded per UG-D3)`)
       return false
     }
     const sig = signature(this.current)

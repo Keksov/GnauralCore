@@ -429,7 +429,7 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     const source = editedModel()
     source.undo() // move the cursor back one (one redo now available)
     const journal = source.exportUndoJournal()
-    expect(journal.version).toBe(2)
+    expect(journal.version).toBe(3)
     expect(journal.steps.length).toBe(2) // both steps kept
     expect(journal.cursor).toBe(1) // one of them is undone
 
@@ -471,7 +471,7 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     expect(journal.steps[0]!.voices[0]!.voiceId).toBe(7)
   })
 
-  test('isGTrackUndoJournal accepts v2, rejects junk and v1 (UC-D5 migration)', async () => {
+  test('isGTrackUndoJournal accepts v3, rejects junk, v1 and v2 (UC-D5/UG-D3 migration)', async () => {
     const { isGTrackUndoJournal } = await import('./gtrack-model')
     const journal = editedModel().exportUndoJournal()
     expect(isGTrackUndoJournal(journal)).toBe(true)
@@ -479,8 +479,29 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     expect(isGTrackUndoJournal(null)).toBe(false)
     // v1 snapshot journal: no `version` -> rejected -> discarded on load (UC-D5 migration).
     expect(isGTrackUndoJournal({ currentSig: 'x', undo: [], redo: [] })).toBe(false)
-    expect(isGTrackUndoJournal({ version: 2, currentSig: 1, cursor: 0, steps: [] })).toBe(false)
-    expect(isGTrackUndoJournal({ version: 2, currentSig: 'x', cursor: 0, steps: [{ voices: [{ voiceId: 'no' }] }] })).toBe(false)
+    // v2 journal (no step metadata) -> rejected -> discarded on load (UG-D3, owner-confirmed).
+    expect(isGTrackUndoJournal({ version: 2, currentSig: 'x', cursor: 0, steps: [] })).toBe(false)
+    expect(isGTrackUndoJournal({ version: 3, currentSig: 1, cursor: 0, steps: [] })).toBe(false)
+    // v3 steps must carry the commit metadata (id/kind/label/atMs).
+    expect(isGTrackUndoJournal({ version: 3, currentSig: 'x', cursor: 0, steps: [{ voices: [] }] })).toBe(false)
+    expect(isGTrackUndoJournal({ version: 3, currentSig: 'x', cursor: 0, steps: [{ id: 'a', kind: 'k', label: 'l', atMs: 1, voices: [{ voiceId: 'no' }] }] })).toBe(false)
+  })
+
+  test('a committed step is stamped as a commit: id/kind/label/atMs (UG2.2, UG-D2)', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    model.edit(() => model.movePoint(7, 1, 12), 'point-move')
+    const step = model.exportUndoJournal().steps[0]!
+    expect(step.kind).toBe('point-move')
+    expect(step.label).toBe('voice') // the changed voice's description
+    expect(typeof step.id).toBe('string')
+    expect(step.id.length).toBeGreaterThan(0)
+    expect(typeof step.atMs).toBe('number')
+    expect(step.atMs).toBeGreaterThan(0)
+    // Default kind when the caller does not declare one.
+    model.edit(() => model.movePoint(7, 1, 14))
+    const second = model.exportUndoJournal().steps[1]!
+    expect(second.kind).toBe('edit')
+    expect(second.id).not.toBe(step.id)
   })
 })
 

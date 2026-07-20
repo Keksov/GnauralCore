@@ -918,7 +918,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
     try {
-      m.edit(() => m.setPointFields(ref_.voiceId, ref_.pointIndex, patch))
+      m.edit(() => m.setPointFields(ref_.voiceId, ref_.pointIndex, patch), 'point-edit')
     } catch {
       return false
     }
@@ -942,7 +942,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           if (!m.isVoiceEditable(ref_.voiceId)) continue
           m.setPointFields(ref_.voiceId, ref_.pointIndex, patch)
         }
-      })
+      }, 'point-edit')
     } catch {
       return false
     }
@@ -969,7 +969,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           try { m.removePoint(voiceId, idx) } catch { /* gone - skip */ }
         }
       }
-    })
+    }, 'point-remove')
     clearMultiSelection()
     syncSchedule()
     refreshEditState()
@@ -994,7 +994,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           try { m.removePoint(voiceId, idx) } catch { /* already gone / race — skip */ }
         }
       }
-    })
+    }, 'point-remove')
     clearMultiSelection()
     syncSchedule()
     refreshEditState()
@@ -1135,7 +1135,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function beginPointDrag(ref_: GTrackPointRef): boolean {
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
-    m.beginEdit()
+    m.beginEdit('point-move')
     return true
   }
   // GT3.10 (GT-D16): point-drag mode is a persisted EDITOR SETTING (owner req. 18): 'clamp' keeps
@@ -1199,7 +1199,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
     try {
-      m.edit(() => m.removePoint(ref_.voiceId, ref_.pointIndex))
+      m.edit(() => m.removePoint(ref_.voiceId, ref_.pointIndex), 'point-remove')
     } catch {
       return false
     }
@@ -1333,7 +1333,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           selection.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: ni }
         }
         dropMultiSelectionForVoice(ref_.voiceId) // GT3.15: crossover re-sort — can't be reindexed
-      })
+      }, 'point-edit')
     } catch {
       return false
     }
@@ -1347,7 +1347,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (m === null || !m.isVoiceEditable(voiceId)) return false
     try {
       let idx = -1
-      m.edit(() => { idx = m.insertPoint(voiceId, timeSec) })
+      m.edit(() => { idx = m.insertPoint(voiceId, timeSec) }, 'point-insert')
       selection.value = { laneId, voiceId, pointIndex: idx }
       reindexMultiSelectionAfterInsert(voiceId, idx)
     } catch {
@@ -1363,7 +1363,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const m = model.value
     if (sel === null || m === null || !m.isVoiceEditable(sel.voiceId)) return false
     try {
-      m.edit(() => m.removePoint(sel.voiceId, sel.pointIndex))
+      m.edit(() => m.removePoint(sel.voiceId, sel.pointIndex), 'point-remove')
     } catch {
       return false
     }

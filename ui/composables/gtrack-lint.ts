@@ -180,7 +180,7 @@ const MIN_TAIL_SEC = 0.02
 export interface GTrackFixTarget {
   isVoiceEditable(voiceId: number): boolean
   readonly schedule: GTrackSchedule
-  edit(mutator: () => void): void
+  edit(mutator: () => void, kind?: string): void
   insertPoint(voiceId: number, timeSec: number): number
   setPointFields(voiceId: number, index: number, patch: Partial<Record<'timeSec' | 'baseFreq' | 'beatFreqHalf' | 'volL' | 'volR', number>>): void
 }
@@ -213,7 +213,7 @@ export function applyEndClickFix(m: GTrackFixTarget, voiceId: number): boolean {
       for (let i = zeroFrom; i < v.points.length; i += 1) {
         m.setPointFields(voiceId, i, { volL: 0, volR: 0 })
       }
-    })
+    }, 'lint-fix')
   } catch {
     return false
   }
@@ -227,7 +227,7 @@ export function applyLoopClickFix(m: GTrackFixTarget, voiceId: number): boolean 
   if (voice === undefined || voice.points.length < 2) return false
   const first = voice.points[0]!
   try {
-    m.edit(() => m.setPointFields(voiceId, voice.points.length - 1, { volL: first.volL, volR: first.volR }))
+    m.edit(() => m.setPointFields(voiceId, voice.points.length - 1, { volL: first.volL, volR: first.volR }), 'lint-fix')
   } catch {
     return false
   }
