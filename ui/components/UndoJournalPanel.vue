@@ -1,47 +1,62 @@
 <template>
   <div class="undo-journal-panel">
-    <!-- UG3.1 (req 3): the action log, oldest first. Row 0 is the initial state; each step row shows
-         the operation kind + the changed voices + the commit time. Rows past the cursor are the
-         undone (redo) tail, rendered dimmed. -->
+    <!-- UG3.4 (req 14): the panel toolbar. Sort by edit time — newest on top by default; the toggle
+         is highlighted when the non-default (oldest-first) order is active. -->
+    <div class="undo-journal-panel__toolbar">
+      <q-space />
+      <q-btn
+        dense flat round size="sm" icon="swap_vert"
+        :color="sortNewestFirst ? undefined : 'primary'"
+        :aria-label="sortLabel"
+        @click="toggleSort"
+      >
+        <app-tooltip>{{ sortLabel }}</app-tooltip>
+      </q-btn>
+    </div>
+    <q-separator />
+    <!-- UG3.1 (req 3): the action log. Each step row shows the operation kind + the changed voices
+         + the commit time; rows past the cursor are the undone (redo) tail, rendered dimmed. -->
     <div v-if="rows.length === 1" class="undo-journal-panel__empty text-grey">
       {{ t('audio.undoJournalEmpty') }}
     </div>
     <q-list v-else dense class="undo-journal-panel__list">
-      <template v-for="row in rows" :key="row.key">
-        <!-- UG4.1b (req 13, вариант а): the watershed line — everything above it will NOT survive
-             closing the file under the current auto-clean settings. -->
-        <div v-if="row.cursor === doomedBoundaryCursor" class="undo-journal-panel__doomed-divider">
-          {{ t('audio.undoJournalDoomedAbove') }}
+      <template v-for="(item, ii) in displayItems" :key="item.kind === 'row' ? item.row.key : `divider-${ii}`">
+        <!-- UG4.1b (req 13, вариант а): the watershed line — everything on the DOOMED side of it
+             will not survive closing the file under the current auto-clean settings. The doomed
+             side depends on the sort order (req 14): oldest-first -> above, newest-first -> below. -->
+        <div v-if="item.kind === 'divider'" class="undo-journal-panel__doomed-divider">
+          {{ t(sortNewestFirst ? 'audio.undoJournalDoomedBelow' : 'audio.undoJournalDoomedAbove') }}
         </div>
       <q-item
+        v-else
         clickable
-        :active="pendingTarget === row.cursor"
+        :active="pendingTarget === item.row.cursor"
         active-class="undo-journal-panel__row--pending"
         :class="{
-          'undo-journal-panel__row--undone': row.cursor > gtracks.undoCursor.value,
-          'undo-journal-panel__row--doomed': row.doomed,
+          'undo-journal-panel__row--undone': item.row.cursor > gtracks.undoCursor.value,
+          'undo-journal-panel__row--doomed': item.row.doomed,
         }"
-        @click="selectRow(row.cursor)"
+        @click="selectRow(item.row.cursor)"
       >
         <q-item-section avatar class="undo-journal-panel__icon">
-          <q-icon :name="row.icon" size="18px" />
+          <q-icon :name="item.row.icon" size="18px" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ row.title }}</q-item-label>
-          <q-item-label v-if="row.subtitle !== ''" caption>{{ row.subtitle }}</q-item-label>
+          <q-item-label>{{ item.row.title }}</q-item-label>
+          <q-item-label v-if="item.row.subtitle !== ''" caption>{{ item.row.subtitle }}</q-item-label>
         </q-item-section>
         <q-item-section side>
           <!-- req 8: the current position marker — a single click must never move the state. -->
-          <q-badge v-if="row.cursor === gtracks.undoCursor.value" color="primary" outline>
+          <q-badge v-if="item.row.cursor === gtracks.undoCursor.value" color="primary" outline>
             {{ t('audio.undoJournalCurrent') }}
           </q-badge>
-          <span v-else-if="row.time !== ''" class="undo-journal-panel__time">{{ row.time }}</span>
+          <span v-else-if="item.row.time !== ''" class="undo-journal-panel__time">{{ item.row.time }}</span>
         </q-item-section>
         <!-- UG3.2b/rev2 (req 12): hover shows a rectangular per-point diff block. Each change type
              has its own format: a was/became table for edits and moves, a value table for added and
              removed points (owner 2026-07-20: «под каждый тип действия — свой формат»). -->
-        <app-tooltip v-if="row.changes.length > 0" max-width="480px">
-          <div v-for="(c, ci) in row.changes" :key="ci" class="undo-journal-panel__tip-change">
+        <app-tooltip v-if="item.row.changes.length > 0" max-width="480px">
+          <div v-for="(c, ci) in item.row.changes" :key="ci" class="undo-journal-panel__tip-change">
             <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
             <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
               <thead>
@@ -71,10 +86,6 @@
         </app-tooltip>
       </q-item>
       </template>
-      <!-- UG4.1b: every step is doomed (e.g. «очищать при закрытии») — the watershed closes the list. -->
-      <div v-if="doomedBoundaryCursor === ALL_DOOMED" class="undo-journal-panel__doomed-divider">
-        {{ t('audio.undoJournalDoomedAbove') }}
-      </div>
     </q-list>
     <q-separator />
     <div class="undo-journal-panel__actions">
@@ -215,15 +226,48 @@ const rows = computed<JournalRow[]>(() => {
   return out
 })
 
-// UG4.1b (req 13, вариант а): where the watershed line sits — before the first SURVIVING step row
-// that follows the doomed prefix. ALL_DOOMED when every step row is doomed (line closes the list);
-// null when nothing is doomed at the front (no line).
-const ALL_DOOMED = -1
-const doomedBoundaryCursor = computed<number | null>(() => {
-  const stepRows = rows.value.slice(1)
-  if (stepRows.length === 0 || !stepRows[0]!.doomed) return null
-  const firstKept = stepRows.find((r) => !r.doomed)
-  return firstKept !== undefined ? firstKept.cursor : ALL_DOOMED
+// UG3.4 (req 14): sort by edit time — newest on top by DEFAULT; the choice is a persisted editor
+// preference like the other 'mindwave-*' keys.
+const SORT_STORAGE_KEY = 'mindwave-undo-journal-sort'
+function loadSortNewestFirst(): boolean {
+  try {
+    return localStorage.getItem(SORT_STORAGE_KEY) !== 'oldest'
+  } catch {
+    return true
+  }
+}
+const sortNewestFirst = ref(loadSortNewestFirst())
+const sortLabel = computed(() => t(sortNewestFirst.value ? 'audio.undoJournalSortNewest' : 'audio.undoJournalSortOldest'))
+function toggleSort(): void {
+  sortNewestFirst.value = !sortNewestFirst.value
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, sortNewestFirst.value ? 'newest' : 'oldest')
+  } catch { /* session-local */ }
+}
+
+// UG4.1b (req 13, вариант а) + UG3.4: the render list. In chronological order the watershed line
+// sits between the doomed prefix and the first surviving row; reversing the list for newest-first
+// flips it into «kept above / doomed below» automatically (the label follows sortNewestFirst).
+type DisplayItem = { readonly kind: 'row'; readonly row: JournalRow } | { readonly kind: 'divider' }
+const displayItems = computed<DisplayItem[]>(() => {
+  const chronological: DisplayItem[] = []
+  let seenDoomed = false
+  let dividerPlaced = false
+  for (const row of rows.value) {
+    // The divider closes the doomed PREFIX: it goes before the first surviving step row that
+    // follows doomed ones (a doomed redo tail beyond the window keeps its stripe only).
+    if (row.cursor > 0) {
+      if (row.doomed) {
+        seenDoomed = true
+      } else if (seenDoomed && !dividerPlaced) {
+        chronological.push({ kind: 'divider' })
+        dividerPlaced = true
+      }
+    }
+    chronological.push({ kind: 'row', row })
+  }
+  if (seenDoomed && !dividerPlaced) chronological.push({ kind: 'divider' })
+  return sortNewestFirst.value ? [...chronological].reverse() : chronological
 })
 
 // req 8: pending selection (highlight only). Reset whenever the log itself changes shape (a new
@@ -264,6 +308,13 @@ function clearBeforeSelection(): void {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* UG3.4 (req 14): the panel toolbar (sort toggle). */
+.undo-journal-panel__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  padding: 2px 4px;
 }
 
 .undo-journal-panel__empty {
