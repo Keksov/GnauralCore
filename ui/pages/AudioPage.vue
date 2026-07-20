@@ -289,6 +289,7 @@ import { useWsService } from '../composables/use-ws'
 import GnauralTransportControls from '../components/GnauralTransportControls.vue'
 import FileOpenDialog from '../components/FileOpenDialog.vue'
 import { bindProjectViewState } from '../composables/use-project-view-state'
+import { flushPendingProjectWrites } from '../composables/use-project'
 import { writeVoiceStatePatches } from '../composables/use-voice-state'
 import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
@@ -442,6 +443,10 @@ function openFileDialog(): void {
 const menuDropdownRef = ref<QBtnDropdown | null>(null)
 
 function exitApp(): void {
+  // UG3.2c (undo-global-journal): __appcoreExit() kills the webview without firing beforeunload,
+  // so the debounced project writes (undo journal!) must be flushed explicitly before exiting —
+  // the keepalive fetches issued by the flush still complete after the page is gone.
+  flushPendingProjectWrites()
   // AppCore binds window.__appcoreExit() to terminate its run loop — window.close() alone only
   // raises WindowCloseRequested, which the AppCore webview library ignores (so it does nothing).
   const appcoreExit = (window as unknown as { __appcoreExit?: () => void }).__appcoreExit

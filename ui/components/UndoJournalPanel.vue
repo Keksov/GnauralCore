@@ -30,9 +30,37 @@
           </q-badge>
           <span v-else-if="row.time !== ''" class="undo-journal-panel__time">{{ row.time }}</span>
         </q-item-section>
-        <!-- UG3.2b (req 12): hover shows the point-level diff — number, time, was/became fields. -->
-        <app-tooltip v-if="row.changes.length > 0" max-width="360px">
-          <div v-for="(line, li) in row.changes" :key="li" class="undo-journal-panel__tip-line">{{ line }}</div>
+        <!-- UG3.2b/rev2 (req 12): hover shows a rectangular per-point diff block. Each change type
+             has its own format: a was/became table for edits and moves, a value table for added and
+             removed points (owner 2026-07-20: «под каждый тип действия — свой формат»). -->
+        <app-tooltip v-if="row.changes.length > 0" max-width="480px">
+          <div v-for="(c, ci) in row.changes" :key="ci" class="undo-journal-panel__tip-change">
+            <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
+            <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>{{ t('audio.undoTipWas') }}</th>
+                  <th>{{ t('audio.undoTipBecame') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="f in c.fields" :key="f.field">
+                  <td class="undo-journal-panel__tip-name">{{ fieldShort(f.field) }}</td>
+                  <td class="undo-journal-panel__tip-num">{{ fmtField(f.field, f.before) }}</td>
+                  <td class="undo-journal-panel__tip-num undo-journal-panel__tip-num--after">{{ fmtField(f.field, f.after) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <table v-else class="undo-journal-panel__tip-table">
+              <tbody>
+                <tr v-for="[name, value] in pointRows(c.point)" :key="name">
+                  <td class="undo-journal-panel__tip-name">{{ name }}</td>
+                  <td class="undo-journal-panel__tip-num">{{ value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </app-tooltip>
       </q-item>
     </q-list>
@@ -114,11 +142,11 @@ interface JournalRow {
   title: string
   subtitle: string
   time: string
-  changes: string[] // UG3.2b (req 12): the hover diff, one line per changed/added/removed point
+  changes: GTrackStepPointChange[] // UG3.2b (req 12): the structured hover diff per point
 }
 
-// UG3.2b: value formatting for the diff lines — beat is displayed as the FULL beat (2x half,
-// GT-D6), everything else trimmed to 3 decimals like the inspector fields.
+// UG3.2b: value formatting for the diff — beat is displayed as the FULL beat (2x half, GT-D6),
+// everything else trimmed to 3 decimals like the inspector fields.
 function fmt(n: number): number {
   return Number(n.toFixed(3))
 }
@@ -127,24 +155,24 @@ function fieldShort(field: string): string {
   return t(`audio.undoField_${field}`)
 }
 
-function changeLine(c: GTrackStepPointChange): string {
-  const head = `#${c.index + 1} · ${t('audio.undoField_timeSec')} ${fmt(c.point.timeSec)}`
-  if (c.change === 'changed') {
-    const parts = c.fields.map((f) => {
-      const scale = f.field === 'beatFreqHalf' ? 2 : 1
-      return `${fieldShort(f.field)} ${fmt(f.before * scale)} → ${fmt(f.after * scale)}`
-    })
-    return `${head}: ${parts.join(', ')}`
-  }
-  const p: GTrackPoint = c.point
-  const values = [
-    `${t('audio.undoField_baseFreq')} ${fmt(p.baseFreq)}`,
-    `${t('audio.undoField_beatFreqHalf')} ${fmt(p.beatFreqHalf * 2)}`,
-    `${t('audio.undoField_volL')} ${fmt(p.volL)}`,
-    `${t('audio.undoField_volR')} ${fmt(p.volR)}`,
-  ].join(', ')
-  const verb = c.change === 'added' ? t('audio.undoJournalPointAdded') : t('audio.undoJournalPointRemoved')
-  return `${head} — ${verb} (${values})`
+function fmtField(field: string, value: number): number {
+  return fmt(field === 'beatFreqHalf' ? value * 2 : value)
+}
+
+function tipHead(c: GTrackStepPointChange): string {
+  const key = c.change === 'added'
+    ? 'audio.undoTipPointAdded'
+    : c.change === 'removed' ? 'audio.undoTipPointRemoved' : 'audio.undoTipPointChanged'
+  return t(key, { n: c.index + 1, time: fmt(c.point.timeSec) })
+}
+
+function pointRows(p: GTrackPoint): Array<[string, number]> {
+  return [
+    [t('audio.undoField_baseFreq'), fmt(p.baseFreq)],
+    [t('audio.undoField_beatFreqHalf'), fmt(p.beatFreqHalf * 2)],
+    [t('audio.undoField_volL'), fmt(p.volL)],
+    [t('audio.undoField_volR'), fmt(p.volR)],
+  ]
 }
 
 const rows = computed<JournalRow[]>(() => {
@@ -165,7 +193,7 @@ const rows = computed<JournalRow[]>(() => {
       title: kindLabel(step.kind),
       subtitle: step.label,
       time: formatTime(step.atMs),
-      changes: describeStepChanges(step, 8).map(changeLine),
+      changes: describeStepChanges(step, 8),
     })
   })
   return out
@@ -234,8 +262,49 @@ function clearBeforeSelection(): void {
   opacity: 0.7;
 }
 
-.undo-journal-panel__tip-line {
+.undo-journal-panel__tip-change + .undo-journal-panel__tip-change {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  margin-top: 6px;
+  padding-top: 5px;
+}
+
+.undo-journal-panel__tip-head {
+  font-weight: 600;
+  margin-bottom: 2px;
   white-space: nowrap;
+}
+
+.undo-journal-panel__tip-table {
+  border-collapse: collapse;
+}
+
+.undo-journal-panel__tip-table th {
+  font-weight: 400;
+  opacity: 0.7;
+  padding: 0 6px;
+  text-align: right;
+}
+
+.undo-journal-panel__tip-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.undo-journal-panel__tip-name {
+  opacity: 0.85;
+  padding-right: 10px;
+  white-space: nowrap;
+}
+
+.undo-journal-panel__tip-num {
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.undo-journal-panel__tip-num--after {
+  font-weight: 600;
 }
 
 .undo-journal-panel__actions {

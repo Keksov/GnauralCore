@@ -10,8 +10,11 @@ import type { ProjectInfo } from '@protocol'
 import { projectApi } from '../project-api'
 
 const SECTION_PUT_DEBOUNCE_MS = 500
-// PR2.2 (PR-D8): the undo journal is heavier than a section — write it on an activity pause.
-const UNDO_PUT_DEBOUNCE_MS = 1500
+// PR2.2 (PR-D8): the undo journal used to be heavier than a section (v1 snapshots) — hence a long
+// pause. UG3.2c (undo-global-journal): the v3 journal is a KB-scale action log, and every debounced
+// millisecond is a window in which an AppCore exit loses the tail (the native window close does not
+// reliably fire beforeunload) -> write it almost immediately.
+const UNDO_PUT_DEBOUNCE_MS = 250
 
 const currentProject = ref<ProjectInfo | null>(null)
 const openError = ref<string | null>(null)
@@ -238,8 +241,11 @@ export function writeProjectUndoJournalFor(path: string, journal: unknown): void
 }
 
 // Pending writes must survive a tab close: keepalive fetches issued here still complete.
+// UG3.2c: pagehide covers unload paths where beforeunload does not fire (WebView2/AppCore close,
+// bfcache navigations) — the flush is idempotent, so both firing is harmless.
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', flushPendingProjectWrites)
+  window.addEventListener('pagehide', flushPendingProjectWrites)
 }
 
 export function useProject() {

@@ -231,6 +231,12 @@ export interface GTrackUndoStep {
 export interface GTrackUndoJournal {
   readonly version: 3
   readonly currentSig: string
+  /** UG3.2c (req 4): the signature of the SAVED state the log chains through + its position in
+   *  `steps`. Present only while that position is inside the exported window. Lets a restart adopt
+   *  the journal even when the session ended with unsaved edits (currentSig then matches nothing on
+   *  disk): the model adopts at baseCursor and the lost unsaved tail becomes REDO. */
+  readonly baseSig?: string
+  readonly baseCursor?: number
   readonly cursor: number
   readonly steps: readonly GTrackUndoStep[]
 }
@@ -316,8 +322,10 @@ export function describeStepChanges(step: GTrackUndoStep, maxChanges = 8): GTrac
 
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
-  const c = value as { version?: unknown; currentSig?: unknown; cursor?: unknown; steps?: unknown }
+  const c = value as { version?: unknown; currentSig?: unknown; baseSig?: unknown; baseCursor?: unknown; cursor?: unknown; steps?: unknown }
   if (c.version !== 3 || typeof c.currentSig !== 'string' || typeof c.cursor !== 'number') return false
+  if (c.baseSig !== undefined && typeof c.baseSig !== 'string') return false
+  if (c.baseCursor !== undefined && typeof c.baseCursor !== 'number') return false
   const isVoiceLike = (v: unknown): boolean =>
     v !== null && typeof v === 'object' && typeof (v as GTrackVoice).id === 'number' && Array.isArray((v as GTrackVoice).points)
   return Array.isArray(c.steps) && c.steps.every((s) =>
@@ -340,6 +348,9 @@ export class GTrackModel {
   // container into a rebuilt model carries the history across the rebuild.
   private readonly history: GTrackHistory
   private savedSig: string
+  // UG3.2c: the history position whose state equals the saved baseline (-1 = that state is no
+  // longer in the log, e.g. an edit truncated it away). Exported as baseCursor for restart adoption.
+  private savedCursor = 0
   private dirtyFlag = false
   // Open-transaction state: the snapshot taken at beginEdit, restored on cancel / pushed on commit.
   private txnBefore: GTrackSchedule | null = null
@@ -352,6 +363,8 @@ export class GTrackModel {
     this.history = history ?? createGTrackHistory()
     // A carried-over container is trusted (same file, same session); only the cursor is clamped.
     this.history.cursor = Math.max(0, Math.min(this.history.cursor, this.history.steps.length))
+    // The build data IS the saved baseline, and the (possibly carried) cursor points at it.
+    this.savedCursor = this.history.cursor
   }
 
   /** The current schedule. A fresh top-level reference is produced on every change. */
@@ -445,6 +458,8 @@ export class GTrackModel {
     }
     const atMs = Date.now()
     this.history.steps.length = this.history.cursor // drop the redo tail
+    // UG3.2c: if the saved state's position was inside the dropped tail, it left the log.
+    if (this.savedCursor > this.history.cursor) this.savedCursor = -1
     this.history.steps.push({
       id: `${atMs.toString(36)}-${(stepSeq++).toString(36)}`,
       kind: this.txnKind,
@@ -696,13 +711,17 @@ export class GTrackModel {
    *  rollback the user may discard the rolled-back future). */
   public clearHistory(mode: 'all' | 'before' | 'redo-tail', cursorPos = 0): void {
     if (mode === 'all') {
+      // UG3.2c: the saved position survives only if it IS the current position (both become 0).
+      this.savedCursor = this.savedCursor === this.history.cursor ? 0 : -1
       this.history.steps.length = 0
       this.history.cursor = 0
     } else if (mode === 'before') {
       const k = Math.max(0, Math.min(Math.floor(cursorPos), this.history.cursor))
       this.history.steps.splice(0, k)
       this.history.cursor -= k
+      this.savedCursor = this.savedCursor >= k ? this.savedCursor - k : -1
     } else {
+      if (this.savedCursor > this.history.cursor) this.savedCursor = -1
       this.history.steps.length = this.history.cursor
     }
   }
@@ -716,9 +735,14 @@ export class GTrackModel {
     const undoKeep = Math.min(this.history.cursor, maxEntries)
     const redoKeep = Math.min(this.history.steps.length - this.history.cursor, maxEntries)
     const start = this.history.cursor - undoKeep
+    // UG3.2c: publish the saved state's position when it falls inside the exported window, so a
+    // restart can adopt through the saved file even if this session ends with unsaved edits.
+    const baseCursor = this.savedCursor - start
+    const baseInWindow = this.savedCursor >= 0 && baseCursor >= 0 && baseCursor <= undoKeep + redoKeep
     return {
       version: 3,
       currentSig: signature(this.current),
+      ...(baseInWindow ? { baseSig: this.savedSig, baseCursor } : {}),
       cursor: undoKeep,
       steps: this.history.steps.slice(start, this.history.cursor + redoKeep),
     }
@@ -736,20 +760,35 @@ export class GTrackModel {
       return false
     }
     const sig = signature(this.current)
-    if (journal.currentSig !== sig) {
-      let i = 0
-      const js = journal.currentSig
-      while (i < js.length && i < sig.length && js[i] === sig[i]) i += 1
-      console.warn(
-        `[undo-diag] adopt refused: signature mismatch (journal ${js.length} ch, model ${sig.length} ch, first diff at ${i}: `
-        + `…${js.slice(Math.max(0, i - 60), i + 60)}… vs …${sig.slice(Math.max(0, i - 60), i + 60)}…)`,
-      )
-      return false
+    if (journal.currentSig === sig) {
+      this.history.steps.length = 0
+      this.history.steps.push(...journal.steps)
+      this.history.cursor = Math.max(0, Math.min(journal.cursor, this.history.steps.length))
+      this.savedCursor = this.history.cursor // adoption happens on a freshly-built (saved) model
+      return true
     }
-    this.history.steps.length = 0
-    this.history.steps.push(...journal.steps)
-    this.history.cursor = Math.max(0, Math.min(journal.cursor, this.history.steps.length))
-    return true
+    // UG3.2c (req 4): the exported state was never saved (the session ended with unsaved edits), but
+    // the log still chains through the SAVED state — adopt onto it. Steps below baseCursor stay
+    // undoable; the lost unsaved tail becomes the REDO tail (Ctrl+Y re-applies it).
+    if (typeof journal.baseSig === 'string' && typeof journal.baseCursor === 'number' && journal.baseSig === sig) {
+      this.history.steps.length = 0
+      this.history.steps.push(...journal.steps)
+      this.history.cursor = Math.max(0, Math.min(journal.baseCursor, this.history.steps.length))
+      this.savedCursor = this.history.cursor
+      console.info(
+        `[undo-diag] journal adopted via the saved base: cursor ${this.history.cursor}/${this.history.steps.length}`
+        + ' — the unsaved tail from the previous session is redoable',
+      )
+      return true
+    }
+    let i = 0
+    const js = journal.currentSig
+    while (i < js.length && i < sig.length && js[i] === sig[i]) i += 1
+    console.warn(
+      `[undo-diag] adopt refused: signature mismatch (journal ${js.length} ch, model ${sig.length} ch, first diff at ${i}: `
+      + `…${js.slice(Math.max(0, i - 60), i + 60)}… vs …${sig.slice(Math.max(0, i - 60), i + 60)}…)`,
+    )
+    return false
   }
 
   // --- Save bookkeeping -----------------------------------------------------
@@ -757,6 +796,7 @@ export class GTrackModel {
   /** Mark the current state as the saved baseline (clears the dirty flag). */
   public markSaved(): void {
     this.savedSig = signature(this.current)
+    this.savedCursor = this.history.cursor // UG3.2c: the saved state now lives at this position
     this.dirtyFlag = false
   }
 

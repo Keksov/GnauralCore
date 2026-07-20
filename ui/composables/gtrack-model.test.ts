@@ -445,10 +445,14 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
   })
 
   test('a journal from a DIFFERENT state is rejected (no-op)', () => {
+    // UG3.2c: «different» now means matching NEITHER currentSig NOR baseSig — a journal exported
+    // from the same base adopts via the base (see the UG3.2c restart test). A foreign schedule
+    // (different content) must still be refused.
     const journal = editedModel().exportUndoJournal()
-    const fresh = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    const fresh = new GTrackModel(fixture([entry(0, 10), entry(10, 25)]))
     expect(fresh.adoptUndoJournal(journal)).toBe(false)
     expect(fresh.canUndo).toBe(false)
+    expect(fresh.canRedo).toBe(false)
   })
 
   test('maxEntries bounds the exported steps (oldest dropped)', () => {
@@ -546,6 +550,41 @@ describe('external history container (undo-global-journal UG2.1, UG-D1)', () => 
     m1.edit(() => m1.movePoint(7, 1, 12))
     const m2 = new GTrackModel(editableToSchedule(m1.schedule))
     expect(m2.canUndo).toBe(false)
+  })
+
+  test('restart with unsaved edits: journal adopts via the saved base, tail becomes redo (UG3.2c, req 4)', () => {
+    const data = fixture([entry(0, 10), entry(10, 20)])
+    const m1 = new GTrackModel(data)
+    m1.edit(() => m1.setPointField(7, 1, 'baseFreq', 250))
+    m1.edit(() => m1.setPointField(7, 1, 'baseFreq', 300))
+    m1.markSaved() // Ctrl+S at cursor 2
+    const savedDump = m1.toSchedule()
+    m1.edit(() => m1.setPointField(7, 1, 'baseFreq', 350)) // unsaved tail, then the app exits
+    const journal = m1.exportUndoJournal()
+    expect(journal.baseCursor).toBe(2)
+    expect(typeof journal.baseSig).toBe('string')
+
+    // Restart: the file holds the saved state; currentSig (the 350-state) matches nothing.
+    const m2 = new GTrackModel(savedDump)
+    expect(m2.adoptUndoJournal(JSON.parse(JSON.stringify(journal)) as typeof journal)).toBe(true)
+    expect(m2.canUndo).toBe(true)
+    expect(m2.canRedo).toBe(true) // the lost unsaved edit is REDOABLE
+    expect(m2.redo()).toBe(true)
+    expect(m2.schedule.voices[0]!.points[1]!.baseFreq).toBe(350)
+    expect(m2.undo()).toBe(true)
+    expect(m2.undo()).toBe(true)
+    expect(m2.schedule.voices[0]!.points[1]!.baseFreq).toBe(250)
+  })
+
+  test('baseSig is dropped when an edit truncates the saved position away (UG3.2c)', () => {
+    const m = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    m.edit(() => m.setPointField(7, 1, 'baseFreq', 250))
+    m.markSaved() // saved at cursor 1
+    m.undo() // cursor 0
+    m.edit(() => m.setPointField(7, 1, 'baseFreq', 260)) // truncates the tail holding the saved state
+    const journal = m.exportUndoJournal()
+    expect(journal.baseSig).toBeUndefined()
+    expect(journal.baseCursor).toBeUndefined()
   })
 
   test('describeStepChanges: field edit / insert / remove (UG3.2b, req 12)', () => {
