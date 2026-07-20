@@ -9,7 +9,8 @@ import type { GnauralScheduleData } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, type GTrackPoint, type GTrackSchedule, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
+import { useUndoJournalSettings } from './use-undo-journal-settings'
 import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
@@ -566,16 +567,28 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (persistJournal) persistUndoJournal()
   }
 
-  // undo-command-log (UC2.1, Вариант A): the v2 journal is a compact action log (voice-deltas per step),
-  // so a fixed 50-step cap is tiny — the old schedule-size byte heuristic is gone (it wrongly shrank undo
-  // depth on big schedules). The server's 5 MB cap (project-store) backstops a pathological voice, and
-  // keepalive is off for this debounced write (UC-D4), so there is no 64 KB browser limit either.
-  const UNDO_JOURNAL_MAX_STEPS = 50
+  // UG4.1 (req 5): the persisted-journal bounds come from the settings dialog; the default is
+  // «хранить всегда» (no caps — the server's 5 MB undo.json limit stays the hard backstop, and
+  // keepalive is off for the debounced write (UC-D4), so there is no 64 KB browser limit either).
+  // «Очищать при закрытии проекта» is implemented as never-persist + continuous wipe: the history
+  // then lives only in memory for the session, and nothing survives a restart by construction.
+  const { settings: undoJournalSettings } = useUndoJournalSettings()
+  const EMPTY_JOURNAL: GTrackUndoJournal = { version: 3, currentSig: '', cursor: 0, steps: [] }
   function persistUndoJournal(): void {
     const m = model.value
     const key = filePath.value
     if (m === null || key === null) return
-    writeProjectUndoJournalFor(key, m.exportUndoJournal(UNDO_JOURNAL_MAX_STEPS))
+    const s = undoJournalSettings.value
+    if (s.clearOnClose) {
+      writeProjectUndoJournalFor(key, EMPTY_JOURNAL)
+      return
+    }
+    const journal = trimUndoJournal(m.exportUndoJournal(s.maxSteps > 0 ? s.maxSteps : Number.MAX_SAFE_INTEGER), {
+      maxAgeMs: s.maxAgeDays > 0 ? s.maxAgeDays * 24 * 60 * 60 * 1000 : undefined,
+      maxBytes: s.maxSizeKb > 0 ? s.maxSizeKb * 1024 : undefined,
+      nowMs: Date.now(),
+    })
+    writeProjectUndoJournalFor(key, journal)
   }
 
   // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump

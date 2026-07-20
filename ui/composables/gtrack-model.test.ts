@@ -14,6 +14,7 @@ import {
   pointsToSegments,
   scheduleContentSignature,
   segmentsToPoints,
+  trimUndoJournal,
   type GTrackPoint,
 } from './gtrack-model'
 
@@ -613,6 +614,28 @@ describe('external history container (undo-global-journal UG2.1, UG-D1)', () => 
     expect(gone.length).toBe(1)
     expect(gone[0]!.change).toBe('removed')
     expect(gone[0]!.point.timeSec).toBe(10)
+  })
+
+  test('trimUndoJournal bounds by age and size, adjusting cursor/base (UG4.1, req 5)', () => {
+    const m = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]))
+    for (let i = 0; i < 5; i++) m.edit(() => m.movePoint(7, 1, 11 + i))
+    const journal = m.exportUndoJournal()
+    expect(journal.baseCursor).toBe(0) // the build state is the saved base
+
+    // Age: make the first two steps old, everything else fresh.
+    const aged = { ...journal, steps: journal.steps.map((s, i) => ({ ...s, atMs: i < 2 ? 1000 : 2000 })) }
+    const byAge = trimUndoJournal(aged, { maxAgeMs: 500, nowMs: 2400 }) // cutoff 1900
+    expect(byAge.steps.length).toBe(3)
+    expect(byAge.cursor).toBe(3)
+    expect(byAge.baseSig).toBeUndefined() // base position 0 left the window
+
+    // Size: force at least one drop.
+    const bySize = trimUndoJournal(journal, { maxBytes: JSON.stringify(journal).length - 10, nowMs: 0 })
+    expect(bySize.steps.length).toBeLessThan(journal.steps.length)
+    expect(bySize.cursor).toBe(bySize.steps.length)
+
+    // No limits -> untouched.
+    expect(trimUndoJournal(journal, { nowMs: 0 })).toEqual(journal)
   })
 
   test('clearHistory: all / before / redo-tail (UG3.2, req 7-8)', () => {

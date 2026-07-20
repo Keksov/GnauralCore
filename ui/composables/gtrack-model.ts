@@ -320,6 +320,41 @@ export function describeStepChanges(step: GTrackUndoStep, maxChanges = 8): GTrac
   return out
 }
 
+/** UG4.1 (req 5): bound a journal by age and byte size by dropping the OLDEST steps (steps are
+ *  chronological, so trimming from the front keeps the chain contiguous). cursor/baseCursor shift
+ *  accordingly; the base marker is dropped once its position leaves the window. Pure — `nowMs`
+ *  comes from the caller. */
+export function trimUndoJournal(
+  journal: GTrackUndoJournal,
+  opts: { readonly maxAgeMs?: number; readonly maxBytes?: number; readonly nowMs: number },
+): GTrackUndoJournal {
+  let drop = 0
+  const steps = journal.steps
+  if (opts.maxAgeMs !== undefined && opts.maxAgeMs > 0) {
+    const cutoff = opts.nowMs - opts.maxAgeMs
+    while (drop < steps.length && steps[drop]!.atMs < cutoff) drop += 1
+  }
+  const build = (k: number): GTrackUndoJournal => {
+    const baseCursor = journal.baseCursor !== undefined ? journal.baseCursor - k : undefined
+    const baseKept = baseCursor !== undefined && baseCursor >= 0 && journal.baseSig !== undefined
+    return {
+      version: 3,
+      currentSig: journal.currentSig,
+      ...(baseKept ? { baseSig: journal.baseSig, baseCursor } : {}),
+      cursor: Math.max(0, journal.cursor - k),
+      steps: steps.slice(k),
+    }
+  }
+  let out = drop > 0 ? build(drop) : journal
+  if (opts.maxBytes !== undefined && opts.maxBytes > 0) {
+    while (out.steps.length > 0 && JSON.stringify(out).length > opts.maxBytes) {
+      drop += 1
+      out = build(drop)
+    }
+  }
+  return out
+}
+
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
   if (value === null || typeof value !== 'object') return false
   const c = value as { version?: unknown; currentSig?: unknown; baseSig?: unknown; baseCursor?: unknown; cursor?: unknown; steps?: unknown }

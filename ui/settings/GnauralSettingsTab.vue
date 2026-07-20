@@ -59,6 +59,11 @@
             </q-badge>
           </q-item-label>
           <q-item-label caption class="gnaural-settings-tab__path">{{ project.source.path }}</q-item-label>
+          <!-- UG4.2 (undo-global-journal, req 6): the on-disk undo-journal size, next to the rest
+               of the project's temp-file info. -->
+          <q-item-label v-if="(project.undoJournalBytes ?? 0) > 0" caption>
+            {{ $t('settings.projectsUndoSize') }}: {{ formatBytes(project.undoJournalBytes ?? 0) }}
+          </q-item-label>
         </q-item-section>
         <q-item-section side>
           <div class="row no-wrap items-center">
@@ -71,6 +76,37 @@
       </q-item>
     </q-list>
     <div v-else class="text-caption text-grey-7">{{ $t('settings.projectsEmpty') }}</div>
+
+    <q-separator />
+
+    <!-- UG4.1 (undo-global-journal, req 5): undo-journal auto-clean. Defaults keep everything;
+         0 in a numeric field = no limit. -->
+    <div>
+      <div class="text-h6">{{ $t('settings.undoTitle') }}</div>
+      <div class="text-caption text-grey-7">{{ $t('settings.undoSubtitle') }}</div>
+    </div>
+    <div class="gnaural-settings-tab__undo-grid">
+      <q-input
+        :model-value="undoSettings.maxSteps" dense outlined type="number" min="0"
+        :label="$t('settings.undoMaxSteps')"
+        @update:model-value="(v) => patchUndoSettings({ maxSteps: toLimit(v) })"
+      />
+      <q-input
+        :model-value="undoSettings.maxAgeDays" dense outlined type="number" min="0"
+        :label="$t('settings.undoMaxAgeDays')"
+        @update:model-value="(v) => patchUndoSettings({ maxAgeDays: toLimit(v) })"
+      />
+      <q-input
+        :model-value="undoSettings.maxSizeKb" dense outlined type="number" min="0"
+        :label="$t('settings.undoMaxSizeKb')"
+        @update:model-value="(v) => patchUndoSettings({ maxSizeKb: toLimit(v) })"
+      />
+    </div>
+    <q-checkbox
+      :model-value="undoSettings.clearOnClose" dense
+      :label="$t('settings.undoClearOnClose')"
+      @update:model-value="(v) => patchUndoSettings({ clearOnClose: v === true })"
+    />
 
     <q-separator />
 
@@ -130,10 +166,22 @@ import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 import { audioApi, type AudioCacheSummary } from '../audio-api'
 import { projectApi } from '../project-api'
+import { useUndoJournalSettings, type UndoJournalSettings } from '../composables/use-undo-journal-settings'
 import type { ProjectInfo, ProjectSettingsResponse } from '@protocol'
 
 const { t } = useI18n()
 const $q = useQuasar()
+
+// UG4.1 (req 5): undo-journal auto-clean settings — shared singleton with the lanes persist hook.
+const { settings: undoSettingsRef } = useUndoJournalSettings()
+const undoSettings = computed(() => undoSettingsRef.value)
+function toLimit(v: string | number | null): number {
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
+}
+function patchUndoSettings(patch: Partial<UndoJournalSettings>): void {
+  undoSettingsRef.value = { ...undoSettingsRef.value, ...patch }
+}
 
 // project-store PR3.1: the user-data root behind the projects subsystem.
 const projectSettings = ref<ProjectSettingsResponse | null>(null)
@@ -396,5 +444,12 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* UG4.1: the three journal-limit fields side by side, wrapping on narrow panes. */
+.gnaural-settings-tab__undo-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 </style>
