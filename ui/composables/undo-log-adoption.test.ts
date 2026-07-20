@@ -1,0 +1,105 @@
+// undo-versioned-log VL4.2: chain <-> history-window mapping (see undo-log-adoption.ts).
+import { describe, expect, test } from 'bun:test'
+
+import type { ProjectUndoLogCommit } from '@protocol'
+import type { GTrackUndoJournal, GTrackUndoStep } from './gtrack-model'
+import { commitToStep, planUndoLogAdoption, planV3Migration, stepToCommitInput } from './undo-log-adoption'
+
+const step = (id: string, atMs = 1): GTrackUndoStep => {
+  return { id, kind: 'point-edit', label: 'voice', atMs, voices: [] }
+}
+
+let seq = 0
+const deltaCommit = (cid: string, parent: string | null): ProjectUndoLogCommit => {
+  seq += 1
+  return { cid, parent, type: 'delta', atMs: seq, payload: { kind: 'point-edit', label: 'voice', voices: [] }, seq }
+}
+
+const snapshotCommit = (cid: string, parent: string | null, sig: string): ProjectUndoLogCommit => {
+  seq += 1
+  return { cid, parent, type: 'snapshot', atMs: seq, payload: { sig, schedule: { fake: true } }, seq }
+}
+
+describe('step <-> commit round-trip', () => {
+  test('stepToCommitInput and commitToStep invert each other', () => {
+    const s = step('abc', 42)
+    const commit = { ...stepToCommitInput(s, 'p'), seq: 7 } as ProjectUndoLogCommit
+    expect(commitToStep(commit)).toEqual(s)
+  })
+
+  test('foreign payloads map to null', () => {
+    const bad = { cid: 'x', parent: null, type: 'delta', atMs: 1, payload: { nope: 1 }, seq: 1 } as ProjectUndoLogCommit
+    expect(commitToStep(bad)).toBeNull()
+    const meta = { cid: 'm', parent: null, type: 'meta', atMs: 1, payload: null, seq: 2 } as ProjectUndoLogCommit
+    expect(commitToStep(meta)).toBeNull()
+  })
+})
+
+describe('planUndoLogAdoption', () => {
+  test('anchor mid-chain: deltas below become undo, deltas above become redo', () => {
+    // oldest-first: S0(root) -> d1 -> d2 -> S1(saved) -> d3 (unsaved tail); head fetch is newest-first
+    const chain = [
+      snapshotCommit('s0', null, 'sig-old'),
+      deltaCommit('d1', 's0'),
+      deltaCommit('d2', 'd1'),
+      snapshotCommit('s1', 'd2', 'sig-file'),
+      deltaCommit('d3', 's1'),
+    ].reverse()
+
+    const plan = planUndoLogAdoption(chain, 'sig-file')
+    expect(plan).not.toBeNull()
+    expect(plan!.journal.cursor).toBe(2)
+    expect(plan!.journal.steps.map((s) => s.id)).toEqual(['d1', 'd2', 'd3'])
+    expect(plan!.anchorCid).toBe('s1')
+    // positions: 0 -> s0 (override of the root position), 1 -> d1, 2 -> s1 (override over d2!), 3 -> d3
+    expect(plan!.positionCids).toEqual(['s0', 'd1', 's1', 'd3'])
+  })
+
+  test('no matching snapshot -> null (external edit; the log stays)', () => {
+    const chain = [snapshotCommit('s0', null, 'other'), deltaCommit('d1', 's0')].reverse()
+    expect(planUndoLogAdoption(chain, 'sig-file')).toBeNull()
+  })
+
+  test('a graft/fetch boundary leaves position 0 with the parent cid of the oldest commit', () => {
+    const chain = [deltaCommit('d5', 'cut-away'), snapshotCommit('s2', 'd5', 'sig-file')].reverse()
+    const plan = planUndoLogAdoption(chain, 'sig-file')
+    expect(plan!.positionCids).toEqual(['cut-away', 's2'])
+    expect(plan!.journal.cursor).toBe(1)
+  })
+
+  test('a foreign delta payload refuses the adoption entirely', () => {
+    const foreign = { cid: 'z', parent: null, type: 'delta', atMs: 1, payload: 42, seq: 90 } as ProjectUndoLogCommit
+    const chain = [foreign, snapshotCommit('s1', 'z', 'sig-file')].reverse()
+    expect(planUndoLogAdoption(chain, 'sig-file')).toBeNull()
+  })
+})
+
+describe('planV3Migration', () => {
+  test('below -> snapshot -> redo tail -> meta, chained from the empty-log root', () => {
+    const journal: GTrackUndoJournal = {
+      version: 3,
+      currentSig: 'sig-file',
+      cursor: 2,
+      steps: [step('a', 1), step('b', 2), step('c', 3)],
+    }
+    const plan = planV3Migration(journal, { fake: true }, 1000)
+
+    expect(plan.commits.map((c) => `${c.type}:${c.cid}<-${c.parent ?? '∅'}`)).toEqual([
+      'delta:a<-∅',
+      'delta:b<-a',
+      `snapshot:${plan.snapshotCid}<-b`,
+      `delta:c<-${plan.snapshotCid}`,
+      `meta:m${(1000).toString(36)}-v3<-c`,
+    ])
+    // positions: 0 -> null (root boundary), 1 -> a, 2 -> snapshot (the saved state), 3 -> meta (over c)
+    expect(plan.positionCids).toEqual([null, 'a', plan.snapshotCid, `m${(1000).toString(36)}-v3`])
+  })
+
+  test('an all-redo journal (cursor 0) roots at the snapshot itself', () => {
+    const journal: GTrackUndoJournal = { version: 3, currentSig: 'sig', cursor: 0, steps: [step('x', 5)] }
+    const plan = planV3Migration(journal, {}, 2000)
+    expect(plan.commits[0]).toMatchObject({ cid: plan.snapshotCid, parent: null, type: 'snapshot' })
+    expect(plan.commits[1]).toMatchObject({ cid: 'x', parent: plan.snapshotCid })
+    expect(plan.positionCids[0]).toBe(plan.snapshotCid)
+  })
+})

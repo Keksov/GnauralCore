@@ -171,6 +171,24 @@ export function queueProjectUndoLogCommitsFor(
   })
 }
 
+/** Immediate append with the confirmed result — the v3 migration path deletes undo.json only
+ *  after this resolves without a rejection (S14). */
+export async function appendProjectUndoLogNowFor(
+  path: string,
+  commits: readonly ProjectUndoLogCommitInput[],
+): Promise<ProjectUndoLogAppendResponse | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
+  }
+  try {
+    return await projectApi.appendUndoLog({ id: project.id, commits: [...commits], advanceMain: true })
+  } catch (error) {
+    console.warn('[use-project] appendUndoLog failed:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
 /** Debounced last-write-wins refs update (head on undo/redo, tags from the panel). */
 export function queueProjectUndoLogRefsFor(path: string, patch: UndoLogRefsPatch): void {
   void getProjectForPath(path).then((project) => {

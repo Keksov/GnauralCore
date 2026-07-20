@@ -5,7 +5,7 @@
 
 import { computed, effectScope, ref, shallowRef, watch, type Ref } from 'vue'
 
-import type { GnauralScheduleData } from '@protocol'
+import type { GnauralScheduleData, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
@@ -16,11 +16,19 @@ import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
 import {
+  appendProjectUndoLogNowFor,
+  clearProjectUndoLogFor,
+  discardPendingUndoLogFor,
+  queueProjectUndoLogCommitsFor,
+  queueProjectUndoLogRefsFor,
   readProjectSectionFor,
   readProjectUndoJournalFor,
+  readProjectUndoLogChainFor,
+  setUndoLogAppendResultHandler,
   writeProjectSectionFor,
   writeProjectUndoJournalFor,
 } from './use-project'
+import { planUndoLogAdoption, planV3Migration, stepToCommitInput } from './undo-log-adoption'
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -493,26 +501,49 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   async function restoreFromProject(reqId: number): Promise<void> {
     const key = filePath.value
     if (key === null) return
-    const [storedLanes, storedSpectrum, storedMix, storedJournal] = await Promise.all([
+    const [storedLanes, storedSpectrum, storedMix, undoChain] = await Promise.all([
       readProjectSectionFor<unknown>(key, SECTION_LANES),
       readProjectSectionFor<Record<string, unknown>>(key, SECTION_LANE_SPECTRUM),
       readProjectSectionFor<unknown>(key, SECTION_MIX_EXCLUDED),
-      readProjectUndoJournalFor(key),
+      readProjectUndoLogChainFor(key, { from: 'head', limit: 300 }),
     ])
     if (reqId !== projectRestoreReqId || key !== filePath.value) return
 
-    // PR2.2: adopt the persisted undo history — only when it chains to the freshly-loaded state
-    // (adoptUndoJournal verifies the signature; unsaved-and-lost edits leave it untouched).
-    // UG1.1 (undo-global-journal): log the outcome — success here vs the [undo-diag] refusal
-    // reasons logged inside adoptUndoJournal.
+    // VL4.2 (VL-D5): adopt the history window from the commit log — the chain from head down to
+    // the snapshot whose signature matches the freshly-loaded file; deltas above the anchor are
+    // the previous session's unsaved tail and become REDO. A mismatch is no longer a loss: the
+    // log stays intact on the server. An EMPTY log triggers the one-time v3 migration (S14).
     const m = model.value
-    if (m !== null && storedJournal !== null) {
-      if (!isGTrackUndoJournal(storedJournal)) {
-        console.warn('[undo-diag] stored undo journal rejected by the shape check (not a v2 journal)')
-      } else if (m.adoptUndoJournal(storedJournal)) {
-        console.info(`[undo-diag] stored undo journal adopted: ${storedJournal.steps.length} steps, cursor ${storedJournal.cursor}`)
-        refreshEditState(false)
+    if (m !== null && undoChain !== null) {
+      undoLogMainTip = undoChain.refs.main
+      undoLogLastSentHead = undoChain.refs.head
+      let synced: readonly GTrackUndoStep[] = []
+      let ready = true
+      if (undoJournalSettings.value.clearOnClose) {
+        if (undoChain.commits.length > 0) void clearProjectUndoLogFor(key)
+      } else if (undoChain.commits.length === 0) {
+        const migration = await migrateLegacyV3Journal(key, m)
+        if (reqId !== projectRestoreReqId || key !== filePath.value) return
+        synced = migration.synced
+        ready = migration.ready
+      } else {
+        const plan = planUndoLogAdoption(undoChain.commits, m.currentSignature)
+        if (plan !== null && m.adoptUndoJournal(plan.journal)) {
+          undoLogPositions = plan.positionCids
+          synced = plan.journal.steps
+          console.info(
+            `[undo-diag] undo-log adopted: ${plan.journal.steps.length} steps, cursor ${plan.journal.cursor} (anchor ${plan.anchorCid})`,
+          )
+          refreshEditState(false)
+        } else if (plan === null) {
+          console.warn('[undo-diag] undo-log adoption refused: no snapshot matches the loaded file (external edit?) — the log itself is intact')
+        }
       }
+      undoLogReady = ready
+      // Edits made before this restore resolved (fast fingers) sync now via the normal diff.
+      if (ready && m === model.value && m.historySteps.length > synced.length) syncUndoLog(m, synced)
+    } else if (m !== null) {
+      console.warn('[undo-diag] undo-log chain fetch failed; history sync stays off for this file until reopen')
     }
 
     if (storedLanes === null) {
@@ -559,20 +590,25 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // persisting there would overwrite the stored journal with an empty baseline before it is adopted.
   function refreshEditState(persistJournal = true): void {
     const m = model.value
+    const prevSteps = undoSteps.value
     dirty.value = m?.isDirty ?? false
     canUndo.value = m?.canUndo ?? false
     canRedo.value = m?.canRedo ?? false
     undoSteps.value = m === null ? [] : [...m.historySteps] // UG3.1: new ref -> panel re-renders
     undoCursor.value = m?.historyCursor ?? 0
-    if (persistJournal) persistUndoJournal()
-    else refreshPersistedIds(computePersistedJournal()) // UG4.1b: keep the marking fresh w/o a write
+    refreshPersistedIds(computePersistedJournal()) // UG4.1b: keep the doomed marking fresh
+    // VL4.2: the hook that used to write the whole v3 journal now diffs the history against the
+    // synced position map and queues the increment. The persistJournal=false paths (rebuild,
+    // adoption) set the map themselves — a diff there would mis-parent the chain.
+    if (persistJournal && m !== null) syncUndoLog(m, prevSteps)
   }
 
-  // UG4.1 (req 5): the persisted-journal bounds come from the settings dialog; the default is
-  // «хранить всегда» (no caps — the server's 5 MB undo.json limit stays the hard backstop, and
-  // keepalive is off for the debounced write (UC-D4), so there is no 64 KB browser limit either).
-  // «Очищать при закрытии проекта» is implemented as never-persist + continuous wipe: the history
-  // then lives only in memory for the session, and nothing survives a restart by construction.
+  // UG4.1 (req 5) + VL-D6: the bounds come from the settings dialog; the default is «хранить
+  // всегда». Since VL4.2 the same numbers are forwarded to the SERVER as the undo-log GC policy
+  // (the log is unbounded otherwise — the 5 MB undo.json cap is legacy-only), while
+  // computePersistedJournal below keeps approximating what that GC would trim, so the panel's
+  // doomed-row marking retains its meaning. «Очищать при закрытии проекта» = the log is wiped
+  // on restore and never appended to: history lives only in memory for the session.
   const { settings: undoJournalSettings } = useUndoJournalSettings()
   const EMPTY_JOURNAL: GTrackUndoJournal = { version: 3, currentSig: '', cursor: 0, steps: [] }
 
@@ -597,18 +633,180 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persistedUndoStepIds.value = new Set((journal?.steps ?? []).map((st) => st.id))
   }
 
-  function persistUndoJournal(): void {
-    const key = filePath.value
-    const journal = computePersistedJournal()
-    if (journal === null || key === null) return
-    refreshPersistedIds(journal)
-    writeProjectUndoJournalFor(key, journal)
+  // --- undo-log sync (undo-versioned-log VL4.2) -----------------------------------------------
+  // The append-only commit log replaces the whole-journal v3 write. undoLogPositions maps
+  // history POSITIONS (0..steps.length) to the topmost server-chain cid of that state: a delta
+  // advances a position, a snapshot/meta re-labels the current one. The map is what gives every
+  // new delta its parent and every cursor its head ref.
+  /** The reactive ref unwraps the class structurally (private members drop out of the proxy
+   *  type) — the sync engine is typed against the public surface it actually touches. */
+  type UndoLogModelView = Pick<
+    GTrackModel,
+    'historyCursor' | 'historySteps' | 'currentSignature' | 'savedSignature' | 'schedule' | 'adoptUndoJournal'
+  >
+
+  let undoLogPositions: (string | null)[] = [null]
+  let undoLogMainTip: string | null = null // server refs.main as of the last sync point
+  let undoLogLastSentHead: string | null = null
+  let undoLogDeltasSinceSnapshot = 0
+  let undoLogReady = false // adoption/migration finished for the current file
+  let lastBuiltScheduleData: GnauralScheduleData | null = null
+  const UNDO_LOG_SNAPSHOT_EVERY = 50 // VL-D5: an anchor snapshot every K deltas without a save
+
+  function undoLogGcPolicy(): ProjectUndoLogGcPolicy | undefined {
+    const s = undoJournalSettings.value
+    const policy: { maxCommits?: number; maxAgeMs?: number; maxBytes?: number } = {}
+    if (s.maxSteps > 0) policy.maxCommits = s.maxSteps
+    if (s.maxAgeDays > 0) policy.maxAgeMs = s.maxAgeDays * 24 * 60 * 60 * 1000
+    if (s.maxSizeKb > 0) policy.maxBytes = s.maxSizeKb * 1024
+    return Object.keys(policy).length > 0 ? policy : undefined
   }
 
-  // UG4.1b: changing the auto-clean settings applies to the disk copy (and the panel marking)
-  // immediately, not on the next edit.
-  watch(undoJournalSettings, () => {
-    if (model.value !== null) persistUndoJournal()
+  function resetUndoLogSync(data: GnauralScheduleData | null): void {
+    undoLogPositions = [null]
+    undoLogMainTip = null
+    undoLogLastSentHead = null
+    undoLogDeltasSinceSnapshot = 0
+    undoLogReady = false
+    lastBuiltScheduleData = data
+  }
+
+  /** Queue a snapshot commit of the given state at the model's CURRENT cursor position.
+   *  flush: snapshots skip the debounce — they must not sit in a queue the keepalive unload
+   *  flush would refuse to carry (VL4.1). */
+  function queueUndoLogSnapshot(m: UndoLogModelView, sig: string, schedule: unknown): void {
+    const key = filePath.value
+    if (key === null || !undoLogReady || undoJournalSettings.value.clearOnClose) return
+    const position = m.historyCursor
+    const parent = undoLogPositions[position] ?? null
+    if (parent === null && undoLogPositions.some((cid) => cid !== null && cid !== undefined)) {
+      return // an unsynced hole below this position — cannot chain, skip the anchor
+    }
+    const cid = `s${Date.now().toString(36)}-${position}`
+    undoLogPositions[position] = cid
+    undoLogDeltasSinceSnapshot = 0
+    queueProjectUndoLogCommitsFor(
+      key,
+      [{ cid, parent: parent ?? undoLogMainTip, type: 'snapshot', atMs: Date.now(), payload: { sig, schedule } }],
+      { gc: undoLogGcPolicy(), flush: true },
+    )
+  }
+
+  /** The refreshEditState hook: diff the history against the synced position map, queue the new
+   *  deltas (their cids ARE the step ids — server-side idempotency absorbs any re-send), keep
+   *  the head ref on the cursor, and drop an anchor snapshot every K deltas (VL-D5). A truncated
+   *  redo tail just shortens the map — its commits stay in the log as an orphan branch (VL-D2). */
+  function syncUndoLog(m: UndoLogModelView, prevSteps: readonly GTrackUndoStep[]): void {
+    const key = filePath.value
+    if (key === null || !undoLogReady || undoJournalSettings.value.clearOnClose) return
+
+    const steps = m.historySteps
+    let prefix = 0
+    while (prefix < prevSteps.length && prefix < steps.length && prevSteps[prefix]!.id === steps[prefix]!.id) prefix += 1
+    undoLogPositions.length = Math.min(undoLogPositions.length, prefix + 1)
+
+    const batch: ProjectUndoLogCommitInput[] = []
+    if (steps.length > prefix) {
+      if (undoLogPositions[prefix] === null || undoLogPositions[prefix] === undefined) {
+        const allEmpty = undoLogPositions.every((cid) => cid === null || cid === undefined)
+        if (!allEmpty || prefix !== 0) {
+          console.warn('[undo-diag] undo-log sync skipped: unsynced position below the new step (graft boundary)')
+          return
+        }
+        // Baseline (VL-D5): the first delta of an empty/foreign log chains onto a snapshot of
+        // the LOADED file state, which itself chains onto the server main tip (or roots).
+        const baseCid = `s${Date.now().toString(36)}-base`
+        batch.push({
+          cid: baseCid,
+          parent: undoLogMainTip,
+          type: 'snapshot',
+          atMs: Date.now(),
+          payload: { sig: m.savedSignature, schedule: lastBuiltScheduleData },
+        })
+        undoLogPositions[0] = baseCid
+      }
+      for (let i = prefix; i < steps.length; i += 1) {
+        const step = steps[i]!
+        batch.push(stepToCommitInput(step, undoLogPositions[i]!))
+        undoLogPositions[i + 1] = step.id
+      }
+      undoLogDeltasSinceSnapshot += steps.length - prefix
+    }
+    if (batch.length > 0) queueProjectUndoLogCommitsFor(key, batch, { gc: undoLogGcPolicy() })
+
+    if (undoLogDeltasSinceSnapshot >= UNDO_LOG_SNAPSHOT_EVERY) {
+      queueUndoLogSnapshot(m, m.currentSignature, m.schedule)
+    }
+
+    const head = undoLogPositions[m.historyCursor] ?? null
+    if (head !== null && head !== undoLogLastSentHead) {
+      undoLogLastSentHead = head
+      queueProjectUndoLogRefsFor(key, { head })
+    }
+  }
+
+  /** S14 (VL-D8): an empty log + a valid legacy undo.json -> adopt v3 into memory, replay it
+   *  into the log as [deltas -> snapshot(file) -> redo tail -> meta], and delete undo.json only
+   *  after the CONFIRMED append. Returns the synced steps, or ready:false to retry next open. */
+  async function migrateLegacyV3Journal(
+    key: string,
+    m: UndoLogModelView,
+  ): Promise<{ synced: readonly GTrackUndoStep[]; ready: boolean }> {
+    const legacy = await readProjectUndoJournalFor(key)
+    if (key !== filePath.value || m !== model.value) return { synced: [], ready: false }
+    if (legacy === null || !isGTrackUndoJournal(legacy) || !m.adoptUndoJournal(legacy)) {
+      return { synced: [], ready: true } // nothing to migrate (or v3 refused by its own gate)
+    }
+
+    const plan = planV3Migration(legacy, lastBuiltScheduleData, Date.now())
+    const result = await appendProjectUndoLogNowFor(key, plan.commits)
+    if (key !== filePath.value || m !== model.value) return { synced: [], ready: false }
+    if (result === null || result.rejectedFrom !== null) {
+      console.warn('[undo-diag] legacy v3 migration append failed — sync disabled, will retry on next open')
+      return { synced: [], ready: false }
+    }
+
+    undoLogPositions = plan.positionCids
+    undoLogMainTip = result.refs.main
+    writeProjectUndoJournalFor(key, null) // delete undo.json — the log is the journal now
+    const s = undoJournalSettings.value
+    if (s.maxSteps > 0 || s.maxAgeDays > 0 || s.maxSizeKb > 0) {
+      // VL-D6 (owner quiz): the old limits now govern the SERVER deep history — a stale
+      // «Макс. операций = 5» must not silently shred it. Reset to «хранить всегда» loudly.
+      undoJournalSettings.value = { ...s, maxSteps: 0, maxAgeDays: 0, maxSizeKb: 0 }
+      console.warn('[undo-log] Лимиты «Журнал Undo» сброшены в 0 («хранить всегда») при миграции на версионный лог — прежние значения срезали бы глубокую историю (VL-D6)')
+    }
+    console.info(`[undo-diag] legacy v3 journal migrated: ${legacy.steps.length} steps -> ${plan.commits.length} commits`)
+    refreshEditState(false)
+    return { synced: m.historySteps, ready: true }
+  }
+
+  // A cut batch (409) means the chain diverged under us (another tab): drop the queue and
+  // re-anchor on the server main tip — the next baseline/save snapshot re-roots cleanly.
+  setUndoLogAppendResultHandler((_projectId, result) => {
+    if (result.rejectedFrom === null) return
+    console.warn(`[undo-log] append rejected at ${result.rejectedFrom} (chain diverged?) — pending discarded, main tip re-synced`)
+    const key = filePath.value
+    if (key !== null) discardPendingUndoLogFor(key)
+    undoLogMainTip = result.refs.main
+  })
+
+  // UG4.1b + VL-D6: a settings change refreshes the doomed marking immediately and hands the
+  // new GC policy to the server (an empty append runs GC only when the policy is violated);
+  // clearOnClose ON wipes the server log, OFF re-roots on the next edit.
+  watch(undoJournalSettings, (next, prev) => {
+    refreshPersistedIds(computePersistedJournal())
+    const key = filePath.value
+    if (key === null) return
+    if (next.clearOnClose && prev !== undefined && !prev.clearOnClose) {
+      discardPendingUndoLogFor(key)
+      void clearProjectUndoLogFor(key)
+      undoLogPositions = [null]
+      undoLogMainTip = null
+      undoLogLastSentHead = null
+    } else if (!next.clearOnClose && undoLogReady) {
+      queueProjectUndoLogCommitsFor(key, [], { gc: undoLogGcPolicy(), flush: true })
+    }
   })
 
   // GT3.7 (GT-D9): ids of generator ("preparse") voices, recovered from the SOURCE XML (the dump
@@ -647,6 +845,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       if (newSig === prev.currentSignature) {
         prev.markSaved()
         refreshEditState()
+        // VL4.2 (VL-D5): a save is the natural anchor — snapshot the saved state (eagerly).
+        lastBuiltScheduleData = data
+        queueUndoLogSnapshot(prev, prev.savedSignature, data)
         console.info('[undo-diag] buildModel: skip — content equals the edited state; markSaved')
         return
       }
@@ -659,6 +860,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         selection.value = null
         syncSchedule()
         refreshEditState()
+        // VL4.2 (VL-D5): the dump IS the saved state — snapshot it as the new anchor (eagerly).
+        lastBuiltScheduleData = data
+        queueUndoLogSnapshot(model.value, model.value.savedSignature, data)
         console.info('[undo-diag] buildModel: post-save rebase — history carried over, dump is the new base')
         return
       }
@@ -673,6 +877,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       )
     }
     history = createGTrackHistory()
+    resetUndoLogSync(data) // VL4.2: a fresh file = a fresh position map; restoreFromProject re-arms it
     model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value, history)
     selection.value = null
     syncSchedule()
@@ -1456,6 +1661,22 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const m = model.value
     if (m === null || m.inTransaction) return
     m.clearHistory(mode, cursorPos)
+    // VL4.2: keep the position map aligned with the trimmed window. 'all' also clears the
+    // SERVER log (req 7 «целиком») — the next edit re-roots it with a baseline snapshot;
+    // 'before' re-bases position 0, 'redo-tail' shrinks inside the sync prefix-truncation.
+    if (mode === 'all') {
+      const key = filePath.value
+      undoLogPositions = [null]
+      undoLogMainTip = null
+      undoLogLastSentHead = null
+      undoLogDeltasSinceSnapshot = 0
+      if (key !== null) {
+        discardPendingUndoLogFor(key)
+        void clearProjectUndoLogFor(key)
+      }
+    } else if (mode === 'before') {
+      undoLogPositions = [undoLogPositions[Math.min(cursorPos, undoLogPositions.length - 1)] ?? null]
+    }
     refreshEditState()
   }
 
