@@ -3005,6 +3005,14 @@ function onToggleLaneInMix(aLane: { voices: readonly { id: number }[] }): void {
   for (const v of aLane.voices) gtracks.setVoiceInMix(v.id, next)
 }
 
+// UG2.2b (undo-global-journal, owner 2026-07-20): the hotkeys must fire in ANY keyboard layout —
+// with the russian layout the Z key yields event.key='я', so the letter match alone goes dead.
+// Match the PHYSICAL key (event.code 'KeyZ' is layout-independent) alongside the letter (which
+// keeps the semantic position on layouts like AZERTY where the letter moves).
+function isHotkeyLetter(event: KeyboardEvent, letter: string): boolean {
+  return event.key.toLowerCase() === letter || event.code === `Key${letter.toUpperCase()}`
+}
+
 function handleTracksKeyDown(event: KeyboardEvent): void {
   altBigStep.value = event.altKey // GT10.22: keep the spinner big-step in sync with the Alt key
   // GT3.9: Escape closes the voice panel first, then the settings overlay.
@@ -3028,7 +3036,7 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
   }
   // GT3.4: Ctrl/Cmd+S saves the gtrack edits (intercept before the typing guard so it also works
   // while an inspector field is focused, and to suppress the browser's Save-page dialog).
-  if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
+  if ((event.ctrlKey || event.metaKey) && isHotkeyLetter(event, 's')) {
     event.preventDefault()
     void saveGtrackEdits()
     return
@@ -3037,13 +3045,13 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
   // Ctrl/Cmd+Y) — intercepted BEFORE the typing guard so Ctrl+Z undoes a just-added node even when
   // focus landed on a button (a lane gear, the point-mode toggle) or an inspector field. Model undo
   // is the editor's primary undo (field edits autosave into the same history).
-  if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+  if ((event.ctrlKey || event.metaKey) && isHotkeyLetter(event, 'z')) {
     event.preventDefault()
     if (event.shiftKey) redoWithFocus()
     else undoWithFocus()
     return
   }
-  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
+  if ((event.ctrlKey || event.metaKey) && isHotkeyLetter(event, 'y')) {
     event.preventDefault()
     redoWithFocus()
     return

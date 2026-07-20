@@ -65,8 +65,9 @@ const onBridgedEvent = (name: string, payload: readonly unknown[]): void => {
 
 // Ctrl-S summons the quick filter (TC habit); FsEntryList focuses it when it appears. Never lets
 // the browser's Save dialog through. Lands on PanelWindow's root via attrs fallthrough.
+// UG2.2b: event.code makes the hotkey layout-independent (russian layout: key='ы').
 const onKeydown = (event: KeyboardEvent): void => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.code === 'KeyS')) {
     event.preventDefault()
     store.setFilterVisible(true)
   }
