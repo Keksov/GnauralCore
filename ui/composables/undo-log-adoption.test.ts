@@ -2,8 +2,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ProjectUndoLogCommit } from '@protocol'
-import type { GTrackUndoJournal, GTrackUndoStep } from './gtrack-model'
-import { commitToStep, planUndoLogAdoption, planV3Migration, stepToCommitInput } from './undo-log-adoption'
+import type { GTrackUndoStep } from './gtrack-model'
+import { commitToStep, planUndoLogAdoption, stepToCommitInput } from './undo-log-adoption'
 
 const step = (id: string, atMs = 1): GTrackUndoStep => {
   return { id, kind: 'point-edit', label: 'voice', atMs, voices: [] }
@@ -98,35 +98,5 @@ describe('planUndoLogAdoption', () => {
     const mainChain = [snapshotCommit('s0', null, 'sig-old'), deltaCommit('d1', 's0')].reverse()
     const stray = snapshotCommit('sX', 'elsewhere', 'sig-file')
     expect(planUndoLogAdoption(mainChain, 'sig-file', [stray])).toBeNull()
-  })
-})
-
-describe('planV3Migration', () => {
-  test('below -> snapshot -> redo tail -> meta, chained from the empty-log root', () => {
-    const journal: GTrackUndoJournal = {
-      version: 3,
-      currentSig: 'sig-file',
-      cursor: 2,
-      steps: [step('a', 1), step('b', 2), step('c', 3)],
-    }
-    const plan = planV3Migration(journal, { fake: true }, 1000)
-
-    expect(plan.commits.map((c) => `${c.type}:${c.cid}<-${c.parent ?? '∅'}`)).toEqual([
-      'delta:a<-∅',
-      'delta:b<-a',
-      `snapshot:${plan.snapshotCid}<-b`,
-      `delta:c<-${plan.snapshotCid}`,
-      `meta:m${(1000).toString(36)}-v3<-c`,
-    ])
-    // positions: 0 -> null (root boundary), 1 -> a, 2 -> snapshot (the saved state), 3 -> meta (over c)
-    expect(plan.positionCids).toEqual([null, 'a', plan.snapshotCid, `m${(1000).toString(36)}-v3`])
-  })
-
-  test('an all-redo journal (cursor 0) roots at the snapshot itself', () => {
-    const journal: GTrackUndoJournal = { version: 3, currentSig: 'sig', cursor: 0, steps: [step('x', 5)] }
-    const plan = planV3Migration(journal, {}, 2000)
-    expect(plan.commits[0]).toMatchObject({ cid: plan.snapshotCid, parent: null, type: 'snapshot' })
-    expect(plan.commits[1]).toMatchObject({ cid: 'x', parent: plan.snapshotCid })
-    expect(plan.positionCids[0]).toBe(plan.snapshotCid)
   })
 })

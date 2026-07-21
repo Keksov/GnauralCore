@@ -1,6 +1,6 @@
 // UG4.1 (undo-global-journal, req 5): the undo-journal auto-clean settings — editor-level, stored
 // in localStorage like the other editor preferences (point autosave, drag mode). Defaults are ALL
-// off: «по умолчанию — хранить всегда» (the server's 5 MB undo.json cap remains the hard backstop).
+// off: «по умолчанию — хранить всегда» (the same numbers feed the server undo-log GC policy).
 // Module-singleton refs, so the settings dialog and the lanes persist hook share one state without
 // plumbing; a `watch` persists every change.
 import { ref, watch } from 'vue'

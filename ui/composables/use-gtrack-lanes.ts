@@ -9,7 +9,7 @@ import type { GnauralScheduleData, ProjectUndoLogCommit, ProjectUndoLogCommitInp
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, createGTrackHistory, isGTrackUndoJournal, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, createGTrackHistory, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
 import { useUndoJournalSettings } from './use-undo-journal-settings'
 import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
@@ -18,18 +18,16 @@ import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-set
 import {
   appendProjectUndoLogNowFor,
   clearProjectUndoLogFor,
-  deleteProjectUndoJournalFor,
   discardPendingUndoLogFor,
   flushProjectUndoLogFor,
   queueProjectUndoLogCommitsFor,
   queueProjectUndoLogRefsFor,
   readProjectSectionFor,
-  readProjectUndoJournalFor,
   readProjectUndoLogChainFor,
   setUndoLogAppendResultHandler,
   writeProjectSectionFor,
 } from './use-project'
-import { commitToStep, planUndoLogAdoption, planV3Migration, snapshotSig, stepToCommitInput } from './undo-log-adoption'
+import { commitToStep, planUndoLogAdoption, snapshotSig, stepToCommitInput } from './undo-log-adoption'
 
 /** VL5.1 (undo-versioned-log): a pre-window history row for the panel — a commit older than the
  *  in-memory undo window, living only in the log. Delta rows carry the mapped step (tooltips). */
@@ -527,7 +525,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     // VL4.2 (VL-D5): adopt the history window from the commit log — the chain from head down to
     // the snapshot whose signature matches the freshly-loaded file; deltas above the anchor are
     // the previous session's unsaved tail and become REDO. A mismatch is no longer a loss: the
-    // log stays intact on the server. An EMPTY log triggers the one-time v3 migration (S14).
+    // log stays intact on the server. An EMPTY log simply starts a fresh history — the v3
+    // migration path is gone (undo-legacy-removal).
     const m = model.value
     if (m !== null && undoChain !== null) {
       undoLogMainTip = undoChain.refs.main
@@ -537,12 +536,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       let ready = true
       if (undoJournalSettings.value.clearOnClose) {
         if (undoChain.commits.length > 0) void clearProjectUndoLogFor(key)
-      } else if (undoChain.commits.length === 0) {
-        const migration = await migrateLegacyV3Journal(key, m)
-        if (reqId !== projectRestoreReqId || key !== filePath.value) return
-        synced = migration.synced
-        ready = migration.ready
-      } else {
+      } else if (undoChain.commits.length > 0) {
         let plan = planUndoLogAdoption(undoChain.commits, m.currentSignature)
         if (plan === null && undoChain.refs.head !== null && undoChain.refs.head !== undoChain.refs.main) {
           // VL5.2 round 2: the anchor may be a SIDE snapshot of a mid-history save — it lives
@@ -630,7 +624,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
 
   // UG4.1 (req 5) + VL-D6: the bounds come from the settings dialog; the default is «хранить
   // всегда». Since VL4.2 the same numbers are forwarded to the SERVER as the undo-log GC policy
-  // (the log is unbounded otherwise — the 5 MB undo.json cap is legacy-only), while
+  // (the log is unbounded otherwise), while
   // computePersistedJournal below keeps approximating what that GC would trim, so the panel's
   // doomed-row marking retains its meaning. «Очищать при закрытии проекта» = the log is wiped
   // on restore and never appended to: history lives only in memory for the session.
@@ -798,42 +792,6 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       undoLogLastSentHead = head
       queueProjectUndoLogRefsFor(key, { head })
     }
-  }
-
-  /** S14 (VL-D8): an empty log + a valid legacy undo.json -> adopt v3 into memory, replay it
-   *  into the log as [deltas -> snapshot(file) -> redo tail -> meta], and delete undo.json only
-   *  after the CONFIRMED append. Returns the synced steps, or ready:false to retry next open. */
-  async function migrateLegacyV3Journal(
-    key: string,
-    m: UndoLogModelView,
-  ): Promise<{ synced: readonly GTrackUndoStep[]; ready: boolean }> {
-    const legacy = await readProjectUndoJournalFor(key)
-    if (key !== filePath.value || m !== model.value) return { synced: [], ready: false }
-    if (legacy === null || !isGTrackUndoJournal(legacy) || !m.adoptUndoJournal(legacy)) {
-      return { synced: [], ready: true } // nothing to migrate (or v3 refused by its own gate)
-    }
-
-    const plan = planV3Migration(legacy, lastBuiltScheduleData, Date.now())
-    const result = await appendProjectUndoLogNowFor(key, plan.commits)
-    if (key !== filePath.value || m !== model.value) return { synced: [], ready: false }
-    if (result === null || result.rejectedFrom !== null) {
-      console.warn('[undo-diag] legacy v3 migration append failed — sync disabled, will retry on next open')
-      return { synced: [], ready: false }
-    }
-
-    undoLogPositions = plan.positionCids
-    undoLogMainTip = result.refs.main
-    void deleteProjectUndoJournalFor(key) // delete undo.json — the log is the journal now
-    const s = undoJournalSettings.value
-    if (s.maxSteps > 0 || s.maxAgeDays > 0 || s.maxSizeKb > 0) {
-      // VL-D6 (owner quiz): the old limits now govern the SERVER deep history — a stale
-      // «Макс. операций = 5» must not silently shred it. Reset to «хранить всегда» loudly.
-      undoJournalSettings.value = { ...s, maxSteps: 0, maxAgeDays: 0, maxSizeKb: 0 }
-      console.warn('[undo-log] Лимиты «Журнал Undo» сброшены в 0 («хранить всегда») при миграции на версионный лог — прежние значения срезали бы глубокую историю (VL-D6)')
-    }
-    console.info(`[undo-diag] legacy v3 journal migrated: ${legacy.steps.length} steps -> ${plan.commits.length} commits`)
-    refreshEditState(false)
-    return { synced: m.historySteps, ready: true }
   }
 
   // --- deep history + checkout + tags (VL5.1) -------------------------------------------------

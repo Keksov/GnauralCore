@@ -53,9 +53,8 @@ function sendSection(projectId: string, name: string, value: unknown, keepalive 
   })
 }
 
-// undo-versioned-log VL4.4 (VL-D8): the debounced whole-journal v3 write queue is gone — the
-// undo history flows through the undo-log queue below. undo.json survives only as a read-only
-// migration source; the delete after a confirmed replay is the one remaining legacy write.
+// undo-versioned-log VL4.4 (VL-D8) + undo-legacy-removal: the whole-journal v3 transport is
+// gone entirely — the undo history flows through the undo-log queue below.
 
 // --- undo-log queue (undo-versioned-log VL4.1, VL-D4) ----------------------------------------
 // Commits are batched per project with the same short debounce as the v3 journal had; a batch is
@@ -189,9 +188,9 @@ export function queueProjectUndoLogCommitsFor(
   })
 }
 
-/** Immediate append with the confirmed result — the v3 migration deletes undo.json only after
- *  this resolves without a rejection (S14); a mid-history save snapshot passes advanceMain:false
- *  so main stays on the line tip and the redo tail keeps living there (VL5.2 round 2). */
+/** Immediate append with the confirmed result — a mid-history save snapshot passes
+ *  advanceMain:false so main stays on the line tip and the redo tail keeps living there
+ *  (VL5.2 round 2). */
 export async function appendProjectUndoLogNowFor(
   path: string,
   commits: readonly ProjectUndoLogCommitInput[],
@@ -446,35 +445,6 @@ export function writeProjectSectionFor(path: string, name: string, value: unknow
       queueSectionWrite(project.id, name, value)
     }
   })
-}
-
-/** Legacy v3 journal READER (VL4.4): feeds the one-time migration only. */
-export async function readProjectUndoJournalFor(path: string): Promise<unknown | null> {
-  const project = await getProjectForPath(path)
-  if (project === null) {
-    return null
-  }
-
-  try {
-    const response = await projectApi.fetchUndoJournal(project.id)
-    return response.journal ?? null
-  } catch (error) {
-    console.warn('[use-project] fetchUndoJournal failed:', error instanceof Error ? error.message : error)
-    return null
-  }
-}
-
-/** Delete undo.json after a confirmed migration replay (S14) — the last legacy write verb. */
-export async function deleteProjectUndoJournalFor(path: string): Promise<void> {
-  const project = await getProjectForPath(path)
-  if (project === null) {
-    return
-  }
-  try {
-    await projectApi.putUndoJournal({ id: project.id, journal: null })
-  } catch (error) {
-    console.warn('[use-project] putUndoJournal(null) failed:', error instanceof Error ? error.message : error)
-  }
 }
 
 // Pending writes must survive a tab close: keepalive fetches issued here still complete.

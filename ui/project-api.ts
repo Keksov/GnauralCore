@@ -15,8 +15,6 @@ import type {
   ProjectUndoLogCommitType,
   ProjectUndoLogRefsRequest,
   ProjectUndoLogRefsResponse,
-  ProjectUndoPutRequest,
-  ProjectUndoResponse,
 } from '@protocol'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -93,24 +91,6 @@ export const projectApi = {
    *  refused by the browser (TypeError: Failed to fetch), so regular debounced writes must NOT use it. */
   putSection(request: ProjectSectionPutRequest, signal?: AbortSignal, keepalive = false): Promise<ProjectInfo> {
     return requestJson<ProjectInfo>('/api/projects/section', {
-      method: 'POST',
-      body: JSON.stringify(request),
-      keepalive,
-      signal,
-    })
-  },
-
-  fetchUndoJournal(id: string, signal?: AbortSignal): Promise<ProjectUndoResponse> {
-    return requestJson<ProjectUndoResponse>(`/api/projects/undo?id=${encodeURIComponent(id)}`, {
-      method: 'GET',
-      cache: 'no-store',
-      signal,
-    })
-  },
-
-  /** journal: null clears the stored journal. keepalive only for the unload flush (see putSection). */
-  async putUndoJournal(request: ProjectUndoPutRequest, signal?: AbortSignal, keepalive = false): Promise<void> {
-    await requestJson<null>('/api/projects/undo', {
       method: 'POST',
       body: JSON.stringify(request),
       keepalive,
