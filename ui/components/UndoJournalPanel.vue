@@ -15,39 +15,65 @@
     </div>
     <q-separator />
     <!-- UG3.1 (req 3): the action log. Each step row shows the operation kind + the changed voices
-         + the commit time; rows past the cursor are the undone (redo) tail, rendered dimmed. -->
-    <div v-if="rows.length === 1" class="undo-journal-panel__empty text-grey">
+         + the commit time; rows past the cursor are the undone (redo) tail, rendered dimmed.
+         VL5.1: DEEP rows (older than the in-memory window, living only in the log) join the list
+         at the chronological bottom; «Применить» on one performs a checkout. -->
+    <div v-if="rows.length === 1 && deepRows.length === 0 && !showDeepLoad" class="undo-journal-panel__empty text-grey">
       {{ t('audio.undoJournalEmpty') }}
     </div>
     <q-list v-else dense class="undo-journal-panel__list">
-      <template v-for="(item, ii) in displayItems" :key="item.kind === 'row' ? item.row.key : `divider-${ii}`">
+      <template v-for="(item, ii) in displayItems" :key="item.kind === 'row' ? item.row.key : `${item.kind}-${ii}`">
         <!-- UG4.1b (req 13, вариант а): the watershed line — everything on the DOOMED side of it
              will not survive closing the file under the current auto-clean settings. The doomed
              side depends on the sort order (req 14): oldest-first -> above, newest-first -> below. -->
         <div v-if="item.kind === 'divider'" class="undo-journal-panel__doomed-divider">
           {{ t(sortNewestFirst ? 'audio.undoJournalDoomedBelow' : 'audio.undoJournalDoomedAbove') }}
         </div>
+        <!-- VL5.1: pre-window history pager. -->
+        <q-item
+          v-else-if="item.kind === 'load-more'"
+          clickable
+          class="undo-journal-panel__load-more"
+          :disable="gtracks.deepUndoLoading.value"
+          @click="gtracks.loadDeepUndoHistory()"
+        >
+          <q-item-section avatar class="undo-journal-panel__icon">
+            <q-spinner v-if="gtracks.deepUndoLoading.value" size="16px" />
+            <q-icon v-else name="unfold_more" size="18px" />
+          </q-item-section>
+          <q-item-section>{{ t('audio.undoJournalDeepLoad') }}</q-item-section>
+        </q-item>
       <q-item
         v-else
         clickable
-        :active="pendingTarget === item.row.cursor"
+        :active="item.row.deepCid !== null ? pendingDeepCid === item.row.deepCid : pendingTarget === item.row.cursor"
         active-class="undo-journal-panel__row--pending"
         :class="{
-          'undo-journal-panel__row--undone': item.row.cursor > gtracks.undoCursor.value,
+          'undo-journal-panel__row--undone': item.row.deepCid === null && item.row.cursor > gtracks.undoCursor.value,
           'undo-journal-panel__row--doomed': item.row.doomed,
+          'undo-journal-panel__row--deep': item.row.deepCid !== null,
         }"
-        @click="selectRow(item.row.cursor)"
+        @click="item.row.deepCid !== null ? selectDeepRow(item.row.deepCid) : selectRow(item.row.cursor)"
       >
         <q-item-section avatar class="undo-journal-panel__icon">
           <q-icon :name="item.row.icon" size="18px" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ item.row.title }}</q-item-label>
+          <q-item-label>
+            {{ item.row.title }}
+            <!-- VL-D9: tag badges — a tagged commit (and its chain) is GC-protected. -->
+            <q-badge
+              v-for="tag in item.row.tags"
+              :key="tag"
+              color="secondary"
+              class="undo-journal-panel__tag"
+            >{{ tag }}</q-badge>
+          </q-item-label>
           <q-item-label v-if="item.row.subtitle !== ''" caption>{{ item.row.subtitle }}</q-item-label>
         </q-item-section>
         <q-item-section side>
           <!-- req 8: the current position marker — a single click must never move the state. -->
-          <q-badge v-if="item.row.cursor === gtracks.undoCursor.value" color="primary" outline>
+          <q-badge v-if="item.row.deepCid === null && item.row.cursor === gtracks.undoCursor.value" color="primary" outline>
             {{ t('audio.undoJournalCurrent') }}
           </q-badge>
           <span v-else-if="item.row.time !== ''" class="undo-journal-panel__time">{{ item.row.time }}</span>
@@ -111,12 +137,42 @@
           </q-item>
         </q-list>
       </q-btn-dropdown>
+      <!-- VL-D9: tags of the selected row. -->
+      <q-btn dense flat round icon="sell" :disable="selectedCid === null" :aria-label="t('audio.undoJournalTags')">
+        <app-tooltip>{{ t('audio.undoJournalTags') }}</app-tooltip>
+        <q-menu>
+          <q-list dense class="undo-journal-panel__tag-menu">
+            <q-item v-for="tag in selectedCidTags" :key="tag" dense>
+              <q-item-section>{{ tag }}</q-item-section>
+              <q-item-section side>
+                <q-btn dense flat round size="xs" icon="close" @click="gtracks.deleteUndoTag(tag)" />
+              </q-item-section>
+            </q-item>
+            <q-item dense>
+              <q-item-section>
+                <q-input
+                  v-model="newTagName"
+                  dense
+                  autofocus
+                  :placeholder="t('audio.undoJournalTagName')"
+                  @keyup.enter="addTag"
+                />
+              </q-item-section>
+              <q-item-section side>
+                <q-btn dense flat no-caps :label="t('audio.undoJournalTagAdd')" :disable="newTagName.trim() === ''" @click="addTag" />
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-menu>
+      </q-btn>
       <q-space />
-      <!-- UG3.1 (req 8): the TWO-STEP rollback — the state moves ONLY here, never on row click. -->
+      <!-- UG3.1 (req 8): the TWO-STEP rollback — the state moves ONLY here, never on row click.
+           VL5.1: on a deep row this is a checkout (itself one undoable history step). -->
       <q-btn
         dense unelevated no-caps color="primary"
         :label="t('audio.undoJournalApply')"
-        :disable="pendingTarget === null || pendingTarget === gtracks.undoCursor.value"
+        :loading="applying"
+        :disable="pendingDeepCid === null && (pendingTarget === null || pendingTarget === gtracks.undoCursor.value)"
         @click="applyRollback"
       />
     </div>
@@ -126,9 +182,11 @@
 <script setup lang="ts">
 // UG3.1 (undo-global-journal, req 3+8): the operations-panel CONTENT. Reads the shared gtracks
 // singleton directly (nothing to plumb — same pattern as the spectrum-settings panel). A row click
-// only SELECTS (highlight); the state rolls back exclusively via «Применить» (rollbackToCursor).
+// only SELECTS (highlight); the state rolls back exclusively via «Применить» (rollbackToCursor for
+// window rows, checkoutUndoCommit for deep ones — VL5.1, undo-versioned-log).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Notify } from 'quasar'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
@@ -144,6 +202,9 @@ const KIND_ICONS: Record<string, string> = {
   'point-remove': 'delete_outline',
   'fix-preparse': 'build',
   'lint-fix': 'healing',
+  'checkout': 'history',
+  'snapshot': 'photo_camera',
+  'meta': 'archive',
 }
 
 function kindLabel(kind: string): string {
@@ -161,12 +222,14 @@ function formatTime(atMs: number): string {
 interface JournalRow {
   key: string
   cursor: number // the history cursor position this row represents (0 = initial state)
+  deepCid: string | null // VL5.1: non-null = a pre-window row addressed by its log cid
   icon: string
   title: string
   subtitle: string
   time: string
   changes: GTrackStepPointChange[] // UG3.2b (req 12): the structured hover diff per point
   doomed: boolean // UG4.1b (req 13): will NOT survive closing the file under the current settings
+  tags: string[] // VL-D9: names of the tags pinned to this row's commit
 }
 
 // UG3.2b: value formatting for the diff — beat is displayed as the FULL beat (2x half, GT-D6),
@@ -199,32 +262,71 @@ function pointRows(p: GTrackPoint): Array<[string, number]> {
   ]
 }
 
+// VL-D9: reverse map commit cid -> tag names for the row badges.
+const tagsByCid = computed<Map<string, string[]>>(() => {
+  const out = new Map<string, string[]>()
+  for (const [name, cid] of Object.entries(gtracks.undoTags.value)) {
+    const list = out.get(cid)
+    if (list === undefined) out.set(cid, [name])
+    else list.push(name)
+  }
+  return out
+})
+
 const rows = computed<JournalRow[]>(() => {
   const kept = gtracks.persistedUndoStepIds.value
+  const byCid = tagsByCid.value
+  const initialCid = gtracks.undoLogCidAt(0)
   const out: JournalRow[] = [{
     key: 'initial',
     cursor: 0,
+    deepCid: null,
     icon: 'flag',
     title: t('audio.undoJournalInitial'),
     subtitle: '',
     time: '',
     changes: [],
     doomed: false,
+    tags: initialCid === null ? [] : byCid.get(initialCid) ?? [],
   }]
   gtracks.undoSteps.value.forEach((step, i) => {
     out.push({
       key: step.id,
       cursor: i + 1,
+      deepCid: null,
       icon: KIND_ICONS[step.kind] ?? 'edit',
       title: kindLabel(step.kind),
       subtitle: step.label,
       time: formatTime(step.atMs),
       changes: describeStepChanges(step, 8),
       doomed: !kept.has(step.id),
+      tags: byCid.get(step.id) ?? [],
     })
   })
   return out
 })
+
+// VL5.1: pre-window rows, mapped to the same shape (fetched newest-first, so reverse for the
+// chronological build below). Snapshot/meta rows have their own labels and no diff tooltip.
+const deepRows = computed<JournalRow[]>(() => {
+  const byCid = tagsByCid.value
+  return [...gtracks.deepUndoRows.value].reverse().map((row) => ({
+    key: `deep-${row.cid}`,
+    cursor: -1,
+    deepCid: row.cid,
+    icon: KIND_ICONS[row.kind] ?? KIND_ICONS[row.type] ?? 'edit',
+    title: row.type === 'snapshot'
+      ? t('audio.undoJournalSnapshot')
+      : row.type === 'meta' ? t('audio.undoJournalImported') : kindLabel(row.kind),
+    subtitle: row.label,
+    time: formatTime(row.atMs),
+    changes: row.step === null ? [] : describeStepChanges(row.step, 8),
+    doomed: false,
+    tags: byCid.get(row.cid) ?? [],
+  }))
+})
+
+const showDeepLoad = computed(() => !gtracks.deepUndoLoaded.value || gtracks.deepUndoHasMore.value)
 
 // UG3.4 (req 14): sort by edit time — newest on top by DEFAULT; the choice is a persisted editor
 // preference like the other 'mindwave-*' keys.
@@ -248,9 +350,16 @@ function toggleSort(): void {
 // UG4.1b (req 13, вариант а) + UG3.4: the render list. In chronological order the watershed line
 // sits between the doomed prefix and the first surviving row; reversing the list for newest-first
 // flips it into «kept above / doomed below» automatically (the label follows sortNewestFirst).
-type DisplayItem = { readonly kind: 'row'; readonly row: JournalRow } | { readonly kind: 'divider' }
+// VL5.1: the deep (pre-window) rows and their pager sit at the chronological start — with the
+// default newest-first sort the past is what you scroll DOWN into.
+type DisplayItem =
+  | { readonly kind: 'row'; readonly row: JournalRow }
+  | { readonly kind: 'divider' }
+  | { readonly kind: 'load-more' }
 const displayItems = computed<DisplayItem[]>(() => {
   const chronological: DisplayItem[] = []
+  if (showDeepLoad.value) chronological.push({ kind: 'load-more' })
+  for (const row of deepRows.value) chronological.push({ kind: 'row', row })
   let seenDoomed = false
   let dividerPlaced = false
   for (const row of rows.value) {
@@ -273,13 +382,65 @@ const displayItems = computed<DisplayItem[]>(() => {
 // req 8: pending selection (highlight only). Reset whenever the log itself changes shape (a new
 // edit truncated the redo tail, a file switch rebuilt the history) so a stale target can't apply.
 const pendingTarget = ref<number | null>(null)
-watch(() => gtracks.undoSteps.value, () => { pendingTarget.value = null })
+const pendingDeepCid = ref<string | null>(null)
+watch(() => gtracks.undoSteps.value, () => {
+  pendingTarget.value = null
+  pendingDeepCid.value = null
+})
 
 function selectRow(cursor: number): void {
+  pendingDeepCid.value = null
   pendingTarget.value = cursor === pendingTarget.value ? null : cursor
 }
 
-function applyRollback(): void {
+function selectDeepRow(cid: string): void {
+  pendingTarget.value = null
+  pendingDeepCid.value = cid === pendingDeepCid.value ? null : cid
+}
+
+// VL-D9: the commit cid behind the current selection (window rows map through the position/step
+// ids, the initial row through position 0; null while the log is not synced yet).
+const selectedCid = computed<string | null>(() => {
+  if (pendingDeepCid.value !== null) return pendingDeepCid.value
+  const target = pendingTarget.value
+  if (target === null) return null
+  if (target === 0) return gtracks.undoLogCidAt(0)
+  return gtracks.undoSteps.value[target - 1]?.id ?? null
+})
+const selectedCidTags = computed<string[]>(() => {
+  const cid = selectedCid.value
+  return cid === null ? [] : tagsByCid.value.get(cid) ?? []
+})
+
+const newTagName = ref('')
+function addTag(): void {
+  const cid = selectedCid.value
+  const name = newTagName.value.trim()
+  if (cid === null || name === '') return
+  gtracks.setUndoTag(name, cid)
+  newTagName.value = ''
+}
+
+const applying = ref(false)
+async function applyRollback(): Promise<void> {
+  const deepCid = pendingDeepCid.value
+  if (deepCid !== null) {
+    applying.value = true
+    try {
+      const outcome = await gtracks.checkoutUndoCommit(deepCid)
+      if (outcome === 'ok') {
+        pendingDeepCid.value = null
+      } else {
+        const key = outcome === 'no-snapshot'
+          ? 'audio.undoJournalCheckoutNoSnapshot'
+          : outcome === 'mismatch' ? 'audio.undoJournalCheckoutMismatch' : 'audio.undoJournalCheckoutFailed'
+        Notify.create({ type: 'negative', message: t(key) })
+      }
+    } finally {
+      applying.value = false
+    }
+    return
+  }
   const target = pendingTarget.value
   if (target === null) return
   gtracks.rollbackToCursor(target)
@@ -339,6 +500,28 @@ function clearBeforeSelection(): void {
    file — the same left-stripe idiom as the voice grouping (GT-D20). */
 .undo-journal-panel__row--doomed {
   border-left: 3px solid #f2c037;
+}
+
+/* VL5.1: pre-window rows — history that lives only in the log; a blue-grey stripe + slight dim
+   distinguishes them from the active undo window. */
+.undo-journal-panel__row--deep {
+  border-left: 3px solid #78909c;
+  opacity: 0.75;
+}
+
+.undo-journal-panel__load-more {
+  color: #78909c;
+  font-size: 12px;
+}
+
+.undo-journal-panel__tag {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.undo-journal-panel__tag-menu {
+  min-width: 200px;
+  padding: 4px;
 }
 
 /* UG4.1b (вариант а): the watershed line — rows above it are not persisted. */

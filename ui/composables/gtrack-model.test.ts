@@ -672,3 +672,40 @@ describe('external history container (undo-global-journal UG2.1, UG-D1)', () => 
     expect(model.canRedo).toBe(false)
   })
 })
+
+describe('replaceVoicePoints — the checkout primitive (VL5.1, undo-versioned-log)', () => {
+  test('applies as one undoable step of the declared kind with a full voice delta', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 25)]), [], createGTrackHistory())
+    const target = model.schedule.voices[0]!.points.map((p, i) => ({ ...p, baseFreq: 300 + i }))
+    const beforeSig = model.currentSignature
+
+    model.edit(() => model.replaceVoicePoints(7, target), 'checkout')
+    expect(model.schedule.voices[0]!.points.map((p) => p.baseFreq)).toEqual([300, 301, 302])
+    expect(model.historySteps.length).toBe(1)
+    expect(model.historySteps[0]!.kind).toBe('checkout')
+    expect(model.historySteps[0]!.voices.length).toBe(1)
+
+    expect(model.undo()).toBe(true)
+    expect(model.currentSignature).toBe(beforeSig)
+    expect(model.redo()).toBe(true)
+    expect(model.schedule.voices[0]!.points[0]!.baseFreq).toBe(300)
+  })
+
+  test('an identical point set commits nothing (no empty history step)', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]), [], createGTrackHistory())
+    const same = model.schedule.voices[0]!.points.map((p) => ({ ...p }))
+    model.edit(() => model.replaceVoicePoints(7, same), 'checkout')
+    expect(model.historySteps.length).toBe(0)
+  })
+
+  test('rejects degenerate input: outside a transaction, <2 points, non-finite values', () => {
+    const model = new GTrackModel(fixture([entry(0, 10)]), [], createGTrackHistory())
+    const points = model.schedule.voices[0]!.points
+    expect(() => model.replaceVoicePoints(7, points)).toThrow(/transaction/)
+    expect(() => model.edit(() => model.replaceVoicePoints(7, points.slice(0, 1)))).toThrow(/2 points/)
+    expect(() =>
+      model.edit(() => model.replaceVoicePoints(7, [{ ...points[0]!, baseFreq: Number.NaN }, points[1]!])),
+    ).toThrow(/non-finite/)
+    expect(model.historySteps.length).toBe(0)
+  })
+})

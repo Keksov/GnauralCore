@@ -552,6 +552,24 @@ export class GTrackModel {
     })
   }
 
+  /** VL5.1 (undo-versioned-log): swap a voice's whole point set — the checkout primitive. The
+   *  panel reconstructs a historical state from a log snapshot + deltas and applies it through a
+   *  normal transaction (kind 'checkout'), so the rollback itself is one undoable step. */
+  public replaceVoicePoints(voiceId: number, points: readonly GTrackPoint[]): void {
+    this.ensureOpen()
+    this.assertEditable(voiceId)
+    if (points.length < 2) throw new Error('gtrack: a voice needs at least 2 points')
+    for (const p of points) {
+      if (
+        !Number.isFinite(p.timeSec) || !Number.isFinite(p.baseFreq) || !Number.isFinite(p.beatFreqHalf) ||
+        !Number.isFinite(p.volL) || !Number.isFinite(p.volR)
+      ) {
+        throw new Error('gtrack: non-finite point value in replaceVoicePoints')
+      }
+    }
+    this.replaceVoice(voiceId, (voice) => ({ ...voice, points: points.map((p) => ({ ...p })) }))
+  }
+
   /** Set one numeric field of a point. */
   public setPointField(voiceId: number, index: number, field: GTrackPointField, value: number): void {
     this.ensureOpen()

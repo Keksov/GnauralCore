@@ -5,7 +5,7 @@
 
 import { computed, effectScope, ref, shallowRef, watch, type Ref } from 'vue'
 
-import type { GnauralScheduleData, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
+import type { GnauralScheduleData, ProjectUndoLogCommit, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
@@ -28,7 +28,18 @@ import {
   setUndoLogAppendResultHandler,
   writeProjectSectionFor,
 } from './use-project'
-import { planUndoLogAdoption, planV3Migration, stepToCommitInput } from './undo-log-adoption'
+import { commitToStep, planUndoLogAdoption, planV3Migration, snapshotSig, stepToCommitInput } from './undo-log-adoption'
+
+/** VL5.1 (undo-versioned-log): a pre-window history row for the panel — a commit older than the
+ *  in-memory undo window, living only in the log. Delta rows carry the mapped step (tooltips). */
+export interface GTrackDeepUndoRow {
+  readonly cid: string
+  readonly type: 'delta' | 'snapshot' | 'meta'
+  readonly kind: string
+  readonly label: string
+  readonly atMs: number
+  readonly step: GTrackUndoStep | null
+}
 
 /** GT4.3/GT4.1 (GT-D17): per-lane solo audio of the lane's voice set — waveform, spectrum, both, or
  *  none. Rendered from a muted-others .gnaural render (also how audiofile/noise voices show audio). */
@@ -517,6 +528,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (m !== null && undoChain !== null) {
       undoLogMainTip = undoChain.refs.main
       undoLogLastSentHead = undoChain.refs.head
+      undoTags.value = { ...undoChain.refs.tags } // VL-D9: the named refs feed the panel badges
       let synced: readonly GTrackUndoStep[] = []
       let ready = true
       if (undoJournalSettings.value.clearOnClose) {
@@ -669,6 +681,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoLogDeltasSinceSnapshot = 0
     undoLogReady = false
     lastBuiltScheduleData = data
+    deepUndoRows.value = []
+    deepUndoHasMore.value = false
+    deepUndoLoaded.value = false
+    deepUndoNextFrom = null
+    undoTags.value = {}
   }
 
   /** Queue a snapshot commit of the given state at the model's CURRENT cursor position.
@@ -779,6 +796,143 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     console.info(`[undo-diag] legacy v3 journal migrated: ${legacy.steps.length} steps -> ${plan.commits.length} commits`)
     refreshEditState(false)
     return { synced: m.historySteps, ready: true }
+  }
+
+  // --- deep history + checkout + tags (VL5.1) -------------------------------------------------
+  // The panel's in-memory window covers the adopted steps; everything OLDER lives only in the
+  // log. Deep rows page down the parent chain from position 0; «Применить» on one reconstructs
+  // that state (snapshot anchor + redo of the deltas above it) and applies it as ONE normal
+  // 'checkout' edit — the rollback itself lands in the history and is undoable.
+  const deepUndoRows = shallowRef<readonly GTrackDeepUndoRow[]>([])
+  const deepUndoHasMore = ref(false)
+  const deepUndoLoaded = ref(false)
+  const deepUndoLoading = ref(false)
+  let deepUndoNextFrom: string | null = null
+  const undoTags = shallowRef<Readonly<Record<string, string>>>({})
+  const DEEP_UNDO_PAGE = 50
+
+  function deepRowOfCommit(commit: ProjectUndoLogCommit): GTrackDeepUndoRow {
+    if (commit.type === 'delta') {
+      const step = commitToStep(commit)
+      if (step !== null) {
+        return { cid: commit.cid, type: 'delta', kind: step.kind, label: step.label, atMs: commit.atMs, step }
+      }
+    }
+    return {
+      cid: commit.cid,
+      type: commit.type === 'snapshot' ? 'snapshot' : 'meta',
+      kind: commit.type,
+      label: '',
+      atMs: commit.atMs,
+      step: null,
+    }
+  }
+
+  /** Fetch the next page of pre-window history (newest-first pages appended at the end). */
+  async function loadDeepUndoHistory(): Promise<void> {
+    const key = filePath.value
+    if (key === null || !undoLogReady || deepUndoLoading.value) return
+    const firstLoad = !deepUndoLoaded.value
+    const from = firstLoad ? undoLogPositions[0] : deepUndoNextFrom
+    if (from === null || from === undefined) {
+      deepUndoLoaded.value = true
+      deepUndoHasMore.value = false
+      return
+    }
+    deepUndoLoading.value = true
+    try {
+      const chain = await readProjectUndoLogChainFor(key, { from, limit: DEEP_UNDO_PAGE + 1 })
+      if (chain === null || key !== filePath.value) return
+      // The first page starts AT position 0's own commit — drop it, the «initial» row covers it.
+      const commits = firstLoad ? chain.commits.slice(1) : chain.commits
+      const last = commits[commits.length - 1] ?? (firstLoad ? chain.commits[0] : undefined)
+      deepUndoNextFrom = last === undefined ? null : last.parent
+      deepUndoRows.value = [...deepUndoRows.value, ...commits.map(deepRowOfCommit)]
+      deepUndoHasMore.value = deepUndoNextFrom !== null
+      deepUndoLoaded.value = true
+    } finally {
+      deepUndoLoading.value = false
+    }
+  }
+
+  /** Reconstruct the state of `cid` (snapshot anchor + redo) and apply it as a checkout edit. */
+  async function checkoutUndoCommit(cid: string): Promise<'ok' | 'no-snapshot' | 'mismatch' | 'failed'> {
+    const key = filePath.value
+    const live = model.value
+    if (key === null || live === null || !undoLogReady || live.inTransaction) return 'failed'
+
+    const chain = await readProjectUndoLogChainFor(key, { from: cid, untilType: 'snapshot', limit: 300 })
+    if (chain === null || key !== filePath.value || live !== model.value) return 'failed'
+    const anchor = chain.commits[chain.commits.length - 1]
+    const anchorSig = anchor === undefined ? null : snapshotSig(anchor)
+    if (anchor === undefined || anchorSig === null) return 'no-snapshot'
+
+    let temp: GTrackModel
+    try {
+      const payload = anchor.payload as { schedule?: unknown }
+      temp = new GTrackModel(payload.schedule as GnauralScheduleData, [], createGTrackHistory())
+    } catch {
+      return 'failed'
+    }
+    if (temp.currentSignature !== anchorSig) return 'failed' // foreign snapshot payload
+
+    const deltas = [...chain.commits].reverse().filter((c) => c.type === 'delta')
+    const steps: GTrackUndoStep[] = []
+    for (const c of deltas) {
+      const step = commitToStep(c)
+      if (step === null) return 'failed'
+      steps.push(step)
+    }
+    if (steps.length > 0) {
+      if (!temp.adoptUndoJournal({ version: 3, currentSig: temp.currentSignature, cursor: 0, steps })) return 'failed'
+      while (temp.canRedo) {
+        if (!temp.redo()) return 'failed'
+      }
+    }
+
+    // Voice-composition gate (UC-D6: voices are never added/removed by edits) + preparse locks.
+    const targetVoices = new Map(temp.schedule.voices.map((v) => [v.id, v]))
+    if (live.schedule.voices.length !== targetVoices.size) return 'mismatch'
+    const changed: Array<{ id: number; points: GTrackPoint[] }> = []
+    for (const liveVoice of live.schedule.voices) {
+      const targetVoice = targetVoices.get(liveVoice.id)
+      if (targetVoice === undefined) return 'mismatch'
+      if (JSON.stringify(liveVoice.points) !== JSON.stringify(targetVoice.points)) {
+        if (!live.isVoiceEditable(liveVoice.id)) return 'mismatch'
+        changed.push({ id: liveVoice.id, points: [...targetVoice.points] })
+      }
+    }
+    if (changed.length === 0) return 'ok'
+
+    live.edit(() => {
+      for (const c of changed) live.replaceVoicePoints(c.id, c.points)
+    }, 'checkout')
+    syncSchedule()
+    refreshEditState() // the normal diff queues the checkout delta into the log
+    return 'ok'
+  }
+
+  /** VL-D9: tags are named refs; a tagged commit (and its chain) survives GC. */
+  function setUndoTag(name: string, cid: string): void {
+    const key = filePath.value
+    const trimmed = name.trim()
+    if (key === null || trimmed === '' || trimmed.length > 64) return
+    undoTags.value = { ...undoTags.value, [trimmed]: cid }
+    queueProjectUndoLogRefsFor(key, { tags: { [trimmed]: cid } })
+  }
+
+  function deleteUndoTag(name: string): void {
+    const key = filePath.value
+    if (key === null) return
+    const next: Record<string, string> = { ...undoTags.value }
+    delete next[name]
+    undoTags.value = next
+    queueProjectUndoLogRefsFor(key, { tags: { [name]: null } })
+  }
+
+  /** The server-chain cid of a history position (0 = initial); null while unsynced. */
+  function undoLogCidAt(position: number): string | null {
+    return undoLogPositions[position] ?? null
   }
 
   // A cut batch (409) means the chain diverged under us (another tab): drop the queue and
@@ -1670,6 +1824,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       undoLogMainTip = null
       undoLogLastSentHead = null
       undoLogDeltasSinceSnapshot = 0
+      deepUndoRows.value = []
+      deepUndoHasMore.value = false
+      deepUndoLoaded.value = false
+      deepUndoNextFrom = null
+      undoTags.value = {}
       if (key !== null) {
         discardPendingUndoLogFor(key)
         void clearProjectUndoLogFor(key)
@@ -1748,6 +1907,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     rollbackToCursor,
     clearUndoHistory,
     persistedUndoStepIds,
+    deepUndoRows,
+    deepUndoHasMore,
+    deepUndoLoaded,
+    deepUndoLoading,
+    loadDeepUndoHistory,
+    checkoutUndoCommit,
+    undoTags,
+    setUndoTag,
+    deleteUndoTag,
+    undoLogCidAt,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,
