@@ -78,6 +78,7 @@
     "undoJournalCheckoutMismatch": "Откат невозможен: состав или блокировка голосов не совпадает с текущим",
     "undoJournalCheckoutFailed": "Откат не удался — подробности в консоли",
     "undoBranchesTitle": "Отменённые ветки",
+    "undoBranchesInline": "Ветки в хронологии журнала",
     "undoBranchesEmpty": "Отменённых веток нет",
     "undoBranchSubtitle": "Шагов: {steps}, снапшотов: {snapshots}",
     "undoBranchDelete": "Удалить ветку",

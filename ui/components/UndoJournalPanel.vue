@@ -4,6 +4,15 @@
          is highlighted when the non-default (oldest-first) order is active. -->
     <div class="undo-journal-panel__toolbar">
       <q-space />
+      <!-- OB-D7 (req 5): inline branches — the toggle sits LEFT of the sort button. -->
+      <q-btn
+        dense flat round size="sm" icon="account_tree"
+        :color="inlineBranches ? 'primary' : undefined"
+        :aria-label="inlineBranchesLabel"
+        @click="toggleInlineBranches"
+      >
+        <app-tooltip>{{ inlineBranchesLabel }}</app-tooltip>
+      </q-btn>
       <q-btn
         dense flat round size="sm" icon="swap_vert"
         :color="sortNewestFirst ? undefined : 'primary'"
@@ -18,11 +27,17 @@
          + the commit time; rows past the cursor are the undone (redo) tail, rendered dimmed.
          VL5.1: DEEP rows (older than the in-memory window, living only in the log) join the list
          at the chronological bottom; «Применить» on one performs a checkout. -->
-    <div v-if="rows.length === 1 && deepRows.length === 0 && !showDeepLoad" class="undo-journal-panel__empty text-grey">
+    <div
+      v-if="rows.length === 1 && deepRows.length === 0 && !showDeepLoad && !(inlineBranches && branchGroups.length > 0)"
+      class="undo-journal-panel__empty text-grey"
+    >
       {{ t('audio.undoJournalEmpty') }}
     </div>
     <q-list v-else dense class="undo-journal-panel__list">
-      <template v-for="(item, ii) in displayItems" :key="item.kind === 'row' ? item.row.key : `${item.kind}-${ii}`">
+      <template
+        v-for="(item, ii) in displayItems"
+        :key="item.kind === 'row' ? item.row.key : item.kind === 'branch' ? `inline-${item.group.branch.tip}` : `${item.kind}-${ii}`"
+      >
         <!-- UG4.1b (req 13, вариант а): the watershed line — everything on the DOOMED side of it
              will not survive closing the file under the current auto-clean settings. The doomed
              side depends on the sort order (req 14): oldest-first -> above, newest-first -> below. -->
@@ -43,6 +58,81 @@
           </q-item-section>
           <q-item-section>{{ t('audio.undoJournalDeepLoad') }}</q-item-section>
         </q-item>
+        <!-- OB-D7 (req 5): inline mode — the branch block joins the stream at its birth time,
+             expanding accordion-style right inside the journal. One display item = one block, so
+             the newest-first reverse moves it whole and never tears the accordion apart. -->
+        <template v-else-if="item.kind === 'branch'">
+          <q-item clickable class="undo-journal-panel__branch-head" @click="toggleBranch(item.group.branch.tip)">
+            <q-item-section avatar class="undo-journal-panel__icon">
+              <q-icon :name="expandedBranchTip === item.group.branch.tip ? 'expand_more' : 'chevron_right'" size="18px" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>
+                {{ branchTitle(item.group.branch) }}
+                <q-badge
+                  v-for="tag in item.group.branch.tags"
+                  :key="tag"
+                  color="secondary"
+                  class="undo-journal-panel__tag"
+                >{{ tag }}</q-badge>
+              </q-item-label>
+              <q-item-label caption>{{ branchSubtitle(item.group.branch) }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
+                <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
+                <q-popup-proxy>
+                  <q-banner dense class="undo-journal-panel__branch-confirm">
+                    {{ t('audio.undoBranchDeleteConfirm', { n: item.group.branch.exclusiveCommits }) }}
+                    <template #action>
+                      <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
+                      <q-btn
+                        v-close-popup dense flat no-caps color="negative"
+                        :label="t('audio.undoBranchDelete')"
+                        @click="deleteBranch(item.group.branch.tip)"
+                      />
+                    </template>
+                  </q-banner>
+                </q-popup-proxy>
+              </q-btn>
+            </q-item-section>
+          </q-item>
+          <template v-if="expandedBranchTip === item.group.branch.tip">
+            <q-item v-if="branchStepRows(item.group) === null" dense class="undo-journal-panel__branch-step">
+              <q-item-section avatar class="undo-journal-panel__icon">
+                <q-spinner size="14px" />
+              </q-item-section>
+            </q-item>
+            <q-item
+              v-for="row in branchStepRows(item.group) ?? []"
+              :key="row.key"
+              clickable dense
+              :active="pendingDeepCid === row.deepCid"
+              active-class="undo-journal-panel__row--pending"
+              class="undo-journal-panel__row--deep undo-journal-panel__branch-step"
+              @click="selectDeepRow(row.deepCid!)"
+            >
+              <q-item-section avatar class="undo-journal-panel__icon">
+                <q-icon :name="row.icon" size="18px" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>
+                  {{ row.title }}
+                  <q-badge
+                    v-for="tag in row.tags"
+                    :key="tag"
+                    color="secondary"
+                    class="undo-journal-panel__tag"
+                  >{{ tag }}</q-badge>
+                </q-item-label>
+                <q-item-label v-if="row.subtitle !== ''" caption>{{ row.subtitle }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <span class="undo-journal-panel__time">{{ row.time }}</span>
+              </q-item-section>
+            </q-item>
+          </template>
+        </template>
       <q-item
         v-else
         clickable
@@ -117,8 +207,10 @@
     <!-- undo-orphan-branches (OB-D1/OB-D2/OB-D3): abandoned lines of the log — flat tips, lazy
          (summaries on first open, a branch's steps on expand). Selecting a step reuses the
          deep-row selection, so «Применить» performs the same checkout; deletion erases only the
-         tip's exclusive suffix and is refused while a tag protects it. -->
+         tip's exclusive suffix and is refused while a tag protects it. OB-D7: hidden while the
+         inline mode shows the same blocks inside the journal stream. -->
     <q-expansion-item
+      v-if="!inlineBranches"
       v-model="branchesOpen"
       dense
       icon="call_split"
@@ -326,6 +418,7 @@ interface JournalRow {
   title: string
   subtitle: string
   time: string
+  atMs: number // OB-D7: raw commit time — the inline branch blocks interleave by it (0 = initial)
   changes: GTrackStepPointChange[] // UG3.2b (req 12): the structured hover diff per point
   doomed: boolean // UG4.1b (req 13): will NOT survive closing the file under the current settings
   tags: string[] // VL-D9: names of the tags pinned to this row's commit
@@ -384,6 +477,7 @@ const rows = computed<JournalRow[]>(() => {
     title: t('audio.undoJournalInitial'),
     subtitle: '',
     time: '',
+    atMs: 0,
     changes: [],
     doomed: false,
     tags: initialCid === null ? [] : byCid.get(initialCid) ?? [],
@@ -397,6 +491,7 @@ const rows = computed<JournalRow[]>(() => {
       title: kindLabel(step.kind),
       subtitle: step.label,
       time: formatTime(step.atMs),
+      atMs: step.atMs,
       changes: describeStepChanges(step, 8),
       doomed: !kept.has(step.id),
       tags: byCid.get(step.id) ?? [],
@@ -419,6 +514,7 @@ const deepRows = computed<JournalRow[]>(() => {
       : row.type === 'meta' ? t('audio.undoJournalImported') : kindLabel(row.kind),
     subtitle: row.label,
     time: formatTime(row.atMs),
+    atMs: row.atMs,
     changes: row.step === null ? [] : describeStepChanges(row.step, 8),
     doomed: false,
     tags: byCid.get(row.cid) ?? [],
@@ -446,6 +542,24 @@ function toggleSort(): void {
   } catch { /* session-local */ }
 }
 
+// OB-D7 (req 5): inline branches — persisted like the sort; default off = the bottom section.
+const INLINE_BRANCHES_STORAGE_KEY = 'mindwave-undo-journal-branches-inline'
+function loadInlineBranches(): boolean {
+  try {
+    return localStorage.getItem(INLINE_BRANCHES_STORAGE_KEY) === 'inline'
+  } catch {
+    return false
+  }
+}
+const inlineBranches = ref(loadInlineBranches())
+const inlineBranchesLabel = computed(() => t('audio.undoBranchesInline'))
+function toggleInlineBranches(): void {
+  inlineBranches.value = !inlineBranches.value
+  try {
+    localStorage.setItem(INLINE_BRANCHES_STORAGE_KEY, inlineBranches.value ? 'inline' : 'bottom')
+  } catch { /* session-local */ }
+}
+
 // UG4.1b (req 13, вариант а) + UG3.4: the render list. In chronological order the watershed line
 // sits between the doomed prefix and the first surviving row; reversing the list for newest-first
 // flips it into «kept above / doomed below» automatically (the label follows sortNewestFirst).
@@ -455,10 +569,27 @@ type DisplayItem =
   | { readonly kind: 'row'; readonly row: JournalRow }
   | { readonly kind: 'divider' }
   | { readonly kind: 'load-more' }
+  | { readonly kind: 'branch'; readonly group: BranchGroup } // OB-D7: one block = one item
 const displayItems = computed<DisplayItem[]>(() => {
   const chronological: DisplayItem[] = []
   if (showDeepLoad.value) chronological.push({ kind: 'load-more' })
-  for (const row of deepRows.value) chronological.push({ kind: 'row', row })
+
+  // OB-D7 (req 5): inline mode — each branch block enters the stream at its birth time (fromMs,
+  // the branch's first record). The block is a single item, so the newest-first reverse moves it
+  // whole and the accordion never tears.
+  const pendingBranches = inlineBranches.value
+    ? [...branchGroups.value].sort((a, b) => a.branch.fromMs - b.branch.fromMs)
+    : []
+  let nextBranch = 0
+  const pushRow = (row: JournalRow): void => {
+    while (nextBranch < pendingBranches.length && pendingBranches[nextBranch]!.branch.fromMs <= row.atMs) {
+      chronological.push({ kind: 'branch', group: pendingBranches[nextBranch]! })
+      nextBranch += 1
+    }
+    chronological.push({ kind: 'row', row })
+  }
+
+  for (const row of deepRows.value) pushRow(row)
   let seenDoomed = false
   let dividerPlaced = false
   for (const row of rows.value) {
@@ -472,9 +603,14 @@ const displayItems = computed<DisplayItem[]>(() => {
         dividerPlaced = true
       }
     }
-    chronological.push({ kind: 'row', row })
+    pushRow(row)
   }
   if (seenDoomed && !dividerPlaced) chronological.push({ kind: 'divider' })
+  while (nextBranch < pendingBranches.length) {
+    // Branches younger than every journal row (abandoned after the last surviving edit).
+    chronological.push({ kind: 'branch', group: pendingBranches[nextBranch]! })
+    nextBranch += 1
+  }
   return sortNewestFirst.value ? [...chronological].reverse() : chronological
 })
 
@@ -525,13 +661,16 @@ function addTag(): void {
 // selected step drives the SAME pendingDeepCid/«Применить» checkout as the deep rows (OB-D2).
 const branchesOpen = ref(false)
 const expandedBranchTip = ref<string | null>(null)
+// OB-D7: the inline toggle needs the summaries without the bottom section ever opening; the
+// undoTags dep retries the load after a project restore completes (tags refresh = log synced).
 watch(
-  [branchesOpen, () => gtracks.undoBranchesLoaded.value],
+  [branchesOpen, inlineBranches, () => gtracks.undoBranchesLoaded.value, () => gtracks.undoTags.value],
   () => {
-    if (branchesOpen.value && !gtracks.undoBranchesLoaded.value && !gtracks.undoBranchesLoading.value) {
+    if ((branchesOpen.value || inlineBranches.value) && !gtracks.undoBranchesLoaded.value && !gtracks.undoBranchesLoading.value) {
       void gtracks.loadUndoBranches()
     }
   },
+  { immediate: true },
 )
 watch(() => gtracks.undoBranches.value, () => {
   expandedBranchTip.value = null
@@ -563,6 +702,7 @@ const branchGroups = computed<BranchGroup[]>(() => {
           : row.type === 'meta' ? t('audio.undoJournalImported') : kindLabel(row.kind),
         subtitle: row.label,
         time: formatTime(row.atMs),
+        atMs: row.atMs,
         changes: row.step === null ? [] : describeStepChanges(row.step, 8),
         doomed: false,
         tags: byCid.get(row.cid) ?? [],
@@ -570,6 +710,12 @@ const branchGroups = computed<BranchGroup[]>(() => {
     }
   })
 })
+
+/** OB-D7: inner rows follow the list sort — newest-first keeps the tip on top. */
+function branchStepRows(group: BranchGroup): JournalRow[] | null {
+  if (group.rows === null) return null
+  return sortNewestFirst.value ? group.rows : [...group.rows].reverse()
+}
 
 function toggleBranch(tip: string): void {
   if (expandedBranchTip.value === tip) {

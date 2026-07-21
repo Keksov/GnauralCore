@@ -78,6 +78,7 @@
     "undoJournalCheckoutMismatch": "Checkout impossible: the voice set or locks differ from the current state",
     "undoJournalCheckoutFailed": "Checkout failed — see the console for details",
     "undoBranchesTitle": "Abandoned branches",
+    "undoBranchesInline": "Branches inline in the journal",
     "undoBranchesEmpty": "No abandoned branches",
     "undoBranchSubtitle": "Steps: {steps}, snapshots: {snapshots}",
     "undoBranchDelete": "Delete branch",
