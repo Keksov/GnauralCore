@@ -1274,6 +1274,13 @@ watch(() => props.pointMode, () => {
 })
 watch(() => props.multiSelected, () => scheduleDraw())
 watch(() => props.inlineUnderlay, () => scheduleDraw())
+// TS-D4 fix (owner 2026-07-21): the canvas is imperative — a prop that only feeds draw() repaints
+// NOTHING unless it is watched here. baseScaleMode (log <-> linear axis) and the two band toggles
+// were missing, so switching the base scale looked like a dead control: the axis computed changed,
+// the pixels did not, and the lane only caught up on the next unrelated redraw (pan/zoom/edit).
+watch(() => props.baseScaleMode, () => scheduleDraw())
+watch(() => props.showBeatBand, () => scheduleDraw())
+watch(() => props.showBalanceBand, () => scheduleDraw())
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
