@@ -9,6 +9,7 @@ import { computed, ref } from 'vue'
 import type {
   ProjectInfo,
   ProjectUndoLogAppendResponse,
+  ProjectUndoLogBranch,
   ProjectUndoLogChainResponse,
   ProjectUndoLogCommitInput,
   ProjectUndoLogCommitType,
@@ -244,6 +245,40 @@ export async function readProjectUndoLogChainFor(
   } catch (error) {
     console.warn('[use-project] fetchUndoLogChain failed:', error instanceof Error ? error.message : error)
     return null
+  }
+}
+
+/** undo-orphan-branches (OB-D5): flat newest-first summaries of the abandoned branches. */
+export async function readProjectUndoLogBranchesFor(path: string): Promise<readonly ProjectUndoLogBranch[] | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
+  }
+  try {
+    return (await projectApi.fetchUndoLogBranches(project.id)).branches
+  } catch (error) {
+    console.warn('[use-project] fetchUndoLogBranches failed:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
+/** undo-orphan-branches (OB-D3): delete a branch tip's exclusive suffix. The server's 409 text
+ *  (not a tip / tagged branch) comes back in `error` for the panel notify; null = no project. */
+export async function deleteProjectUndoLogBranchFor(
+  path: string,
+  tip: string,
+): Promise<{ deleted: number } | { error: string } | null> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return null
+  }
+  try {
+    const response = await projectApi.deleteUndoLogBranch({ id: project.id, tip })
+    return { deleted: response.deleted }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[use-project] deleteUndoLogBranch failed:', message)
+    return { error: message }
   }
 }
 

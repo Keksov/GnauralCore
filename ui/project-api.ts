@@ -11,8 +11,11 @@ import type {
   ProjectSettingsResponse,
   ProjectUndoLogAppendRequest,
   ProjectUndoLogAppendResponse,
+  ProjectUndoLogBranchesResponse,
   ProjectUndoLogChainResponse,
   ProjectUndoLogCommitType,
+  ProjectUndoLogDeleteBranchRequest,
+  ProjectUndoLogDeleteBranchResponse,
   ProjectUndoLogRefsRequest,
   ProjectUndoLogRefsResponse,
 } from '@protocol'
@@ -163,6 +166,24 @@ export const projectApi = {
     await requestJson<null>('/api/projects/undo-log/clear', {
       method: 'POST',
       body: JSON.stringify({ id }),
+      signal,
+    })
+  },
+
+  // undo-orphan-branches (OB-D5): abandoned lines of the log — list and targeted deletion.
+  fetchUndoLogBranches(id: string, signal?: AbortSignal): Promise<ProjectUndoLogBranchesResponse> {
+    return requestJson<ProjectUndoLogBranchesResponse>(`/api/projects/undo-log/branches?id=${encodeURIComponent(id)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+    })
+  },
+
+  /** 409 (not a tip / tagged branch) is THROWN with the server's message — the panel notifies. */
+  deleteUndoLogBranch(request: ProjectUndoLogDeleteBranchRequest, signal?: AbortSignal): Promise<ProjectUndoLogDeleteBranchResponse> {
+    return requestJson<ProjectUndoLogDeleteBranchResponse>('/api/projects/undo-log/delete-branch', {
+      method: 'POST',
+      body: JSON.stringify(request),
       signal,
     })
   },
