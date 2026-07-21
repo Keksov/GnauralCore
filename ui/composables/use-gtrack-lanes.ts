@@ -516,7 +516,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       readProjectSectionFor<unknown>(key, SECTION_LANES),
       readProjectSectionFor<Record<string, unknown>>(key, SECTION_LANE_SPECTRUM),
       readProjectSectionFor<unknown>(key, SECTION_MIX_EXCLUDED),
-      readProjectUndoLogChainFor(key, { from: 'head', limit: 300 }),
+      // VL5.2 fix: adopt from MAIN, not head — main moves atomically with every append, while
+      // head is a debounced ref that can lag (races its own append; a save snapshot is a CHILD
+      // of the last delta, so a stale head's ancestor walk missed it → «журнал пуст»).
+      readProjectUndoLogChainFor(key, { from: 'main', limit: 300 }),
     ])
     if (reqId !== projectRestoreReqId || key !== filePath.value) return
 
@@ -707,6 +710,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       [{ cid, parent: parent ?? undoLogMainTip, type: 'snapshot', atMs: Date.now(), payload: { sig, schedule } }],
       { gc: undoLogGcPolicy(), flush: true },
     )
+    // The snapshot is now the TOP commit of the cursor position — move the head ref with it
+    // (VL5.2 fix hygiene; adoption itself no longer depends on head).
+    undoLogLastSentHead = cid
+    queueProjectUndoLogRefsFor(key, { head: cid })
   }
 
   /** The refreshEditState hook: diff the history against the synced position map, queue the new
