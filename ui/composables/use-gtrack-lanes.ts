@@ -20,6 +20,7 @@ import {
   clearProjectUndoLogFor,
   deleteProjectUndoJournalFor,
   discardPendingUndoLogFor,
+  flushProjectUndoLogFor,
   queueProjectUndoLogCommitsFor,
   queueProjectUndoLogRefsFor,
   readProjectSectionFor,
@@ -542,7 +543,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         synced = migration.synced
         ready = migration.ready
       } else {
-        const plan = planUndoLogAdoption(undoChain.commits, m.currentSignature)
+        let plan = planUndoLogAdoption(undoChain.commits, m.currentSignature)
+        if (plan === null && undoChain.refs.head !== null && undoChain.refs.head !== undoChain.refs.main) {
+          // VL5.2 round 2: the anchor may be a SIDE snapshot of a mid-history save — it lives
+          // off the main line and is reachable only through the head ref.
+          const headChain = await readProjectUndoLogChainFor(key, { from: 'head', limit: 50 })
+          if (reqId !== projectRestoreReqId || key !== filePath.value || m !== model.value) return
+          if (headChain !== null && headChain.commits.length > 0) {
+            plan = planUndoLogAdoption(undoChain.commits, m.currentSignature, headChain.commits)
+          }
+        }
         if (plan !== null && m.adoptUndoJournal(plan.journal)) {
           undoLogPositions = plan.positionCids
           synced = plan.journal.steps
@@ -703,17 +713,38 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       return // an unsynced hole below this position — cannot chain, skip the anchor
     }
     const cid = `s${Date.now().toString(36)}-${position}`
+    const commit: ProjectUndoLogCommitInput = {
+      cid,
+      parent: parent ?? undoLogMainTip,
+      type: 'snapshot',
+      atMs: Date.now(),
+      payload: { sig, schedule },
+    }
     undoLogPositions[position] = cid
     undoLogDeltasSinceSnapshot = 0
-    queueProjectUndoLogCommitsFor(
-      key,
-      [{ cid, parent: parent ?? undoLogMainTip, type: 'snapshot', atMs: Date.now(), payload: { sig, schedule } }],
-      { gc: undoLogGcPolicy(), flush: true },
-    )
-    // The snapshot is now the TOP commit of the cursor position — move the head ref with it
-    // (VL5.2 fix hygiene; adoption itself no longer depends on head).
     undoLogLastSentHead = cid
-    queueProjectUndoLogRefsFor(key, { head: cid })
+
+    if (position >= m.historySteps.length) {
+      // Cursor at the line tip: the snapshot EXTENDS the line — main advances with it (queue).
+      queueProjectUndoLogCommitsFor(key, [commit], { gc: undoLogGcPolicy(), flush: true })
+      queueProjectUndoLogRefsFor(key, { head: cid })
+      return
+    }
+
+    // VL5.2 round 2 (owner: «записи журнала должны жить, пока я не почищу их сам»): a save at a
+    // MID-history position must NOT hijack main off the line tip — otherwise the redo tail above
+    // the cursor becomes an unreachable orphan after a restart. The snapshot hangs off its
+    // position as a SIDE commit (advanceMain: false), the head ref marks it, and adoption finds
+    // it through the head chain. Pending deltas are drained first so the parent exists.
+    void (async () => {
+      await flushProjectUndoLogFor(key)
+      const result = await appendProjectUndoLogNowFor(key, [commit], { advanceMain: false })
+      if (result === null || result.rejectedFrom !== null) {
+        console.warn('[undo-log] mid-history save snapshot append failed — adoption after restart may miss the redo tail')
+        return
+      }
+      queueProjectUndoLogRefsFor(key, { head: cid })
+    })()
   }
 
   /** The refreshEditState hook: diff the history against the synced position map, queue the new

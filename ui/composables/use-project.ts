@@ -68,6 +68,7 @@ interface PendingUndoLogState {
   gc: ProjectUndoLogGcPolicy | undefined
   timer: ReturnType<typeof setTimeout> | null
   inFlight: boolean
+  inFlightPromise: Promise<void> | null
 }
 
 const pendingUndoLog = new Map<string, PendingUndoLogState>() // key = projectId
@@ -85,7 +86,7 @@ export function setUndoLogAppendResultHandler(
 function getPendingUndoLog(projectId: string): PendingUndoLogState {
   let state = pendingUndoLog.get(projectId)
   if (state === undefined) {
-    state = { commits: [], gc: undefined, timer: null, inFlight: false }
+    state = { commits: [], gc: undefined, timer: null, inFlight: false, inFlightPromise: null }
     pendingUndoLog.set(projectId, state)
   }
   return state
@@ -97,30 +98,56 @@ async function sendUndoLogBatch(projectId: string): Promise<void> {
     return
   }
 
-  const request = {
-    id: projectId,
-    commits: state.commits.slice(),
-    advanceMain: true,
-    ...(state.gc === undefined ? {} : { gc: state.gc }),
-  }
-  state.inFlight = true
-  let result: ProjectUndoLogAppendResponse | null = null
-  try {
-    result = await projectApi.appendUndoLog(request)
-    state.commits = dropAcknowledgedUndoLogCommits(state.commits, result)
-    undoLogAppendResultHandler?.(projectId, result)
-  } catch (error) {
-    // Network failure: keep the batch pending — the next queue call re-schedules, duplicates
-    // are skipped server-side.
-    console.warn('[use-project] appendUndoLog failed:', error instanceof Error ? error.message : error)
-  } finally {
-    state.inFlight = false
-  }
+  const flight = (async (): Promise<void> => {
+    const request = {
+      id: projectId,
+      commits: state.commits.slice(),
+      advanceMain: true,
+      ...(state.gc === undefined ? {} : { gc: state.gc }),
+    }
+    state.inFlight = true
+    let result: ProjectUndoLogAppendResponse | null = null
+    try {
+      result = await projectApi.appendUndoLog(request)
+      state.commits = dropAcknowledgedUndoLogCommits(state.commits, result)
+      undoLogAppendResultHandler?.(projectId, result)
+    } catch (error) {
+      // Network failure: keep the batch pending — the next queue call re-schedules, duplicates
+      // are skipped server-side.
+      console.warn('[use-project] appendUndoLog failed:', error instanceof Error ? error.message : error)
+    } finally {
+      state.inFlight = false
+      state.inFlightPromise = null
+    }
 
-  // A cut batch (409) is NOT retried blindly: the handler above owns the resync (VL4.2).
-  if (result !== null && result.rejectedFrom === null && state.commits.length > 0) {
-    scheduleUndoLogSend(projectId)
+    // A cut batch (409) is NOT retried blindly: the handler above owns the resync (VL4.2).
+    if (result !== null && result.rejectedFrom === null && state.commits.length > 0) {
+      scheduleUndoLogSend(projectId)
+    }
+  })()
+  state.inFlightPromise = flight
+  await flight
+}
+
+/** Awaitable drain of the pending batch — the mid-history save snapshot must not race the
+ *  deltas it chains onto (VL5.2 round 2). */
+export async function flushProjectUndoLogFor(path: string): Promise<void> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return
   }
+  const state = pendingUndoLog.get(project.id)
+  if (state === undefined) {
+    return
+  }
+  if (state.timer !== null) {
+    clearTimeout(state.timer)
+    state.timer = null
+  }
+  if (state.inFlightPromise !== null) {
+    await state.inFlightPromise.catch(() => undefined)
+  }
+  await sendUndoLogBatch(project.id)
 }
 
 function scheduleUndoLogSend(projectId: string): void {
@@ -162,18 +189,20 @@ export function queueProjectUndoLogCommitsFor(
   })
 }
 
-/** Immediate append with the confirmed result — the v3 migration path deletes undo.json only
- *  after this resolves without a rejection (S14). */
+/** Immediate append with the confirmed result — the v3 migration deletes undo.json only after
+ *  this resolves without a rejection (S14); a mid-history save snapshot passes advanceMain:false
+ *  so main stays on the line tip and the redo tail keeps living there (VL5.2 round 2). */
 export async function appendProjectUndoLogNowFor(
   path: string,
   commits: readonly ProjectUndoLogCommitInput[],
+  options: { advanceMain?: boolean } = {},
 ): Promise<ProjectUndoLogAppendResponse | null> {
   const project = await getProjectForPath(path)
   if (project === null) {
     return null
   }
   try {
-    return await projectApi.appendUndoLog({ id: project.id, commits: [...commits], advanceMain: true })
+    return await projectApi.appendUndoLog({ id: project.id, commits: [...commits], advanceMain: options.advanceMain !== false })
   } catch (error) {
     console.warn('[use-project] appendUndoLog failed:', error instanceof Error ? error.message : error)
     return null

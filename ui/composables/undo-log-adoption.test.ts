@@ -72,6 +72,33 @@ describe('planUndoLogAdoption', () => {
     const chain = [foreign, snapshotCommit('s1', 'z', 'sig-file')].reverse()
     expect(planUndoLogAdoption(chain, 'sig-file')).toBeNull()
   })
+
+  test('a SIDE anchor (mid-history save) anchors the cursor at its parent position (VL5.2 round 2)', () => {
+    // main line: S0 -> d1 -> d2 -> d3 (main=d3); the save happened at position 1, its snapshot
+    // hangs off d1 and is only reachable via head.
+    const mainChain = [
+      snapshotCommit('s0', null, 'sig-old'),
+      deltaCommit('d1', 's0'),
+      deltaCommit('d2', 'd1'),
+      deltaCommit('d3', 'd2'),
+    ].reverse()
+    const side = snapshotCommit('sMid', 'd1', 'sig-file')
+
+    expect(planUndoLogAdoption(mainChain, 'sig-file')).toBeNull() // not on the main chain
+    const plan = planUndoLogAdoption(mainChain, 'sig-file', [side, deltaCommit('d1', 's0')])
+    expect(plan).not.toBeNull()
+    expect(plan!.anchorCid).toBe('sMid')
+    expect(plan!.journal.cursor).toBe(1)
+    expect(plan!.journal.steps.map((s) => s.id)).toEqual(['d1', 'd2', 'd3']) // redo tail preserved
+    // the side snapshot re-labels its position: a future delta after an undo chains onto it
+    expect(plan!.positionCids).toEqual(['s0', 'sMid', 'd2', 'd3'])
+  })
+
+  test('a side snapshot whose parent is outside the window does not anchor', () => {
+    const mainChain = [snapshotCommit('s0', null, 'sig-old'), deltaCommit('d1', 's0')].reverse()
+    const stray = snapshotCommit('sX', 'elsewhere', 'sig-file')
+    expect(planUndoLogAdoption(mainChain, 'sig-file', [stray])).toBeNull()
+  })
 })
 
 describe('planV3Migration', () => {

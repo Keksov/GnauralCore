@@ -65,20 +65,26 @@ export interface UndoLogAdoptionPlan {
 /** Map a fetched chain (newest-first, as GET returns it) onto a history window anchored at the
  *  snapshot whose sig matches the freshly-loaded file. Deltas below the anchor become undo
  *  steps, deltas above it (the unsaved tail of the previous session) become redo — the v3
- *  baseSig/baseCursor semantics generalized to the log. Returns null when no snapshot matches
- *  (external edit): the history window stays empty, the LOG stays intact (VL-D5). */
+ *  baseSig/baseCursor semantics generalized to the log.
+ *
+ *  A save at a MID-history position writes its snapshot as a SIDE commit off the line (VL5.2
+ *  round 2: advancing main onto it would orphan the redo tail) — such an anchor is not on the
+ *  main chain and arrives via `sideCommitsNewestFirst` (the head-chain fetch): it matches when
+ *  its parent lies on the main window, and it anchors the cursor at that parent's position.
+ *
+ *  Returns null when no snapshot matches anywhere (external edit): the history window stays
+ *  empty, the LOG stays intact (VL-D5). */
 export function planUndoLogAdoption(
   commitsNewestFirst: readonly ProjectUndoLogCommit[],
   currentSig: string,
+  sideCommitsNewestFirst: readonly ProjectUndoLogCommit[] = [],
 ): UndoLogAdoptionPlan | null {
-  const anchor = commitsNewestFirst.find((commit) => snapshotSig(commit) === currentSig)
-  if (anchor === undefined) {
-    return null
-  }
+  const onChainAnchor = commitsNewestFirst.find((commit) => snapshotSig(commit) === currentSig)
 
   const window = [...commitsNewestFirst].reverse() // oldest-first
   const steps: GTrackUndoStep[] = []
   const positionCids: (string | null)[] = [window[0]?.parent ?? null]
+  const positionByCid = new Map<string, number>()
   let position = 0
   let cursor = -1
 
@@ -97,20 +103,40 @@ export function planUndoLogAdoption(
       // snapshot/meta: same state, newer chain tip for this position.
       positionCids[position] = commit.cid
     }
-    if (commit.cid === anchor.cid) {
+    positionByCid.set(commit.cid, position)
+    if (onChainAnchor !== undefined && commit.cid === onChainAnchor.cid) {
       cursor = position
     }
   }
 
-  if (cursor < 0) {
-    return null
+  if (onChainAnchor !== undefined && cursor >= 0) {
+    return {
+      journal: { version: 3, currentSig, cursor, steps },
+      positionCids,
+      anchorCid: onChainAnchor.cid,
+    }
   }
 
-  return {
-    journal: { version: 3, currentSig, cursor, steps },
-    positionCids,
-    anchorCid: anchor.cid,
+  const windowCids = new Set(window.map((commit) => commit.cid))
+  for (const candidate of sideCommitsNewestFirst) {
+    if (snapshotSig(candidate) !== currentSig || windowCids.has(candidate.cid)) {
+      continue
+    }
+    const anchorPosition = candidate.parent === null ? (window.length === 0 ? 0 : null) : positionByCid.get(candidate.parent) ?? null
+    if (anchorPosition === null) {
+      continue
+    }
+    // The side snapshot becomes the top commit of its position (future deltas after an undo
+    // chain onto it — the same shape the live session writes).
+    positionCids[anchorPosition] = candidate.cid
+    return {
+      journal: { version: 3, currentSig, cursor: anchorPosition, steps },
+      positionCids,
+      anchorCid: candidate.cid,
+    }
   }
+
+  return null
 }
 
 export interface UndoLogMigrationPlan {
