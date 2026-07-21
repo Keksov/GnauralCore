@@ -5,7 +5,7 @@
 
 import { computed, effectScope, ref, shallowRef, watch, type Ref } from 'vue'
 
-import type { GnauralScheduleData, ProjectUndoLogCommit, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
+import type { GnauralScheduleData, ProjectUndoLogBranch, ProjectUndoLogCommit, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
@@ -18,11 +18,13 @@ import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-set
 import {
   appendProjectUndoLogNowFor,
   clearProjectUndoLogFor,
+  deleteProjectUndoLogBranchFor,
   discardPendingUndoLogFor,
   flushProjectUndoLogFor,
   queueProjectUndoLogCommitsFor,
   queueProjectUndoLogRefsFor,
   readProjectSectionFor,
+  readProjectUndoLogBranchesFor,
   readProjectUndoLogChainFor,
   setUndoLogAppendResultHandler,
   writeProjectSectionFor,
@@ -693,6 +695,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     deepUndoLoaded.value = false
     deepUndoNextFrom = null
     undoTags.value = {}
+    undoBranches.value = []
+    undoBranchesLoaded.value = false
+    undoBranchRowsByTip.value = new Map()
   }
 
   /** Queue a snapshot commit of the given state at the model's CURRENT cursor position.
@@ -822,6 +827,52 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       atMs: commit.atMs,
       step: null,
     }
+  }
+
+  // undo-orphan-branches (OB-D1/OB-D5): the abandoned branches — flat tip summaries plus lazily
+  // fetched per-branch chains (the ordinary chain GET from=tip&limit=commits, OB-D5). Selection
+  // and «Применить» reuse the deep-row checkout path unchanged (OB-D2).
+  const undoBranches = shallowRef<readonly ProjectUndoLogBranch[]>([])
+  const undoBranchesLoaded = ref(false)
+  const undoBranchesLoading = ref(false)
+  const undoBranchRowsByTip = shallowRef<ReadonlyMap<string, readonly GTrackDeepUndoRow[]>>(new Map())
+
+  async function loadUndoBranches(): Promise<void> {
+    const key = filePath.value
+    if (key === null || !undoLogReady || undoBranchesLoading.value) return
+    undoBranchesLoading.value = true
+    try {
+      const branches = await readProjectUndoLogBranchesFor(key)
+      if (key !== filePath.value) return
+      undoBranches.value = branches ?? []
+      undoBranchesLoaded.value = true
+      undoBranchRowsByTip.value = new Map()
+    } finally {
+      undoBranchesLoading.value = false
+    }
+  }
+
+  async function loadUndoBranchSteps(tip: string): Promise<void> {
+    const key = filePath.value
+    const branch = undoBranches.value.find((aBranch) => aBranch.tip === tip)
+    if (key === null || branch === undefined || undoBranchRowsByTip.value.has(tip)) return
+    const chain = await readProjectUndoLogChainFor(key, { from: tip, limit: branch.commits })
+    if (chain === null || key !== filePath.value) return
+    const next = new Map(undoBranchRowsByTip.value)
+    next.set(tip, chain.commits.map(deepRowOfCommit))
+    undoBranchRowsByTip.value = next
+  }
+
+  /** OB-D3: delete the tip's exclusive suffix; 'tagged' surfaces the 409-protection distinctly. */
+  async function deleteUndoBranch(tip: string): Promise<'ok' | 'tagged' | 'failed'> {
+    const key = filePath.value
+    if (key === null) return 'failed'
+    const result = await deleteProjectUndoLogBranchFor(key, tip)
+    if (result === null) return 'failed'
+    if ('error' in result) return result.error.includes('tagged') ? 'tagged' : 'failed'
+    undoBranchesLoaded.value = false
+    await loadUndoBranches()
+    return 'ok'
   }
 
   /** Fetch the next page of pre-window history (newest-first pages appended at the end). */
@@ -1825,6 +1876,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       deepUndoLoaded.value = false
       deepUndoNextFrom = null
       undoTags.value = {}
+      undoBranches.value = []
+      undoBranchesLoaded.value = false
+      undoBranchRowsByTip.value = new Map()
       if (key !== null) {
         discardPendingUndoLogFor(key)
         void clearProjectUndoLogFor(key)
@@ -1913,6 +1967,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     setUndoTag,
     deleteUndoTag,
     undoLogCidAt,
+    undoBranches,
+    undoBranchesLoaded,
+    undoBranchesLoading,
+    undoBranchRowsByTip,
+    loadUndoBranches,
+    loadUndoBranchSteps,
+    deleteUndoBranch,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,

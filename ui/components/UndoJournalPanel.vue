@@ -114,6 +114,104 @@
       </template>
     </q-list>
     <q-separator />
+    <!-- undo-orphan-branches (OB-D1/OB-D2/OB-D3): abandoned lines of the log — flat tips, lazy
+         (summaries on first open, a branch's steps on expand). Selecting a step reuses the
+         deep-row selection, so «Применить» performs the same checkout; deletion erases only the
+         tip's exclusive suffix and is refused while a tag protects it. -->
+    <q-expansion-item
+      v-model="branchesOpen"
+      dense
+      icon="call_split"
+      :label="branchesLabel"
+      class="undo-journal-panel__branches"
+    >
+      <div v-if="gtracks.undoBranchesLoading.value" class="undo-journal-panel__branches-note">
+        <q-spinner size="16px" />
+      </div>
+      <div v-else-if="branchGroups.length === 0" class="undo-journal-panel__branches-note text-grey">
+        {{ t('audio.undoBranchesEmpty') }}
+      </div>
+      <q-list v-else dense class="undo-journal-panel__branches-list">
+        <template v-for="group in branchGroups" :key="group.branch.tip">
+          <q-item clickable class="undo-journal-panel__branch-head" @click="toggleBranch(group.branch.tip)">
+            <q-item-section avatar class="undo-journal-panel__icon">
+              <q-icon :name="expandedBranchTip === group.branch.tip ? 'expand_more' : 'chevron_right'" size="18px" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>
+                {{ branchTitle(group.branch) }}
+                <q-badge
+                  v-for="tag in group.branch.tags"
+                  :key="tag"
+                  color="secondary"
+                  class="undo-journal-panel__tag"
+                >{{ tag }}</q-badge>
+              </q-item-label>
+              <q-item-label caption>{{ branchSubtitle(group.branch) }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
+                <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
+                <q-popup-proxy>
+                  <q-banner dense class="undo-journal-panel__branch-confirm">
+                    {{ t('audio.undoBranchDeleteConfirm', { n: group.branch.exclusiveCommits }) }}
+                    <template #action>
+                      <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
+                      <q-btn
+                        v-close-popup dense flat no-caps color="negative"
+                        :label="t('audio.undoBranchDelete')"
+                        @click="deleteBranch(group.branch.tip)"
+                      />
+                    </template>
+                  </q-banner>
+                </q-popup-proxy>
+              </q-btn>
+            </q-item-section>
+          </q-item>
+          <template v-if="expandedBranchTip === group.branch.tip">
+            <q-item v-if="group.rows === null" dense class="undo-journal-panel__branch-step">
+              <q-item-section avatar class="undo-journal-panel__icon">
+                <q-spinner size="14px" />
+              </q-item-section>
+            </q-item>
+            <q-item
+              v-for="row in group.rows ?? []"
+              :key="row.key"
+              clickable dense
+              :active="pendingDeepCid === row.deepCid"
+              active-class="undo-journal-panel__row--pending"
+              class="undo-journal-panel__row--deep undo-journal-panel__branch-step"
+              @click="selectDeepRow(row.deepCid!)"
+            >
+              <q-item-section avatar class="undo-journal-panel__icon">
+                <q-icon :name="row.icon" size="18px" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>
+                  {{ row.title }}
+                  <q-badge
+                    v-for="tag in row.tags"
+                    :key="tag"
+                    color="secondary"
+                    class="undo-journal-panel__tag"
+                  >{{ tag }}</q-badge>
+                </q-item-label>
+                <q-item-label v-if="row.subtitle !== ''" caption>{{ row.subtitle }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <span class="undo-journal-panel__time">{{ row.time }}</span>
+              </q-item-section>
+              <app-tooltip v-if="row.changes.length > 0" max-width="480px">
+                <div v-for="(c, ci) in row.changes" :key="ci" class="undo-journal-panel__tip-change">
+                  <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
+                </div>
+              </app-tooltip>
+            </q-item>
+          </template>
+        </template>
+      </q-list>
+    </q-expansion-item>
+    <q-separator />
     <div class="undo-journal-panel__actions">
       <!-- UG3.2 (req 7/8): clearing forgets history only — the schedule state is untouched. -->
       <q-btn-dropdown dense flat no-caps :label="t('audio.undoJournalClear')" :disable="rows.length === 1">
@@ -189,6 +287,7 @@ import { useI18n } from 'vue-i18n'
 import { Notify } from 'quasar'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 
+import type { ProjectUndoLogBranch } from '@protocol'
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
 import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange } from '../composables/gtrack-model'
 
@@ -421,6 +520,94 @@ function addTag(): void {
   newTagName.value = ''
 }
 
+// undo-orphan-branches (OB-D1): the abandoned-branches section. Summaries load when the section
+// first opens (or again after a file switch reset), a branch's steps when it is expanded; a
+// selected step drives the SAME pendingDeepCid/«Применить» checkout as the deep rows (OB-D2).
+const branchesOpen = ref(false)
+const expandedBranchTip = ref<string | null>(null)
+watch(
+  [branchesOpen, () => gtracks.undoBranchesLoaded.value],
+  () => {
+    if (branchesOpen.value && !gtracks.undoBranchesLoaded.value && !gtracks.undoBranchesLoading.value) {
+      void gtracks.loadUndoBranches()
+    }
+  },
+)
+watch(() => gtracks.undoBranches.value, () => {
+  expandedBranchTip.value = null
+})
+
+const branchesLabel = computed(() => {
+  const base = t('audio.undoBranchesTitle')
+  return gtracks.undoBranchesLoaded.value ? `${base} (${gtracks.undoBranches.value.length})` : base
+})
+
+interface BranchGroup {
+  readonly branch: ProjectUndoLogBranch
+  readonly rows: JournalRow[] | null // null = the chain is still loading
+}
+const branchGroups = computed<BranchGroup[]>(() => {
+  const byCid = tagsByCid.value
+  return gtracks.undoBranches.value.map((branch) => {
+    const loaded = gtracks.undoBranchRowsByTip.value.get(branch.tip)
+    return {
+      branch,
+      // newest-first, as fetched: the tip on top — how far the branch went before it was left.
+      rows: loaded === undefined ? null : loaded.map((row) => ({
+        key: `branch-${row.cid}`,
+        cursor: -1,
+        deepCid: row.cid,
+        icon: KIND_ICONS[row.kind] ?? KIND_ICONS[row.type] ?? 'edit',
+        title: row.type === 'snapshot'
+          ? t('audio.undoJournalSnapshot')
+          : row.type === 'meta' ? t('audio.undoJournalImported') : kindLabel(row.kind),
+        subtitle: row.label,
+        time: formatTime(row.atMs),
+        changes: row.step === null ? [] : describeStepChanges(row.step, 8),
+        doomed: false,
+        tags: byCid.get(row.cid) ?? [],
+      })),
+    }
+  })
+})
+
+function toggleBranch(tip: string): void {
+  if (expandedBranchTip.value === tip) {
+    expandedBranchTip.value = null
+    return
+  }
+  expandedBranchTip.value = tip
+  void gtracks.loadUndoBranchSteps(tip)
+}
+
+function formatDayTime(atMs: number): string {
+  const d = new Date(atMs)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`
+  return d.toDateString() === new Date().toDateString() ? time : `${p(d.getDate())}.${p(d.getMonth() + 1)} ${time}`
+}
+
+function branchTitle(branch: ProjectUndoLogBranch): string {
+  return `${formatDayTime(branch.fromMs)} – ${formatDayTime(branch.toMs)}`
+}
+
+function branchSubtitle(branch: ProjectUndoLogBranch): string {
+  return t('audio.undoBranchSubtitle', { steps: branch.commits, snapshots: branch.snapshots })
+}
+
+async function deleteBranch(tip: string): Promise<void> {
+  const outcome = await gtracks.deleteUndoBranch(tip)
+  if (outcome === 'ok') {
+    if (expandedBranchTip.value === tip) expandedBranchTip.value = null
+    pendingDeepCid.value = null
+    Notify.create({ type: 'positive', message: t('audio.undoBranchDeleted') })
+  } else if (outcome === 'tagged') {
+    Notify.create({ type: 'warning', message: t('audio.undoBranchTagged') })
+  } else {
+    Notify.create({ type: 'negative', message: t('audio.undoBranchDeleteFailed') })
+  }
+}
+
 const applying = ref(false)
 async function applyRollback(): Promise<void> {
   const deepCid = pendingDeepCid.value
@@ -517,6 +704,29 @@ function clearBeforeSelection(): void {
 .undo-journal-panel__tag {
   margin-left: 4px;
   vertical-align: middle;
+}
+
+/* undo-orphan-branches (OB-D1): the abandoned-branches section — capped height, own scroll. */
+.undo-journal-panel__branches {
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.undo-journal-panel__branches-note {
+  padding: 8px 16px;
+}
+
+.undo-journal-panel__branch-head {
+  font-size: 12px;
+}
+
+.undo-journal-panel__branch-step {
+  padding-left: 28px;
+}
+
+.undo-journal-panel__branch-confirm {
+  max-width: 300px;
 }
 
 .undo-journal-panel__tag-menu {
