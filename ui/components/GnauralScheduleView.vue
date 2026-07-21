@@ -1261,6 +1261,23 @@ function frequencyToY(rect: Rect, value: number, range: FrequencyRange): number 
   return rect.top + rect.height - ratio * rect.height
 }
 
+// GT11.18 (owner 2026-07-20): an entry ramps its frequency LINEARLY IN VALUE (that is what the audio
+// engine plays), so on the LOG scale the ramp is a curve on screen, not a straight line — a bare
+// lineTo between the two endpoints bends it away from the real sweep by tens of pixels on a
+// wide-ratio entry (wakeup.gnaural voice 1: 0 -> 49.6 Hz). Sample it instead. Same fix as
+// lineToSampled in GTrackView.vue, where the mismatch also broke Ctrl+Click add-point.
+const FREQ_SAMPLE_PX = 3
+function lineToFrequencyRamp(context: CanvasRenderingContext2D, rect: Rect, range: FrequencyRange, x0: number, v0: number, x1: number, v1: number): void {
+  if (scaleMode.value === 'log' && v0 !== v1) {
+    const steps = Math.min(64, Math.max(1, Math.round(Math.abs(x1 - x0) / FREQ_SAMPLE_PX)))
+    for (let s = 1; s < steps; s += 1) {
+      const f = s / steps
+      context.lineTo(x0 + (x1 - x0) * f, frequencyToY(rect, v0 + (v1 - v0) * f, range))
+    }
+  }
+  context.lineTo(x1, frequencyToY(rect, v1, range))
+}
+
 function volumeToY(rect: Rect, value: number): number {
   const clampedValue = Math.max(0, Math.min(1, value))
   return rect.top + rect.height - clampedValue * rect.height
@@ -1633,10 +1650,12 @@ function drawFrequencyBand(context: CanvasRenderingContext2D, rect: Rect, entry:
 
   context.fillStyle = withAlpha(color, 0.18)
   context.beginPath()
-  context.moveTo(timeToX(rect, entry.startSec), frequencyToY(rect, upperStart, range))
-  context.lineTo(timeToX(rect, entry.endSec), frequencyToY(rect, upperEnd, range))
-  context.lineTo(timeToX(rect, entry.endSec), frequencyToY(rect, lowerEnd, range))
-  context.lineTo(timeToX(rect, entry.startSec), frequencyToY(rect, lowerStart, range))
+  const bandX0 = timeToX(rect, entry.startSec)
+  const bandX1 = timeToX(rect, entry.endSec)
+  context.moveTo(bandX0, frequencyToY(rect, upperStart, range))
+  lineToFrequencyRamp(context, rect, range, bandX0, upperStart, bandX1, upperEnd)
+  context.lineTo(bandX1, frequencyToY(rect, lowerEnd, range))
+  lineToFrequencyRamp(context, rect, range, bandX1, lowerEnd, bandX0, lowerStart)
   context.closePath()
   context.fill()
 }
@@ -1650,7 +1669,7 @@ function drawBaseLine(context: CanvasRenderingContext2D, rect: Rect, entry: Gnau
   context.lineWidth = 1.35
   context.beginPath()
   context.moveTo(timeToX(rect, entry.startSec), frequencyToY(rect, entry.baseFreqStart, range))
-  context.lineTo(timeToX(rect, entry.endSec), frequencyToY(rect, entry.baseFreqEnd, range))
+  lineToFrequencyRamp(context, rect, range, timeToX(rect, entry.startSec), entry.baseFreqStart, timeToX(rect, entry.endSec), entry.baseFreqEnd)
   context.stroke()
 }
 
@@ -2084,11 +2103,10 @@ function renderMinimapCanvas(): void {
         const startX = plotRect.left + (entry.startSec / getTotalTimeSec()) * plotRect.width
         const endX = plotRect.left + (entry.endSec / getTotalTimeSec()) * plotRect.width
         const startY = frequencyToY(plotRect, entry.baseFreqStart, allRange)
-        const endY = frequencyToY(plotRect, entry.baseFreqEnd, allRange)
 
         context.beginPath()
         context.moveTo(startX, startY)
-        context.lineTo(endX, endY)
+        lineToFrequencyRamp(context, plotRect, allRange, startX, entry.baseFreqStart, endX, entry.baseFreqEnd)
         context.stroke()
       }
     }

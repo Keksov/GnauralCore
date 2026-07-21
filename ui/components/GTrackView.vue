@@ -109,7 +109,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 
-import { pointBalance, pointBeatFreq, pointVolume, type GTrackVoice } from '../composables/gtrack-model'
+import { pointBalance, pointBeatFreq, pointVolume, type GTrackPoint, type GTrackVoice } from '../composables/gtrack-model'
 import {
   axisWithRange,
   balanceEdgeToBalance,
@@ -392,6 +392,24 @@ function draw(): void {
 
   const ax = axis.value
   const valueToY = (value: number): number => valueUnitToY(plotY, plotH, valueToUnit(value, ax))
+  // GT11.18 (owner 2026-07-20): a segment between two points is linear in the VALUE (that is what the
+  // model, the classic editor and the audio engine interpolate) — on a log/symlog axis that is NOT a
+  // straight line on screen. Drawing it with a bare lineTo bent the curve away from the real one by
+  // tens of pixels on a wide-ratio segment (wakeup.gnaural voice 1: 0 Hz -> 49.6 Hz over 9 s), and
+  // since voiceCurveAtPixel hit-tests the TRUE curve, its 14 px band sat off the drawn line: Ctrl+Click
+  // add-point only worked near the vertices. Sample the segment instead. No-op on a linear axis.
+  const lineToSampled = (t0: number, v0: number, t1: number, v1: number): void => {
+    const x1 = timeToX(t1)
+    if (ax.scale !== 'linear' && v0 !== v1) {
+      const x0 = timeToX(t0)
+      const steps = Math.min(64, Math.max(1, Math.round(Math.abs(x1 - x0) / CURVE_SAMPLE_PX)))
+      for (let s = 1; s < steps; s += 1) {
+        const f = s / steps
+        ctx.lineTo(x0 + (x1 - x0) * f, valueToY(v0 + (v1 - v0) * f))
+      }
+    }
+    ctx.lineTo(x1, valueToY(v1))
+  }
 
   // Shared time-range selection.
   const sel = shared?.selection.value ?? null
@@ -428,13 +446,14 @@ function draw(): void {
     if (props.mode === 'base' && props.showBeatBand) {
       ctx.beginPath()
       for (let i = 0; i < pts.length; i += 1) {
-        const x = timeToX(pts[i]!.timeSec)
-        const y = valueToY(pts[i]!.baseFreq + pts[i]!.beatFreqHalf)
-        if (i === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
+        const upper = (p: GTrackPoint): number => p.baseFreq + p.beatFreqHalf
+        if (i === 0) ctx.moveTo(timeToX(pts[0]!.timeSec), valueToY(upper(pts[0]!)))
+        else lineToSampled(pts[i - 1]!.timeSec, upper(pts[i - 1]!), pts[i]!.timeSec, upper(pts[i]!))
       }
       for (let i = pts.length - 1; i >= 0; i -= 1) {
-        ctx.lineTo(timeToX(pts[i]!.timeSec), valueToY(pts[i]!.baseFreq - pts[i]!.beatFreqHalf))
+        const lower = (p: GTrackPoint): number => p.baseFreq - p.beatFreqHalf
+        const prev = pts[i + 1] ?? pts[i]!
+        lineToSampled(prev.timeSec, lower(prev), pts[i]!.timeSec, lower(pts[i]!))
       }
       ctx.closePath()
       ctx.fillStyle = color
@@ -554,10 +573,9 @@ function draw(): void {
     if (voice.preparse) ctx.setLineDash([4, 3])
     ctx.beginPath()
     for (let i = 0; i < pts.length; i += 1) {
-      const x = timeToX(pts[i]!.timeSec)
-      const y = valueToY(pointValue(pts[i]!, props.mode))
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
+      const v = pointValue(pts[i]!, props.mode)
+      if (i === 0) ctx.moveTo(timeToX(pts[0]!.timeSec), valueToY(v))
+      else lineToSampled(pts[i - 1]!.timeSec, pointValue(pts[i - 1]!, props.mode), pts[i]!.timeSec, v)
     }
     ctx.stroke()
     ctx.setLineDash([])
@@ -1156,6 +1174,8 @@ function onClick(aEvent: MouseEvent): void {
 // value between surrounding points), within a vertical threshold. Approximate for balance/volume
 // (lerp of derived values) — fine for hit-testing.
 const CURVE_HIT_PX = 14
+// GT11.18: max screen step between samples of a curve segment on a non-linear axis (see lineToSampled).
+const CURVE_SAMPLE_PX = 3
 function voiceCurveAtPixel(offsetX: number, offsetY: number): { voiceId: number; timeSec: number } | null {
   const rect = plotRect()
   if (rect === null || !hasData.value) return null
