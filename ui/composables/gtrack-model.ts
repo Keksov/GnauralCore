@@ -1057,6 +1057,30 @@ export class GTrackModel {
     return editableToSchedule(this.current, true)
   }
 
+  /** BM-D2/BM1.3: positionally copy point ids from a previous model's schedule after a rebuild
+   *  that carried the history over (the post-save rebase: same structure, float-drift values).
+   *  Voices/points are matched by voice id + position; a count mismatch leaves the voice alone.
+   *  Pure bookkeeping — ids are signature-invisible. */
+  public adoptPointIdsFrom(previous: GTrackSchedule): void {
+    if (this.txnBefore !== null) return
+    const prevById = new Map(previous.voices.map((v) => [v.id, v]))
+    this.current = {
+      ...this.current,
+      voices: this.current.voices.map((v) => {
+        const ref = prevById.get(v.id)
+        if (ref === undefined || ref.points.length !== v.points.length) return v
+        let changed = false
+        const points = v.points.map((p, i) => {
+          const id = ref.points[i]!.id
+          if (typeof id !== 'string' || id === '' || id === p.id) return p
+          changed = true
+          return { ...p, id }
+        })
+        return changed ? { ...v, points } : v
+      }),
+    }
+  }
+
   /** BM-D2/BM1.3: adopt the point ids carried by an id-annotated reference schedule (the adoption
    *  anchor snapshot). The model was built from the FILE (fresh ids); the log's deltas reference
    *  the anchor's ids — rebasing aligns the id spaces so point-form deltas apply exactly. Gated on
@@ -1091,6 +1115,23 @@ export class GTrackModel {
     }
     return true
   }
+}
+
+/** BM1.3: normalize a log snapshot's schedule payload. Save/baseline snapshots store the dumped
+ *  shape (voices with `entries`); old periodic snapshots (pre-BM) stored the EDITABLE shape
+ *  (voices with `points`) — the model constructor only accepts the former, so checkout through
+ *  such an anchor used to fail silently. Returns null for anything else. */
+export function normalizeScheduleData(input: unknown): GnauralScheduleData | null {
+  if (input === null || typeof input !== 'object') return null
+  const voices = (input as { voices?: unknown }).voices
+  if (!Array.isArray(voices)) return null
+  if (voices.every((v) => Array.isArray((v as GnauralScheduleVoice).entries))) {
+    return input as GnauralScheduleData
+  }
+  if (voices.every((v) => Array.isArray((v as GTrackVoice).points))) {
+    return editableToSchedule(input as GTrackSchedule)
+  }
+  return null
 }
 
 /**

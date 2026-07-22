@@ -9,7 +9,7 @@ import type { GnauralScheduleData, ProjectUndoLogBranch, ProjectUndoLogCommit, P
 
 import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
-import { GTrackModel, clampPointTime, createGTrackHistory, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
+import { GTrackModel, clampPointTime, createGTrackHistory, normalizeScheduleData, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
 import { useUndoJournalSettings } from './use-undo-journal-settings'
 import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
@@ -540,6 +540,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         if (undoChain.commits.length > 0) void clearProjectUndoLogFor(key)
       } else if (undoChain.commits.length > 0) {
         let plan = planUndoLogAdoption(undoChain.commits, m.currentSignature)
+        let anchorPool: readonly ProjectUndoLogCommit[] = undoChain.commits
         if (plan === null && undoChain.refs.head !== null && undoChain.refs.head !== undoChain.refs.main) {
           // VL5.2 round 2: the anchor may be a SIDE snapshot of a mid-history save — it lives
           // off the main line and is reachable only through the head ref.
@@ -547,6 +548,21 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           if (reqId !== projectRestoreReqId || key !== filePath.value || m !== model.value) return
           if (headChain !== null && headChain.commits.length > 0) {
             plan = planUndoLogAdoption(undoChain.commits, m.currentSignature, headChain.commits)
+            anchorPool = [...undoChain.commits, ...headChain.commits]
+          }
+        }
+        if (plan !== null) {
+          // BM1.3 (BM-D2): align the model's fresh point ids with the log's id space BEFORE the
+          // point-form deltas apply. A legacy id-less anchor leaves the ids fresh — force an
+          // id-carrying snapshot on the next edit so future restarts re-anchor cleanly.
+          const anchorCid = plan.anchorCid
+          const anchor = anchorPool.find((c) => c.cid === anchorCid)
+          const anchorSchedule = normalizeScheduleData((anchor?.payload as { schedule?: unknown } | undefined)?.schedule)
+          const anchorHasIds = anchorSchedule !== null && anchorSchedule.voices.some((v) => v.entries.some((e) => e.pointId !== undefined))
+          if (anchorSchedule !== null && anchorHasIds && m.rebasePointIds(anchorSchedule)) {
+            undoLogBaseScheduleWithIds = m.toScheduleWithIds()
+          } else if (!anchorHasIds) {
+            undoLogDeltasSinceSnapshot = UNDO_LOG_SNAPSHOT_EVERY
           }
         }
         if (plan !== null && m.adoptUndoJournal(plan.journal)) {
@@ -663,7 +679,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
    *  type) — the sync engine is typed against the public surface it actually touches. */
   type UndoLogModelView = Pick<
     GTrackModel,
-    'historyCursor' | 'historySteps' | 'currentSignature' | 'savedSignature' | 'schedule' | 'adoptUndoJournal'
+    'historyCursor' | 'historySteps' | 'currentSignature' | 'savedSignature' | 'schedule' | 'adoptUndoJournal' | 'toScheduleWithIds'
   >
 
   let undoLogPositions: (string | null)[] = [null]
@@ -674,6 +690,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // OB3.4: a fork cut synced positions — the abandoned tail becomes a listed branch once the
   // next append moves main past it; the flag tells the append handler to refresh the list then.
   let undoLogForkPending = false
+  // BM1.3 (BM-D2): the SAVED state annotated with the model's point ids — the baseline snapshot
+  // payload, so a future adoption rebases onto the same id space the deltas reference.
+  let undoLogBaseScheduleWithIds: GnauralScheduleData | null = null
   let lastBuiltScheduleData: GnauralScheduleData | null = null
   const UNDO_LOG_SNAPSHOT_EVERY = 50 // VL-D5: an anchor snapshot every K deltas without a save
 
@@ -693,6 +712,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoLogDeltasSinceSnapshot = 0
     undoLogReady = false
     undoLogForkPending = false
+    undoLogBaseScheduleWithIds = null
     lastBuiltScheduleData = data
     deepUndoRows.value = []
     deepUndoHasMore.value = false
@@ -776,13 +796,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         }
         // Baseline (VL-D5): the first delta of an empty/foreign log chains onto a snapshot of
         // the LOADED file state, which itself chains onto the server main tip (or roots).
+        // BM1.3: the id-annotated twin is preferred — the deltas above reference those ids.
         const baseCid = `s${Date.now().toString(36)}-base`
         batch.push({
           cid: baseCid,
           parent: undoLogMainTip,
           type: 'snapshot',
           atMs: Date.now(),
-          payload: { sig: m.savedSignature, schedule: lastBuiltScheduleData },
+          payload: { sig: m.savedSignature, schedule: undoLogBaseScheduleWithIds ?? lastBuiltScheduleData },
         })
         undoLogPositions[0] = baseCid
       }
@@ -796,7 +817,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (batch.length > 0) queueProjectUndoLogCommitsFor(key, batch, { gc: undoLogGcPolicy() })
 
     if (undoLogDeltasSinceSnapshot >= UNDO_LOG_SNAPSHOT_EVERY) {
-      queueUndoLogSnapshot(m, m.currentSignature, m.schedule)
+      queueUndoLogSnapshot(m, m.currentSignature, m.toScheduleWithIds()) // BM1.3: anchors carry ids
     }
 
     const head = undoLogPositions[m.historyCursor] ?? null
@@ -924,7 +945,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     let temp: GTrackModel
     try {
       const payload = anchor.payload as { schedule?: unknown }
-      temp = new GTrackModel(payload.schedule as GnauralScheduleData, [], createGTrackHistory())
+      // BM1.3: old periodic snapshots stored the editable (points) shape — normalize both forms.
+      const schedule = normalizeScheduleData(payload.schedule)
+      if (schedule === null) return 'failed'
+      temp = new GTrackModel(schedule, [], createGTrackHistory())
     } catch {
       return 'failed'
     }
@@ -1063,8 +1087,10 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         prev.markSaved()
         refreshEditState()
         // VL4.2 (VL-D5): a save is the natural anchor — snapshot the saved state (eagerly).
+        // BM1.3: the payload carries the model's point ids (the dump is id-less).
         lastBuiltScheduleData = data
-        queueUndoLogSnapshot(prev, prev.savedSignature, data)
+        undoLogBaseScheduleWithIds = prev.toScheduleWithIds()
+        queueUndoLogSnapshot(prev, prev.savedSignature, undoLogBaseScheduleWithIds)
         console.info('[undo-diag] buildModel: skip — content equals the edited state; markSaved')
         return
       }
@@ -1074,12 +1100,17 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       // re-persists the journal signed against the dump, so it survives a session restart too.
       if (postSave) {
         model.value = new GTrackModel(data, preparseVoiceIds.value, history)
+        // BM1.3 (BM-D2): the rebuilt model minted FRESH point ids while the carried history's
+        // point-form deltas reference the previous model's — copy them over positionally
+        // (same structure, only float formatting drifted).
+        model.value.adoptPointIdsFrom(prev.schedule)
         selection.value = null
         syncSchedule()
         refreshEditState()
         // VL4.2 (VL-D5): the dump IS the saved state — snapshot it as the new anchor (eagerly).
         lastBuiltScheduleData = data
-        queueUndoLogSnapshot(model.value, model.value.savedSignature, data)
+        undoLogBaseScheduleWithIds = model.value.toScheduleWithIds()
+        queueUndoLogSnapshot(model.value, model.value.savedSignature, undoLogBaseScheduleWithIds)
         console.info('[undo-diag] buildModel: post-save rebase — history carried over, dump is the new base')
         return
       }
@@ -1096,6 +1127,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     history = createGTrackHistory()
     resetUndoLogSync(data) // VL4.2: a fresh file = a fresh position map; restoreFromProject re-arms it
     model.value = data === null ? null : new GTrackModel(data, preparseVoiceIds.value, history)
+    // BM1.3: capture the saved state WITH the fresh construction ids — the baseline payload.
+    undoLogBaseScheduleWithIds = model.value === null ? null : model.value.toScheduleWithIds()
     selection.value = null
     syncSchedule()
     refreshEditState(false) // reset dirty/undo/redo to the freshly-loaded (saved) baseline
