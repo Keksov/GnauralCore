@@ -257,6 +257,34 @@ export interface GTrackVoiceDelta {
   readonly before: GTrackVoice
   readonly after: GTrackVoice
 }
+
+/** undo-branch-merge BM-D4: the point-level delta — ONLY the points that changed. null side =
+ *  insertion/removal; the indexes pin the exact array position on each side, so replay
+ *  reconstructs byte-exact order even across crossover re-sorts (unchanged points keep their
+ *  relative order and fill the remaining slots). */
+export interface GTrackPointDelta {
+  readonly id: string
+  readonly before: GTrackPoint | null
+  readonly beforeIndex: number | null
+  readonly after: GTrackPoint | null
+  readonly afterIndex: number | null
+}
+
+export interface GTrackVoicePointsDelta {
+  readonly voiceId: number
+  /** The voice name at commit time — the panel label without carrying the whole voice. */
+  readonly description: string
+  readonly points: readonly GTrackPointDelta[]
+}
+
+/** A step's per-voice delta: the compact point form (new commits) or the legacy whole-voice
+ *  before/after (steps read back from old log payloads — readable forever, BM-D4). Steps whose
+ *  change is NOT point-level (e.g. the fix-preparse flag) also use the legacy form. */
+export type GTrackStepVoiceDelta = GTrackVoiceDelta | GTrackVoicePointsDelta
+
+export const isPointsDelta = (delta: GTrackStepVoiceDelta): delta is GTrackVoicePointsDelta => {
+  return 'points' in delta
+}
 /** UG2.2 (undo-global-journal, UG-D2): a step is a COMMIT — voice deltas plus metadata for the
  *  operations panel (kind + label) and a stable id + timestamp as the groundwork for a future
  *  git-like version model (the linear log is the "main branch" special case). */
@@ -265,7 +293,7 @@ export interface GTrackUndoStep {
   readonly kind: string
   readonly label: string
   readonly atMs: number
-  readonly voices: readonly GTrackVoiceDelta[]
+  readonly voices: readonly GTrackStepVoiceDelta[]
 }
 
 /** project-store PR2.2 (PR-D8) + UC-D3/UC-D5 + UG-D3: the persistable undo history, v3 — a compact
@@ -302,6 +330,48 @@ export function createGTrackHistory(): GTrackHistory {
 // UG2.2: session-unique step-id suffix (ids arriving from an adopted journal are kept as-is).
 let stepSeq = 0
 
+const pointFieldsEqual = (a: GTrackPoint, b: GTrackPoint): boolean => {
+  return a.timeSec === b.timeSec && a.baseFreq === b.baseFreq && a.beatFreqHalf === b.beatFreqHalf &&
+    a.volL === b.volL && a.volR === b.volR
+}
+
+/** BM-D4: diff two point lists by id into the compact delta form. */
+function diffVoicePoints(before: readonly GTrackPoint[], after: readonly GTrackPoint[]): GTrackPointDelta[] {
+  const afterById = new Map(after.map((p, i) => [p.id, { p, i }]))
+  const out: GTrackPointDelta[] = []
+  before.forEach((bp, bi) => {
+    const a = afterById.get(bp.id)
+    if (a === undefined) {
+      out.push({ id: bp.id, before: bp, beforeIndex: bi, after: null, afterIndex: null })
+    } else if (!pointFieldsEqual(bp, a.p)) {
+      out.push({ id: bp.id, before: bp, beforeIndex: bi, after: a.p, afterIndex: a.i })
+    }
+  })
+  const beforeIds = new Set(before.map((p) => p.id))
+  after.forEach((ap, ai) => {
+    if (!beforeIds.has(ap.id)) {
+      out.push({ id: ap.id, before: null, beforeIndex: null, after: ap, afterIndex: ai })
+    }
+  })
+  return out
+}
+
+/** BM-D4: apply one side of a point delta to a point list. Delta'd ids are pulled out, the
+ *  unchanged points keep their relative order, and the target-side points are spliced back at
+ *  their recorded indexes — reconstructing the exact target array. */
+function applyPointsDeltaSide(points: readonly GTrackPoint[], deltas: readonly GTrackPointDelta[], side: 'before' | 'after'): GTrackPoint[] {
+  const touched = new Set(deltas.map((d) => d.id))
+  const result = points.filter((p) => !touched.has(p.id))
+  const placed = deltas
+    .map((d) => ({ point: side === 'before' ? d.before : d.after, index: side === 'before' ? d.beforeIndex : d.afterIndex }))
+    .filter((x): x is { point: GTrackPoint; index: number } => x.point !== null && x.index !== null)
+    .sort((a, b) => a.index - b.index)
+  for (const { point, index } of placed) {
+    result.splice(Math.max(0, Math.min(index, result.length)), 0, { ...point })
+  }
+  return result
+}
+
 /** UG2.1: signature of raw dump content as the editor would model it — directly comparable with a
  *  model's savedSignature/currentSignature (the same scheduleToEditable path). */
 export function scheduleContentSignature(data: GnauralScheduleData, preparseIds: Iterable<number>): string {
@@ -333,6 +403,24 @@ export function describeStepChanges(step: GTrackUndoStep, maxChanges = 8): GTrac
   const out: GTrackStepPointChange[] = []
   for (const d of step.voices) {
     if (out.length >= maxChanges) break
+    // BM-D4: the point form IS the diff — exact by id, no positional guessing.
+    if (isPointsDelta(d)) {
+      for (const pd of d.points) {
+        if (out.length >= maxChanges) break
+        if (pd.before !== null && pd.after !== null) {
+          const fields: GTrackStepFieldChange[] = []
+          for (const f of POINT_FIELDS) {
+            if (pd.before[f] !== pd.after[f]) fields.push({ field: f, before: pd.before[f], after: pd.after[f] })
+          }
+          if (fields.length > 0) out.push({ voiceId: d.voiceId, change: 'changed', index: pd.afterIndex ?? 0, point: pd.after, fields })
+        } else if (pd.after !== null) {
+          out.push({ voiceId: d.voiceId, change: 'added', index: pd.afterIndex ?? 0, point: pd.after, fields: [] })
+        } else if (pd.before !== null) {
+          out.push({ voiceId: d.voiceId, change: 'removed', index: pd.beforeIndex ?? 0, point: pd.before, fields: [] })
+        }
+      }
+      continue
+    }
     const b = d.before.points
     const a = d.after.points
     if (b.length === a.length) {
@@ -413,13 +501,13 @@ function ensureVoicePointIds(voice: GTrackVoice): GTrackVoice {
 }
 
 function normalizeStepPointIds(step: GTrackUndoStep): GTrackUndoStep {
-  if (step.voices.every((d) => d.before.points.every((p) => typeof p.id === 'string' && p.id !== '')
-    && d.after.points.every((p) => typeof p.id === 'string' && p.id !== ''))) {
-    return step
-  }
+  const clean = step.voices.every((d) => isPointsDelta(d)
+    || (d.before.points.every((p) => typeof p.id === 'string' && p.id !== '')
+      && d.after.points.every((p) => typeof p.id === 'string' && p.id !== '')))
+  if (clean) return step
   return {
     ...step,
-    voices: step.voices.map((d) => ({
+    voices: step.voices.map((d) => (isPointsDelta(d) ? d : {
       voiceId: d.voiceId,
       before: ensureVoicePointIds(d.before),
       after: ensureVoicePointIds(d.after),
@@ -442,9 +530,18 @@ export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal 
     && typeof (s as GTrackUndoStep).label === 'string'
     && typeof (s as GTrackUndoStep).atMs === 'number'
     && Array.isArray((s as GTrackUndoStep).voices)
-    && (s as GTrackUndoStep).voices.every((d) =>
-      d !== null && typeof d === 'object' && typeof (d as GTrackVoiceDelta).voiceId === 'number'
-      && isVoiceLike((d as GTrackVoiceDelta).before) && isVoiceLike((d as GTrackVoiceDelta).after)))
+    && (s as GTrackUndoStep).voices.every((d) => {
+      if (d === null || typeof d !== 'object' || typeof (d as GTrackVoiceDelta).voiceId !== 'number') return false
+      // BM-D4: the compact point form is journal-legal alongside the legacy whole-voice form.
+      if ('points' in d) {
+        const pd = d as GTrackVoicePointsDelta
+        return typeof pd.description === 'string' && Array.isArray(pd.points) && pd.points.every((p) =>
+          p !== null && typeof p === 'object' && typeof p.id === 'string'
+          && (p.before === null || (typeof p.before === 'object' && p.before !== null))
+          && (p.after === null || (typeof p.after === 'object' && p.after !== null)))
+      }
+      return isVoiceLike((d as GTrackVoiceDelta).before) && isVoiceLike((d as GTrackVoiceDelta).after)
+    }))
 }
 
 export class GTrackModel {
@@ -558,11 +655,23 @@ export class GTrackModel {
     this.txnBefore = null
     if (signature(before) === signature(this.current)) return
     const afterById = new Map(this.current.voices.map((v) => [v.id, v]))
-    const deltas: GTrackVoiceDelta[] = []
+    const deltas: GTrackStepVoiceDelta[] = []
     for (const bv of before.voices) {
       const av = afterById.get(bv.id)
-      if (av !== undefined && av !== bv) deltas.push({ voiceId: bv.id, before: bv, after: av })
+      if (av === undefined || av === bv) continue
+      // BM-D4: point-only changes commit as compact point deltas; a non-point change (the
+      // fix-preparse flag — the one voice-level mutation) keeps the legacy whole-voice form.
+      const nonPointChange =
+        bv.preparse !== av.preparse || bv.description !== av.description || bv.mono !== av.mono ||
+        bv.color !== av.color || bv.audioFilePath !== av.audioFilePath
+      if (nonPointChange) {
+        deltas.push({ voiceId: bv.id, before: bv, after: av })
+      } else {
+        const points = diffVoicePoints(bv.points, av.points)
+        if (points.length > 0) deltas.push({ voiceId: bv.id, description: av.description, points })
+      }
     }
+    if (deltas.length === 0) return // signatures differed only in schedule metadata? nothing per-voice
     const atMs = Date.now()
     this.history.steps.length = this.history.cursor // drop the redo tail
     // UG3.2c: if the saved state's position was inside the dropped tail, it left the log.
@@ -570,7 +679,12 @@ export class GTrackModel {
     this.history.steps.push({
       id: `${atMs.toString(36)}-${(stepSeq++).toString(36)}`,
       kind: this.txnKind,
-      label: deltas.map((d) => (d.after.description.trim() !== '' ? d.after.description : `#${d.voiceId}`)).join(', '),
+      label: deltas
+        .map((d) => {
+          const name = isPointsDelta(d) ? d.description : d.after.description
+          return name.trim() !== '' ? name : `#${d.voiceId}`
+        })
+        .join(', '),
       atMs,
       voices: deltas,
     })
@@ -824,10 +938,16 @@ export class GTrackModel {
    *  reference so the Vue layer re-reads. */
   private applyDelta(step: GTrackUndoStep, side: 'before' | 'after'): void {
     if (step.voices.length === 0) return
-    const replacement = new Map(step.voices.map((d) => [d.voiceId, side === 'before' ? d.before : d.after]))
+    const byVoice = new Map(step.voices.map((d) => [d.voiceId, d]))
     this.current = {
       ...this.current,
-      voices: this.current.voices.map((v) => replacement.get(v.id) ?? v),
+      voices: this.current.voices.map((v) => {
+        const delta = byVoice.get(v.id)
+        if (delta === undefined) return v
+        // Legacy whole-voice form: swap the recorded side in. Point form: rebuild the point list.
+        if (!isPointsDelta(delta)) return side === 'before' ? delta.before : delta.after
+        return { ...v, points: applyPointsDeltaSide(v.points, delta.points, side) }
+      }),
     }
   }
 
@@ -935,6 +1055,41 @@ export class GTrackModel {
    *  an adoption from this snapshot continues the SAME point identities across a restart. */
   public toScheduleWithIds(): GnauralScheduleData {
     return editableToSchedule(this.current, true)
+  }
+
+  /** BM-D2/BM1.3: adopt the point ids carried by an id-annotated reference schedule (the adoption
+   *  anchor snapshot). The model was built from the FILE (fresh ids); the log's deltas reference
+   *  the anchor's ids — rebasing aligns the id spaces so point-form deltas apply exactly. Gated on
+   *  content equality (same signature); positional, pure bookkeeping: no history step, no dirty
+   *  change. Returns false when the reference does not match or carries no ids. */
+  public rebasePointIds(reference: GnauralScheduleData): boolean {
+    if (this.txnBefore !== null) return false
+    const preparseIds = this.current.voices.filter((v) => v.preparse).map((v) => v.id)
+    if (scheduleContentSignature(reference, preparseIds) !== signature(this.current)) return false
+
+    const refById = new Map(reference.voices.map((v) => [v.id, v]))
+    let rebased = false
+    const voices = this.current.voices.map((v) => {
+      const ref = refById.get(v.id)
+      if (ref === undefined || ref.entries.length === 0) return v
+      const refIds: (string | undefined)[] = ref.entries.map((e) => e.pointId)
+      refIds.push(ref.entries[ref.entries.length - 1]!.endPointId)
+      if (refIds.length !== v.points.length || refIds.every((id) => id === undefined)) return v
+      let voiceChanged = false
+      const points = v.points.map((p, i) => {
+        const id = refIds[i]
+        if (id === undefined || id === p.id) return p
+        voiceChanged = true
+        return { ...p, id }
+      })
+      if (!voiceChanged) return v
+      rebased = true
+      return { ...v, points }
+    })
+    if (rebased) {
+      this.current = { ...this.current, voices }
+    }
+    return true
   }
 }
 

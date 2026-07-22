@@ -13,9 +13,12 @@ import {
   pointVolume,
   pointsToSegments,
   scheduleContentSignature,
+  isPointsDelta,
   segmentsToPoints,
   trimUndoJournal,
   type GTrackPoint,
+  type GTrackUndoJournal,
+  type GTrackVoice,
 } from './gtrack-model'
 
 function entry(startSec: number, endSec: number, over: Partial<GnauralScheduleEntry> = {}): GnauralScheduleEntry {
@@ -435,10 +438,11 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     expect(journal.steps.length).toBe(2) // both steps kept
     expect(journal.cursor).toBe(1) // one of them is undone
 
-    // A fresh model in the SAME state as the exported one (same edits, same undo position).
-    const target = editedModel()
-    target.undo()
-    expect(target.adoptUndoJournal(journal)).toBe(true)
+    // BM-D2: point deltas reference point IDS, so a journal round-trips onto a model sharing the
+    // same id space — in the live system the adoption anchor snapshot carries them
+    // (toScheduleWithIds); legacy whole-voice deltas stay id-space-independent.
+    const target = new GTrackModel(source.toScheduleWithIds(), [], createGTrackHistory())
+    expect(target.adoptUndoJournal(JSON.parse(JSON.stringify(journal)) as GTrackUndoJournal)).toBe(true)
     expect(target.canUndo).toBe(true)
     expect(target.canRedo).toBe(true)
     expect(target.undo()).toBe(true)
@@ -769,25 +773,78 @@ describe('point identity (undo-branch-merge P1/P2/P5)', () => {
     expect(JSON.stringify(stripped)).toBe(plain)
   })
 
-  test('BM-D4: adopting a legacy journal (id-less points) assigns fresh ids to the steps', () => {
-    const edited = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
-    edited.edit(() => edited.movePoint(7, 1, 12))
-    const journal = JSON.parse(JSON.stringify(edited.exportUndoJournal())) as ReturnType<GTrackModel['exportUndoJournal']>
-    for (const step of journal.steps) {
-      for (const d of step.voices) {
-        for (const p of [...d.before.points, ...d.after.points]) delete (p as { id?: string }).id
-      }
+  test('BM-D4: adopting a LEGACY journal (id-less whole-voice deltas) assigns fresh ids and still applies', () => {
+    // Craft the old wire form by hand: a voice-delta step with id-less points (an old log payload).
+    const reference = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    const stripIds = (voice: unknown): GTrackVoice => {
+      const copy = JSON.parse(JSON.stringify(voice)) as GTrackVoice
+      for (const p of copy.points) delete (p as { id?: string }).id
+      return copy
+    }
+    const beforeVoice = stripIds(reference.schedule.voices[0]!)
+    reference.edit(() => reference.movePoint(7, 1, 12))
+    const afterVoice = stripIds(reference.schedule.voices[0]!)
+    const journal: GTrackUndoJournal = {
+      version: 3,
+      currentSig: reference.currentSignature,
+      cursor: 1,
+      steps: [{ id: 'legacy-1', kind: 'point-move', label: 'voice', atMs: 1, voices: [{ voiceId: 7, before: beforeVoice, after: afterVoice }] }],
     }
 
     const target = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
     target.edit(() => target.movePoint(7, 1, 12))
-    expect(target.adoptUndoJournal(journal)).toBe(true)
+    expect(target.adoptUndoJournal(JSON.parse(JSON.stringify(journal)) as GTrackUndoJournal)).toBe(true)
     for (const step of target.historySteps) {
       for (const d of step.voices) {
+        if (isPointsDelta(d)) continue
         expect(d.before.points.every((p) => typeof p.id === 'string' && p.id !== '')).toBe(true)
         expect(d.after.points.every((p) => typeof p.id === 'string' && p.id !== '')).toBe(true)
       }
     }
-    expect(target.undo()).toBe(true) // and the legacy step still applies
+    // The legacy whole-voice swap is id-space-independent: undo works on a foreign model.
+    expect(target.undo()).toBe(true)
+    expect(target.currentSignature).toBe(new GTrackModel(fixture([entry(0, 10), entry(10, 20)])).currentSignature)
+  })
+
+  test('P3: a one-point edit on a big voice commits an order-of-magnitude smaller delta', () => {
+    const entries: GnauralScheduleEntry[] = []
+    for (let i = 0; i < 200; i += 1) entries.push(entry(i * 10, i * 10 + 10))
+    const model = new GTrackModel(fixture(entries), [], createGTrackHistory())
+    model.edit(() => model.setPointField(7, 100, 'baseFreq', 321))
+
+    const step = model.historySteps[0]!
+    const voiceBytes = JSON.stringify(model.schedule.voices[0]!).length
+    const stepBytes = JSON.stringify(step).length
+    expect(stepBytes * 10).toBeLessThan(voiceBytes * 2) // vs the old before+after whole-voice form
+    const delta = step.voices[0]!
+    expect(isPointsDelta(delta)).toBe(true)
+    if (isPointsDelta(delta)) expect(delta.points.length).toBe(1)
+  })
+
+  test('P4: mixed history — a legacy whole-voice step and point steps undo/redo together, crossover order exact', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20), entry(20, 30)]), [], createGTrackHistory())
+    const sig0 = model.currentSignature
+
+    // Step 1 (point form): insert.
+    model.edit(() => model.insertPoint(7, 5))
+    const sig1 = model.currentSignature
+    // Step 2 (point form): crossover move of point 1 past its neighbour — the array re-sorts.
+    model.edit(() => model.movePointCrossing(7, 1, 27))
+    const sig2 = model.currentSignature
+    // Step 3 (legacy form): the fix-preparse path emits a whole-voice delta — emulate a voice-level
+    // change via the same mechanism (description flip is voice-level in commitEdit terms).
+    model.edit(() => model.replaceVoicePoints(7, model.schedule.voices[0]!.points.map((p) => ({ ...p, volL: 0.5 }))))
+    const sig3 = model.currentSignature
+
+    expect(model.undo()).toBe(true)
+    expect(model.currentSignature).toBe(sig2)
+    expect(model.undo()).toBe(true)
+    expect(model.currentSignature).toBe(sig1) // crossover order restored exactly
+    expect(model.undo()).toBe(true)
+    expect(model.currentSignature).toBe(sig0)
+    expect(model.redo()).toBe(true)
+    expect(model.redo()).toBe(true)
+    expect(model.redo()).toBe(true)
+    expect(model.currentSignature).toBe(sig3)
   })
 })
