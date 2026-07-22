@@ -330,7 +330,8 @@ export function createGTrackHistory(): GTrackHistory {
 // UG2.2: session-unique step-id suffix (ids arriving from an adopted journal are kept as-is).
 let stepSeq = 0
 
-const pointFieldsEqual = (a: GTrackPoint, b: GTrackPoint): boolean => {
+/** Value equality of the 5 point fields (ids excluded) — shared with the merge planner (BM2.1). */
+export const pointFieldsEqual = (a: GTrackPoint, b: GTrackPoint): boolean => {
   return a.timeSec === b.timeSec && a.baseFreq === b.baseFreq && a.beatFreqHalf === b.beatFreqHalf &&
     a.volL === b.volL && a.volR === b.volR
 }
