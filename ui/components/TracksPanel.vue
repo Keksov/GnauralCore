@@ -1228,7 +1228,7 @@
 // Isolation per GT-D10: OWN spectrogramShared (zoom/selection) + OWN localStorage keys
 // ('mindwave-tracks-*'), so the frozen tab and this one never influence each other.
 
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useI18n } from 'vue-i18n'
 
@@ -1257,7 +1257,8 @@ import { readProjectSectionFor, writeProjectSectionFor } from '../composables/us
 import { useSharedGtrackLanes, type GTrackAddPoint, type GTrackBalanceDragMove, type GTrackBeatDragMove, type GTrackDragMove, type GTrackPointDragMode, type GTrackPointRef, type GTrackSoloMode } from '../composables/use-gtrack-lanes'
 import type { GTrackDiagnostic } from '../composables/gtrack-lint'
 import type { GTrackVoice } from '../composables/gtrack-model'
-import { GTRACK_MODES, ctrlStepValue, type GTrackMode } from '../composables/gtrack-render'
+import { GTRACK_MODES, type GTrackMode } from '../composables/gtrack-render'
+import { usePointInspector } from '../composables/use-point-inspector'
 import {
   fullWindow,
   isFullWindow,
@@ -1428,73 +1429,54 @@ function fixDiagnostic(d: GTrackDiagnostic): void {
     : { type: 'negative', message: t('audio.gtrackDiagFixFailed') })
 }
 
-// GT3.3/GT3.12: the point inspector. Opened by double-clicking a vertex in point mode; edits
-// every entry field in one undo unit (time uses crossover semantics — see applyPointEdit).
-// GT3.12 (GT-D18) turns it into a non-modal LIVE inspector (owner reqs 26-29, 31-32):
-//   - seamless (no backdrop; the tracks stay fully interactive) — plain v-if aside, no q-dialog.
-//   - follows the selection: clicking (or dragging) a different vertex re-targets it.
-//   - live values while dragging: re-synced from the model on every model change.
-//   - "Autosave" (persisted): field edits apply immediately (on blur / slider release) instead of
-//     requiring the Apply button.
-//   - Delete-node and Add-node-to-the-right buttons.
-const pointDialogTarget = ref<{ laneId: number; voiceId: number; pointIndex: number } | null>(null)
-const pointForm = reactive({ timeSec: 0, baseFreq: 0, beatFreq: 0, volL: 0, volR: 0 })
-const pointDialogVoiceName = computed(() => {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return ''
-  const v = gtracks.getVoice(tgt.voiceId)
-  if (v === undefined) return ''
-  return v.description.trim() !== '' ? v.description : `#${v.id}`
-})
-const pointDialogVoiceMono = computed(() => {
-  const tgt = pointDialogTarget.value
-  return tgt !== null && (gtracks.getVoice(tgt.voiceId)?.mono ?? false)
-})
-/** Whether the inspected point has a right neighbour (Add-node-right needs one to interpolate into). */
-const pointDialogHasNext = computed(() => {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return false
-  const voice = gtracks.getVoice(tgt.voiceId)
-  return voice !== undefined && tgt.pointIndex < voice.points.length - 1
-})
-function syncPointFormFromModel(): void {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return
-  const voice = gtracks.getVoice(tgt.voiceId)
-  if (voice === undefined) {
-    pointDialogTarget.value = null // the voice is gone — nothing to show
-    return
-  }
-  const point = voice.points[tgt.pointIndex] ?? null
-  if (point === null) {
-    // GT10.33 (owner 2026-07-12): if the voice was emptied (last point deleted), KEEP the dialog
-    // open with the frozen values so the user can Undo. Otherwise the point was deleted elsewhere
-    // while others remain — close.
-    if (voice.points.length === 0) return
-    pointDialogTarget.value = null
-    return
-  }
-  pointForm.timeSec = Number(point.timeSec.toFixed(3))
-  pointForm.baseFreq = Number(point.baseFreq.toFixed(3))
-  pointForm.beatFreq = Number((point.beatFreqHalf * 2).toFixed(3)) // display = full beat (GT-D6)
-  pointForm.volL = Number(point.volL.toFixed(3))
-  pointForm.volR = Number(point.volR.toFixed(3))
-}
+// PI1.1 (point-inspector-panel): the inspector's model/form state + logic now lives in a shared
+// singleton composable (use-point-inspector.ts) so the AudioPage-hosted PanelWindow and this tab share
+// ONE instance (PI-D5). We re-expose its members under the same names the template/handlers already use.
+// What stays HERE: the $q/i18n preparse confirm, the thin open/add-point event wrappers, and the
+// title-bar drag (removed in PI2.4 once PanelWindow owns the chrome).
+const inspector = usePointInspector()
+const {
+  pointForm,
+  multiForm,
+  collapsedGroups,
+  altBigStep,
+  pointDialogVoiceName,
+  pointDialogVoiceMono,
+  pointDialogHasNext,
+  pointFormVolume,
+  pointFormBalance,
+  inspectorMode,
+  groupedMultiForm,
+  setTarget,
+  closeInspector,
+  setPointFormVolume,
+  setPointFormBalance,
+  applyPointDialog,
+  maybeAutosave,
+  undoWithFocus,
+  redoWithFocus,
+  deleteCurrentPointFromDialog,
+  addPointToRight,
+  toggleGroup,
+  maybeAutosaveMultiRow,
+  removeCheckedRows,
+  applyAllMultiRows,
+  fieldStep,
+  applyFieldBigStep,
+} = inspector
+
+// GT3.7: a generated (preparse) voice is locked — offer to fix it instead of opening the editor (its
+// points can't be edited until baked into concrete entries). The confirm needs Quasar+i18n, so the gate
+// stays in the component; the editable case delegates to the shared inspector.
 function openPointDialog(laneId: number, p: GTrackPointRef): void {
-  // GT3.7: a generated (preparse) voice is locked — offer to fix it instead of opening the editor
-  // (its points can't be edited until baked into concrete entries).
   if (gtracks.isVoicePreparse(p.voiceId)) {
     promptFixPreparse(p.voiceId)
     return
   }
-  pointDialogTarget.value = { laneId, voiceId: p.voiceId, pointIndex: p.pointIndex }
-  // GT10.35 (owner 2026-07-12): move the visual focus (selected vertex / white circle) to the
-  // clicked point too, so it doesn't stay on the previously added/selected node.
-  gtracks.selectPoint(laneId, { voiceId: p.voiceId, pointIndex: p.pointIndex })
-  syncPointFormFromModel()
+  setTarget(laneId, p)
 }
-// GT3.7 (owner req. 11 / R6): fixing bakes the generator's expansion into concrete points and
-// loses the generator node on Save — irreversible, so confirm first.
+// GT3.7 (owner req. 11 / R6): fixing bakes the generator's expansion into concrete points and loses the
+// generator node on Save — irreversible, so confirm first.
 function promptFixPreparse(voiceId: number): void {
   $q.dialog({
     title: t('audio.gtrackFixTitle'),
@@ -1508,20 +1490,18 @@ function promptFixPreparse(voiceId: number): void {
     }
   })
 }
-function closePointDialog(): void {
-  pointDialogTarget.value = null
-}
-// GT3.16 (review #4): closing the inspector clears BOTH the multi-selection and the single
-// target, so dismissing the table can't "reveal" a stale single inspector left over from before
-// the multi-selection began.
-function closeInspector(): void {
-  gtracks.clearMultiSelection()
-  pointDialogTarget.value = null
+// GT10.31 (owner req. 80): adding a point (Ctrl-click on a curve) opens its dialog immediately.
+// insertPointAt selects the new point on success, so the dialog targets it from the selection.
+function onAddPoint(laneId: number, e: GTrackAddPoint): void {
+  if (!gtracks.insertPointAt(laneId, e.voiceId, e.timeSec)) return
+  const sel = gtracks.selection.value
+  if (sel !== null) openPointDialog(laneId, { voiceId: sel.voiceId, pointIndex: sel.pointIndex })
 }
 
-// GT3.21 (owner req. 41): drag the point inspector around by its title bar. Position is stored in
-// the coordinates of its positioned ancestor (offsetParent) and clamped to that box; it resets to
-// the default corner each time the inspector closes.
+// GT3.21 (owner req. 41): drag the point inspector around by its title bar. Position is stored in the
+// viewport frame and clamped to it; it resets to the default corner each time the inspector closes.
+// (PI-D4: this whole drag mechanism is removed in PI2.4 once PanelWindow owns the chrome — kept here
+// only while the bespoke <aside> still renders.)
 const inspectorEl = ref<HTMLElement | null>(null)
 const inspectorPos = ref<{ left: number; top: number } | null>(null)
 const inspectorStyle = computed(() =>
@@ -1558,278 +1538,9 @@ function onInspectorDragEnd(event: PointerEvent): void {
   inspectorDrag = null
   try { (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId) } catch { /* ignore */ }
 }
-// GT3.12 (owner req. 27+29): while the inspector is open, follow the selection (clicking or
-// dragging a different vertex re-targets it) and keep the fields live during a drag. A single
-// watch source combining both signals keeps a drag's crossover re-index and a plain click in
-// perfect sync (both can happen in the same reactive flush).
-watch(
-  () => [gtracks.selection.value, gtracks.voices.value] as const,
-  ([sel]) => {
-    const tgt = pointDialogTarget.value
-    if (tgt === null) return
-    if (sel !== null && (sel.voiceId !== tgt.voiceId || sel.pointIndex !== tgt.pointIndex)) {
-      pointDialogTarget.value = { laneId: sel.laneId, voiceId: sel.voiceId, pointIndex: sel.pointIndex }
-    }
-    syncPointFormFromModel()
-  },
-)
-// Derived controls (GT-D6): Volume scales L/R preserving balance; Balance re-splits the total.
-const pointFormVolume = computed(() => (pointForm.volL + pointForm.volR) / 2)
-const pointFormBalance = computed(() => {
-  const s = pointForm.volL + pointForm.volR
-  return s <= 0 ? 0 : (pointForm.volR - pointForm.volL) / s
-})
-// GT3.11 (owner req. 23): SLIDER edits round volumes to 3 decimals; typing into the L/R inputs
-// stays free-form (no rounding there).
-function round3(x: number): number {
-  return Math.round(x * 1000) / 1000
-}
-function setPointFormVolume(v: number): void {
-  const clamp = (x: number): number => Math.max(0, Math.min(1, x))
-  const cur = pointFormVolume.value
-  if (pointDialogVoiceMono.value || cur <= 0) {
-    pointForm.volL = round3(clamp(v))
-    pointForm.volR = round3(clamp(v))
-    return
-  }
-  const f = v / cur
-  pointForm.volL = round3(clamp(pointForm.volL * f))
-  pointForm.volR = round3(clamp(pointForm.volR * f))
-}
-function setPointFormBalance(b: number): void {
-  const clamp = (x: number): number => Math.max(0, Math.min(1, x))
-  const s = pointForm.volL + pointForm.volR
-  if (s <= 0) return
-  const bb = Math.max(-1, Math.min(1, b))
-  pointForm.volL = round3(clamp((s * (1 - bb)) / 2))
-  pointForm.volR = round3(clamp((s * (1 + bb)) / 2))
-}
-// GT3.12: Apply commits the form to the model — one undo unit — WITHOUT closing the inspector
-// (req 26: only the user closes it; also required for autosave, which calls this repeatedly).
-function applyPointDialog(): void {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return
-  gtracks.applyPointEdit(
-    { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex },
-    {
-      timeSec: Math.max(0, Number(pointForm.timeSec) || 0),
-      baseFreq: Math.max(0, Number(pointForm.baseFreq) || 0),
-      beatFreqHalf: Math.max(0, Number(pointForm.beatFreq) || 0) / 2,
-      volL: Math.max(0, Math.min(1, Number(pointForm.volL) || 0)),
-      volR: Math.max(0, Math.min(1, Number(pointForm.volR) || 0)),
-    },
-  )
-}
-// GT3.12 (owner req. 28): field-level autosave trigger — blur/enter for text inputs, release for
-// sliders (not every keystroke/drag pixel, to avoid one undo entry per character).
-function maybeAutosave(): void {
-  if (gtracks.pointAutosave.value) applyPointDialog()
-}
-// GT10.36 (owner 2026-07-12): after undo/redo, move the focus to the point that CHANGED — a
-// restored (previously deleted) node becomes selected, wherever it landed. We diff the inspected
-// voice's point times before/after: a time that (re)appears is the restored/added node.
-function undoWithFocus(): void { withRestoredFocus(() => gtracks.undoEdit()) }
-function redoWithFocus(): void { withRestoredFocus(() => gtracks.redoEdit()) }
-function withRestoredFocus(op: () => void): void {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) { op(); return }
-  const { laneId, voiceId } = tgt
-  const before = gtracks.getVoice(voiceId)?.points.map((p) => p.timeSec) ?? []
-  op()
-  const voice = gtracks.getVoice(voiceId)
-  if (voice === undefined) return
-  // Multiset of prior times; the first current point whose time isn't accounted for is the one
-  // that (re)appeared (a restored/added node).
-  const remaining = new Map<number, number>()
-  for (const t of before) remaining.set(t, (remaining.get(t) ?? 0) + 1)
-  let idx = -1
-  for (let i = 0; i < voice.points.length; i += 1) {
-    const t = voice.points[i]!.timeSec
-    const n = remaining.get(t) ?? 0
-    if (n > 0) { remaining.set(t, n - 1); continue }
-    idx = i
-    break
-  }
-  if (idx < 0) idx = Math.min(tgt.pointIndex, voice.points.length - 1) // no new node — keep/clamp
-  if (idx < 0) return
-  pointDialogTarget.value = { laneId, voiceId, pointIndex: idx }
-  gtracks.selectPoint(laneId, { voiceId, pointIndex: idx })
-}
-// GT10.31 (owner req. 80): adding a point (Ctrl-click on a curve) opens its dialog immediately.
-// insertPointAt selects the new point on success, so the dialog targets it from the selection.
-function onAddPoint(laneId: number, e: GTrackAddPoint): void {
-  if (!gtracks.insertPointAt(laneId, e.voiceId, e.timeSec)) return
-  const sel = gtracks.selection.value
-  if (sel !== null) openPointDialog(laneId, { voiceId: sel.voiceId, pointIndex: sel.pointIndex })
-}
-// GT3.12 (owner req. 31) / GT10.33 (owner req. 82, revised 2026-07-12): delete the inspected point
-// and MOVE FOCUS — to the right neighbour (same index after the shift), else the previous point.
-// Deleting the LAST point empties the voice but keeps the dialog OPEN (frozen values) so the user
-// can Undo. No min-2 floor / no block.
-function deleteCurrentPointFromDialog(): void {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return
-  const voice = gtracks.getVoice(tgt.voiceId)
-  if (voice === undefined) return
-  const countBefore = voice.points.length
-  const idx = tgt.pointIndex
-  if (!gtracks.deletePointAt(tgt.laneId, { voiceId: tgt.voiceId, pointIndex: idx })) return
-  const remaining = countBefore - 1
-  if (remaining <= 0) return // voice emptied — leave the dialog open (frozen) for Undo
-  // Right neighbour has shifted into `idx`; if we deleted the last point, fall back to the previous.
-  const nextIndex = Math.min(idx, remaining - 1)
-  const laneId = tgt.laneId
-  const voiceId = tgt.voiceId
-  pointDialogTarget.value = { laneId, voiceId, pointIndex: nextIndex }
-  gtracks.selectPoint(laneId, { voiceId, pointIndex: nextIndex })
-  syncPointFormFromModel()
-}
-// GT3.12 (owner req. 32): insert an interpolated point to the right, at the midpoint of the
-// segment leading to the next point (disabled when this is the voice's last point).
-function addPointToRight(): void {
-  const tgt = pointDialogTarget.value
-  if (tgt === null) return
-  const voice = gtracks.getVoice(tgt.voiceId)
-  const cur = voice?.points[tgt.pointIndex]
-  const next = voice?.points[tgt.pointIndex + 1]
-  if (voice === undefined || cur === undefined || next === undefined) return
-  gtracks.insertPointAt(tgt.laneId, tgt.voiceId, (cur.timeSec + next.timeSec) / 2)
-}
-
-// GT3.15 (owner req. 30, GT-D18): the inspector shows the single-point form, or — once 2+ vertices
-// are Ctrl/Shift-selected — a table (view/edit VALUE fields across all of them + bulk delete).
-// Table mode takes priority whenever it applies.
-const inspectorMode = computed<'single' | 'table' | 'none'>(() => {
-  if (gtracks.multiSelection.value.size >= 2) return 'table'
-  if (pointDialogTarget.value !== null) return 'single'
-  return 'none'
-})
-// GT3.21: reset the dragged inspector to its default corner whenever it closes, so a stored
-// position can't strand it off-screen after a layout change. (Declared here — after inspectorMode.)
+// GT3.21: reset the dragged inspector to its default corner whenever it closes, so a stored position
+// can't strand it off-screen after a layout change.
 watch(inspectorMode, (mode) => { if (mode === 'none') inspectorPos.value = null })
-interface MultiFormRow {
-  voiceId: number
-  pointIndex: number
-  /** GT10.40 (owner 2026-07-12): the point time, shown read-only (editing time needs crossover
-   *  reindexing, which would desync the multi-selection keys — use the single-point dialog for that). */
-  timeSec: number
-  baseFreq: number
-  beatFreq: number
-  volL: number
-  volR: number
-  /** GT10.9 (owner req. 54): row selection for 'delete selected' (all checked by default). */
-  checked: boolean
-}
-const multiForm = ref<MultiFormRow[]>([])
-function modelRow(voiceId: number, pointIndex: number, point: { timeSec: number; baseFreq: number; beatFreqHalf: number; volL: number; volR: number }): MultiFormRow {
-  return {
-    voiceId,
-    pointIndex,
-    timeSec: Number(point.timeSec.toFixed(3)),
-    baseFreq: Number(point.baseFreq.toFixed(3)),
-    beatFreq: Number((point.beatFreqHalf * 2).toFixed(3)),
-    volL: Number(point.volL.toFixed(3)),
-    volR: Number(point.volR.toFixed(3)),
-    checked: true, // GT10.9 (owner req. 54): rows are selected by default
-  }
-}
-// GT10.41 (owner 2026-07-12): the table groups its rows by voice under a collapsible header (the
-// separate voice-name column is gone). Group order follows first appearance in the selection.
-interface MultiFormGroup { voiceId: number; name: string; rows: MultiFormRow[] }
-const collapsedGroups = ref<Set<number>>(new Set())
-function toggleGroup(voiceId: number): void {
-  const next = new Set(collapsedGroups.value)
-  if (next.has(voiceId)) next.delete(voiceId)
-  else next.add(voiceId)
-  collapsedGroups.value = next
-}
-const groupedMultiForm = computed<MultiFormGroup[]>(() => {
-  const groups = new Map<number, MultiFormGroup>()
-  for (const row of multiForm.value) {
-    let g = groups.get(row.voiceId)
-    if (g === undefined) {
-      g = { voiceId: row.voiceId, name: multiRowVoiceName(row.voiceId), rows: [] }
-      groups.set(row.voiceId, g)
-    }
-    g.rows.push(row)
-  }
-  return [...groups.values()]
-})
-// GT3.16 (review #5): RECONCILE rather than rebuild — a row whose "voiceId:pointIndex" key is
-// still selected KEEPS its current (possibly mid-edit) values, so accumulating another point
-// (or an external model change) no longer discards uncommitted typing. Newly-selected keys are
-// seeded from the model; deselected keys drop out. A drag can't happen in table mode (starting a
-// drag clears the multi-selection), so nothing here needs to be "live" during a drag.
-function reconcileMultiForm(): void {
-  const existing = new Map(multiForm.value.map((r) => [`${r.voiceId}:${r.pointIndex}`, r]))
-  multiForm.value = gtracks.multiSelectionPoints.value.map(({ voiceId, pointIndex, point }) =>
-    existing.get(`${voiceId}:${pointIndex}`) ?? modelRow(voiceId, pointIndex, point),
-  )
-}
-watch(() => [gtracks.multiSelection.value, gtracks.voices.value] as const, () => {
-  reconcileMultiForm()
-})
-function multiRowVoiceName(voiceId: number): string {
-  const v = gtracks.getVoice(voiceId)
-  if (v === undefined) return `#${voiceId}`
-  return v.description.trim() !== '' ? v.description : `#${v.id}`
-}
-function rowPatch(row: MultiFormRow): { baseFreq: number; beatFreqHalf: number; volL: number; volR: number } {
-  return {
-    baseFreq: Math.max(0, Number(row.baseFreq) || 0),
-    beatFreqHalf: Math.max(0, Number(row.beatFreq) || 0) / 2,
-    volL: Math.max(0, Math.min(1, Number(row.volL) || 0)),
-    volR: Math.max(0, Math.min(1, Number(row.volR) || 0)),
-  }
-}
-function maybeAutosaveMultiRow(row: MultiFormRow): void {
-  // A single row blur is naturally its own undo unit.
-  if (gtracks.pointAutosave.value) {
-    gtracks.setPointValues({ voiceId: row.voiceId, pointIndex: row.pointIndex }, rowPatch(row))
-  }
-}
-// GT10.6/GT10.22 (owner req. 50/71): Ctrl OR Alt + Arrow steps a numeric field by 1.0 (plain arrows
-// keep the input's own fine step). Handled in the WINDOW keydown (handleTracksKeyDown) — that is the
-// only listener proven to reliably carry the modifier while an inspector field is focused (same path
-// as Ctrl+S / Ctrl+Z). The field is located from the focused element's data-step-field ancestor
-// (data-step-row for the table row); the value is clamped per field via ctrlStepValue.
-// GT10.22 (owner 2026-07-12): while Alt is held, a numeric field's native `step` becomes 1, so an
-// Alt+click on the browser spinner arrows (and Alt+ArrowKey) steps by ±1 instead of the fine step.
-// Kept in sync from the window key handlers + a blur reset (so a missed keyup can't strand it).
-const altBigStep = ref(false)
-function fieldStep(fine: string): string {
-  return altBigStep.value ? '1' : fine
-}
-function applyFieldBigStep(el: HTMLElement, dir: 1 | -1): void {
-  const field = el.getAttribute('data-step-field')
-  if (field === null) return
-  const rowKey = el.getAttribute('data-step-row')
-  if (rowKey !== null) {
-    const row = multiForm.value.find((r) => `${r.voiceId}:${r.pointIndex}` === rowKey)
-    if (row === undefined) return
-    const r = row as unknown as Record<string, number>
-    r[field] = ctrlStepValue(Number(r[field]), field, dir)
-    maybeAutosaveMultiRow(row)
-    return
-  }
-  const form = pointForm as unknown as Record<string, number>
-  form[field] = ctrlStepValue(Number(form[field]), field, dir)
-  maybeAutosave()
-}
-
-// GT10.9 (owner req. 54): delete only the CHECKED table rows (one undo unit).
-function removeCheckedRows(): void {
-  gtracks.removePointsBulk(
-    multiForm.value.filter((r) => r.checked).map((r) => ({ voiceId: r.voiceId, pointIndex: r.pointIndex })),
-  )
-}
-
-// GT3.16 (review #1): "Apply all" is ONE undo unit — was one per row, so undoing needed N presses.
-function applyAllMultiRows(): void {
-  gtracks.setMultiplePointValues(
-    multiForm.value.map((row) => ({ ref: { voiceId: row.voiceId, pointIndex: row.pointIndex }, patch: rowPatch(row) })),
-  )
-}
 
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
 const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
