@@ -571,6 +571,19 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           console.info(
             `[undo-diag] undo-log adopted: ${plan.journal.steps.length} steps, cursor ${plan.journal.cursor} (anchor ${plan.anchorCid})`,
           )
+          // BM1.4 (владелец, приёмка фазы 1): reopen at the LEFT-OFF position, not at the anchor.
+          // The head ref marks where the session ended — replay the window to it, so an exit at an
+          // undone middle comes back exactly there (the un-undone edits show again, dirty until
+          // saved). A head outside the window keeps the anchor position.
+          const leftOffCid = undoChain.refs.head
+          const leftOffPos = leftOffCid === null ? -1 : plan.positionCids.indexOf(leftOffCid)
+          if (leftOffPos >= 0 && leftOffPos !== m.historyCursor) {
+            let guard = m.historySteps.length + 1
+            while (m.historyCursor < leftOffPos && guard-- > 0 && m.redo()) { /* forward to the left-off state */ }
+            while (m.historyCursor > leftOffPos && guard-- > 0 && m.undo()) { /* or back down to it */ }
+            syncSchedule()
+            console.info(`[undo-diag] cursor restored to the left-off position ${leftOffPos} (head ${leftOffCid})`)
+          }
           refreshEditState(false)
         } else if (plan === null) {
           console.warn('[undo-diag] undo-log adoption refused: no snapshot matches the loaded file (external edit?) — the log itself is intact')
