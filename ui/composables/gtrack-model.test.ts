@@ -442,7 +442,8 @@ describe('undo journal export/adopt v2 (undo-command-log)', () => {
     expect(target.canUndo).toBe(true)
     expect(target.canRedo).toBe(true)
     expect(target.undo()).toBe(true)
-    expect(JSON.stringify(target.schedule)).toBe(JSON.stringify(new GTrackModel(fixture([entry(0, 10), entry(10, 20)])).schedule))
+    // BM-D3: content equality is signature equality — point ids are session-local and excluded.
+    expect(target.currentSignature).toBe(new GTrackModel(fixture([entry(0, 10), entry(10, 20)])).currentSignature)
   })
 
   test('a journal from a DIFFERENT state is rejected (no-op)', () => {
@@ -707,5 +708,86 @@ describe('replaceVoicePoints — the checkout primitive (VL5.1, undo-versioned-l
       model.edit(() => model.replaceVoicePoints(7, [{ ...points[0]!, baseFreq: Number.NaN }, points[1]!])),
     ).toThrow(/non-finite/)
     expect(model.historySteps.length).toBe(0)
+  })
+})
+
+describe('point identity (undo-branch-merge P1/P2/P5)', () => {
+  test('P1: ids are unique, survive edits/moves, and delete+undo restores the original id', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    const ids = model.schedule.voices[0]!.points.map((p) => p.id)
+    expect(new Set(ids).size).toBe(ids.length)
+
+    // A field edit and a clamped move keep the identity.
+    model.edit(() => model.setPointField(7, 1, 'baseFreq', 210))
+    model.edit(() => model.movePoint(7, 1, 12))
+    expect(model.schedule.voices[0]!.points[1]!.id).toBe(ids[1]!)
+
+    // An insert mints a NEW id…
+    let insertedAt = 0
+    model.edit(() => { insertedAt = model.insertPoint(7, 5) })
+    const insertedId = model.schedule.voices[0]!.points[insertedAt]!.id
+    expect(ids).not.toContain(insertedId)
+
+    // …and delete + undo brings back the SAME id (identity lives in the history).
+    model.edit(() => model.removePoint(7, insertedAt))
+    expect(model.schedule.voices[0]!.points.some((p) => p.id === insertedId)).toBe(false)
+    model.undo()
+    expect(model.schedule.voices[0]!.points[insertedAt]!.id).toBe(insertedId)
+  })
+
+  test('P2: signatures are id-invariant — two builds of the same data agree with scheduleContentSignature', () => {
+    const data = fixture([entry(0, 10), entry(10, 25)])
+    const a = new GTrackModel(data, [], createGTrackHistory())
+    const b = new GTrackModel(data, [], createGTrackHistory())
+    expect(a.schedule.voices[0]!.points[0]!.id).not.toBe(b.schedule.voices[0]!.points[0]!.id)
+    expect(a.currentSignature).toBe(b.currentSignature)
+    expect(a.currentSignature).toBe(scheduleContentSignature(data, []))
+    expect(a.currentSignature.includes('"id":"q')).toBe(false) // no point ids in the signature JSON
+  })
+
+  test('P2: a snapshot with ids adopts back onto the SAME identities across a «restart»', () => {
+    const source = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    const ids = source.schedule.voices[0]!.points.map((p) => p.id)
+    const reopened = new GTrackModel(source.toScheduleWithIds(), [], createGTrackHistory())
+    expect(reopened.schedule.voices[0]!.points.map((p) => p.id)).toEqual(ids)
+    expect(reopened.currentSignature).toBe(source.currentSignature)
+  })
+
+  test('P5: the plain serialization is id-free; stripping ids from the id-carrying one is byte-identical', () => {
+    const model = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    const plain = JSON.stringify(model.toSchedule())
+    expect(plain.includes('pointId')).toBe(false)
+    const withIds = model.toScheduleWithIds()
+    expect(JSON.stringify(withIds).includes('"pointId":"q')).toBe(true)
+    const stripped = {
+      ...withIds,
+      voices: withIds.voices.map((v) => ({
+        ...v,
+        entries: v.entries.map(({ pointId: _p, endPointId: _e, ...rest }) => rest),
+      })),
+    }
+    expect(JSON.stringify(stripped)).toBe(plain)
+  })
+
+  test('BM-D4: adopting a legacy journal (id-less points) assigns fresh ids to the steps', () => {
+    const edited = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    edited.edit(() => edited.movePoint(7, 1, 12))
+    const journal = JSON.parse(JSON.stringify(edited.exportUndoJournal())) as ReturnType<GTrackModel['exportUndoJournal']>
+    for (const step of journal.steps) {
+      for (const d of step.voices) {
+        for (const p of [...d.before.points, ...d.after.points]) delete (p as { id?: string }).id
+      }
+    }
+
+    const target = new GTrackModel(fixture([entry(0, 10), entry(10, 20)]), [], createGTrackHistory())
+    target.edit(() => target.movePoint(7, 1, 12))
+    expect(target.adoptUndoJournal(journal)).toBe(true)
+    for (const step of target.historySteps) {
+      for (const d of step.voices) {
+        expect(d.before.points.every((p) => typeof p.id === 'string' && p.id !== '')).toBe(true)
+        expect(d.after.points.every((p) => typeof p.id === 'string' && p.id !== '')).toBe(true)
+      }
+    }
+    expect(target.undo()).toBe(true) // and the legacy step still applies
   })
 })

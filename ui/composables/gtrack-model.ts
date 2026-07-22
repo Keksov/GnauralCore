@@ -18,11 +18,22 @@ import type { GnauralScheduleData, GnauralScheduleEntry, GnauralScheduleVoice } 
 
 /** A single editable vertex-point of a voice's schedule curve. */
 export interface GTrackPoint {
+  /** undo-branch-merge BM-D2: stable identity for point-level deltas and three-way merges.
+   *  Session-entropy ids (like step ids) — unique across forks and restarts. Never serialized
+   *  into the .gnaural file; carried by log snapshots via optional entry fields (pointId /
+   *  endPointId) and excluded from every signature (BM-D3). */
+  id: string
   timeSec: number
   baseFreq: number
   beatFreqHalf: number
   volL: number
   volR: number
+}
+
+// BM-D2: session-unique point-id source (the same idiom as step ids below).
+let pointSeq = 0
+export function newPointId(): string {
+  return `q${Date.now().toString(36)}-${(pointSeq++).toString(36)}`
 }
 
 /** The numeric fields of a point that can be edited individually. */
@@ -62,10 +73,13 @@ const POINT_FIELDS: readonly GTrackPointField[] = ['timeSec', 'baseFreq', 'beatF
 // Conversions: dumped segments <-> editable points.
 // ---------------------------------------------------------------------------
 
-/** Convert a voice's segment list (from the dump) into the point list used by the editor. */
+/** Convert a voice's segment list (from the dump) into the point list used by the editor.
+ *  BM-D2: point ids come from the optional entry fields when present (a log snapshot written by
+ *  toScheduleWithIds) and are generated fresh otherwise (a plain file parse). */
 export function segmentsToPoints(entries: readonly GnauralScheduleEntry[]): GTrackPoint[] {
   if (entries.length === 0) return []
   const points: GTrackPoint[] = entries.map((e) => ({
+    id: e.pointId ?? newPointId(),
     timeSec: e.startSec,
     baseFreq: e.baseFreqStart,
     beatFreqHalf: e.beatFreqHalfStart,
@@ -74,6 +88,7 @@ export function segmentsToPoints(entries: readonly GnauralScheduleEntry[]): GTra
   }))
   const last = entries[entries.length - 1]!
   points.push({
+    id: last.endPointId ?? newPointId(),
     timeSec: last.endSec,
     baseFreq: last.baseFreqEnd,
     beatFreqHalf: last.beatFreqHalfEnd,
@@ -102,6 +117,19 @@ export function pointsToSegments(points: readonly GTrackPoint[]): GnauralSchedul
       volRStart: a.volR,
       volREnd: b.volR,
     })
+  }
+  return segments
+}
+
+/** BM-D2: the id-carrying twin of pointsToSegments — used ONLY for log snapshot payloads, never
+ *  for the file/XML/audio paths (P5: those stay byte-identical to the id-less world). */
+export function pointsToSegmentsWithIds(points: readonly GTrackPoint[]): GnauralScheduleEntry[] {
+  const segments = pointsToSegments(points)
+  for (let k = 0; k < segments.length; k += 1) {
+    segments[k] = { ...segments[k]!, pointId: points[k]!.id }
+  }
+  if (segments.length > 0) {
+    segments[segments.length - 1] = { ...segments[segments.length - 1]!, endPointId: points[points.length - 1]!.id }
   }
   return segments
 }
@@ -145,10 +173,12 @@ export function cloneSchedule(schedule: GTrackSchedule): GTrackSchedule {
   }
 }
 
-/** Serialize a schedule back to the dumped shape (used for round-trip verification in GT1.2). */
-export function editableToSchedule(schedule: GTrackSchedule): GnauralScheduleData {
+/** Serialize a schedule back to the dumped shape (used for round-trip verification in GT1.2).
+ *  BM-D2/P5: id-free — the file/XML/audio serialization is byte-identical to the pre-id world.
+ *  Pass withPointIds ONLY when building a log snapshot payload (identity survives the restart). */
+export function editableToSchedule(schedule: GTrackSchedule, withPointIds = false): GnauralScheduleData {
   const voices: GnauralScheduleVoice[] = schedule.voices.map((v) => {
-    const entries = pointsToSegments(v.points)
+    const entries = withPointIds ? pointsToSegmentsWithIds(v.points) : pointsToSegments(v.points)
     const totalDurationSec = v.points.length > 0 ? v.points[v.points.length - 1]!.timeSec : 0
     return {
       id: v.id,
@@ -200,8 +230,23 @@ export function pointBalance(p: GTrackPoint): number {
 // The editable model with an undo/redo history and a dirty flag.
 // ---------------------------------------------------------------------------
 
+/** BM-D3 (id-invariance): signatures are computed over an id-less projection whose JSON is
+ *  byte-identical to the pre-id serialization — existing snapshot anchors and file-derived
+ *  signatures keep converging. The explicit 5-field rebuild also pins the key order. */
 function signature(schedule: GTrackSchedule): string {
-  return JSON.stringify(schedule)
+  return JSON.stringify({
+    ...schedule,
+    voices: schedule.voices.map((v) => ({
+      ...v,
+      points: v.points.map((p) => ({
+        timeSec: p.timeSec,
+        baseFreq: p.baseFreq,
+        beatFreqHalf: p.beatFreqHalf,
+        volL: p.volL,
+        volR: p.volR,
+      })),
+    })),
+  })
 }
 
 /** UC-D1/UC-D2 (undo-command-log): one undo STEP = the changed-voice deltas of a transaction. The
@@ -353,6 +398,33 @@ export function trimUndoJournal(
     }
   }
   return out
+}
+
+/** BM-D4 (compat): steps arriving from old log payloads carry id-less points — assign fresh ids
+ *  so the in-memory invariant «every point has an id» holds. Ids differ per step (the same
+ *  conceptual point gets a new id in each old step), which is exactly the legacy situation the
+ *  merge treats voice-level (BM-D5); undo/redo swap whole voices and are unaffected. */
+function ensureVoicePointIds(voice: GTrackVoice): GTrackVoice {
+  if (voice.points.every((p) => typeof p.id === 'string' && p.id !== '')) return voice
+  return {
+    ...voice,
+    points: voice.points.map((p) => (typeof p.id === 'string' && p.id !== '' ? p : { ...p, id: newPointId() })),
+  }
+}
+
+function normalizeStepPointIds(step: GTrackUndoStep): GTrackUndoStep {
+  if (step.voices.every((d) => d.before.points.every((p) => typeof p.id === 'string' && p.id !== '')
+    && d.after.points.every((p) => typeof p.id === 'string' && p.id !== ''))) {
+    return step
+  }
+  return {
+    ...step,
+    voices: step.voices.map((d) => ({
+      voiceId: d.voiceId,
+      before: ensureVoicePointIds(d.before),
+      after: ensureVoicePointIds(d.after),
+    })),
+  }
 }
 
 export function isGTrackUndoJournal(value: unknown): value is GTrackUndoJournal {
@@ -680,6 +752,7 @@ export class GTrackModel {
     const f = (timeSec - a.timeSec) / (b.timeSec - a.timeSec)
     const lerp = (x: number, y: number): number => x + f * (y - x)
     const inserted: GTrackPoint = {
+      id: newPointId(), // BM-D2/P1: a fresh identity; delete+undo restores the ORIGINAL id instead
       timeSec,
       baseFreq: lerp(a.baseFreq, b.baseFreq),
       beatFreqHalf: lerp(a.beatFreqHalf, b.beatFreqHalf),
@@ -815,7 +888,7 @@ export class GTrackModel {
     const sig = signature(this.current)
     if (journal.currentSig === sig) {
       this.history.steps.length = 0
-      this.history.steps.push(...journal.steps)
+      this.history.steps.push(...journal.steps.map(normalizeStepPointIds))
       this.history.cursor = Math.max(0, Math.min(journal.cursor, this.history.steps.length))
       this.savedCursor = this.history.cursor // adoption happens on a freshly-built (saved) model
       return true
@@ -825,7 +898,7 @@ export class GTrackModel {
     // undoable; the lost unsaved tail becomes the REDO tail (Ctrl+Y re-applies it).
     if (typeof journal.baseSig === 'string' && typeof journal.baseCursor === 'number' && journal.baseSig === sig) {
       this.history.steps.length = 0
-      this.history.steps.push(...journal.steps)
+      this.history.steps.push(...journal.steps.map(normalizeStepPointIds))
       this.history.cursor = Math.max(0, Math.min(journal.baseCursor, this.history.steps.length))
       this.savedCursor = this.history.cursor
       console.info(
@@ -856,6 +929,12 @@ export class GTrackModel {
   /** The current schedule serialized back to the dumped shape (for the XML patcher / verification). */
   public toSchedule(): GnauralScheduleData {
     return editableToSchedule(this.current)
+  }
+
+  /** BM-D2: the snapshot-payload serialization — same shape plus the optional point-id fields, so
+   *  an adoption from this snapshot continues the SAME point identities across a restart. */
+  public toScheduleWithIds(): GnauralScheduleData {
+    return editableToSchedule(this.current, true)
   }
 }
 
