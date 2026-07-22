@@ -590,6 +590,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         }
       }
       undoLogReady = ready
+      // BM1.5 (req 6): the toolbar icon indicates branch PRESENCE — load the summaries eagerly
+      // (panel open or not), so branches show the moment the journal opens.
+      if (ready) void loadUndoBranches()
       // Edits made before this restore resolved (fast fingers) sync now via the normal diff.
       if (ready && m === model.value && m.historySteps.length > synced.length) syncUndoLog(m, synced)
     } else if (m !== null) {
@@ -1036,6 +1039,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       if (undoLogForkPending) {
         undoLogForkPending = false
         undoBranchesLoaded.value = false
+        // BM1.5 (req 6): refresh immediately — the presence icon must turn on even with the
+        // branches UI closed.
+        void loadUndoBranches()
       }
       return
     }

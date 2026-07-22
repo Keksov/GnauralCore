@@ -4,10 +4,12 @@
          is highlighted when the non-default (oldest-first) order is active. -->
     <div class="undo-journal-panel__toolbar">
       <q-space />
-      <!-- OB-D7 (req 5): inline branches — the toggle sits LEFT of the sort button. -->
+      <!-- OB-D7 (req 5): inline branches — the toggle sits LEFT of the sort button.
+           BM1.5 (req 6): the colour now indicates branch PRESENCE (blue = the log has branches);
+           the click still switches inline <-> bottom placement. -->
       <q-btn
         dense flat round size="sm" icon="account_tree"
-        :color="inlineBranches ? 'primary' : undefined"
+        :color="gtracks.undoBranches.value.length > 0 ? 'primary' : undefined"
         :aria-label="inlineBranchesLabel"
         @click="toggleInlineBranches"
       >
@@ -308,7 +310,9 @@
       <!-- UG3.2 (req 7/8): clearing forgets history only — the schedule state is untouched. -->
       <q-btn-dropdown dense flat no-caps :label="t('audio.undoJournalClear')" :disable="rows.length === 1">
         <q-list dense>
-          <q-item v-close-popup clickable @click="gtracks.clearUndoHistory('all')">
+          <!-- BM1.5 (req 7): clearing EVERYTHING also wipes the server log — irreversible, so it
+               asks a Да/Нет confirmation first. -->
+          <q-item v-close-popup clickable @click="confirmClearAll">
             <q-item-section>{{ t('audio.undoJournalClearAll') }}</q-item-section>
           </q-item>
           <q-item
@@ -376,7 +380,7 @@
 // window rows, checkoutUndoCommit for deep ones — VL5.1, undo-versioned-log).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Notify } from 'quasar'
+import { Dialog, Notify } from 'quasar'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import type { ProjectUndoLogBranch } from '@protocol'
@@ -672,8 +676,11 @@ watch(
   },
   { immediate: true },
 )
-watch(() => gtracks.undoBranches.value, () => {
+watch(() => gtracks.undoBranches.value, (next) => {
   expandedBranchTip.value = null
+  // BM1.5 (req 6): branches present -> show them right away; in the bottom mode that means the
+  // section auto-expands (still collapsible by hand; inline mode shows blocks in the stream).
+  if (next.length > 0 && !inlineBranches.value) branchesOpen.value = true
 })
 
 const branchesLabel = computed(() => {
@@ -778,6 +785,19 @@ async function applyRollback(): Promise<void> {
   if (target === null) return
   gtracks.rollbackToCursor(target)
   pendingTarget.value = null
+}
+
+// BM1.5 (req 7): «Очистить всю историю» wipes the SERVER log too — irreversible by design
+// (VL4.2 req 7 «целиком»), so it must be confirmed explicitly.
+function confirmClearAll(): void {
+  Dialog.create({
+    title: t('audio.undoJournalClearAll'),
+    message: t('audio.undoJournalClearAllConfirm'),
+    ok: { label: t('audio.undoJournalClearAllYes'), color: 'negative', flat: true, noCaps: true },
+    cancel: { label: t('audio.undoJournalClearAllNo'), flat: true, noCaps: true },
+  }).onOk(() => {
+    gtracks.clearUndoHistory('all')
+  })
 }
 
 // UG3.2 (req 7): forget the steps OLDER than the selected row (the selection marks the kept base).
