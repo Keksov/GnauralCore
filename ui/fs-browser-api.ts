@@ -25,8 +25,14 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     cache: 'no-store',
+    // No default 'content-type': every fs call is a body-less GET, so it is meaningless — and on a
+    // cross-origin GET (dev UI :9000 -> loopback fs server) a non-simple content-type forces a CORS
+    // *preflight* (OPTIONS). That preflighted request intermittently stalls in the WebView2 network
+    // stack and never reaches the server (the "hourglass forever" bug, diagnosed 2026-07-22 via
+    // var/fs-browser.log: a stuck /fs/list had no server REQ line, while the header-less beacon to the
+    // same origin always got through). Sending no custom header keeps every fs call a *simple*
+    // cross-origin GET — exactly like that beacon, which never hangs.
     headers: {
-      'content-type': 'application/json',
       ...(init?.headers ?? {}),
     },
   })

@@ -4,7 +4,7 @@
 // localStorage per field (matches BodyMonitorCore preferences.ts).
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { AudioFileKind, FsEntry, FsEntryKind, FsInfoResponse, FsRoot } from '@protocol'
+import type { AudioFileKind, FsEntry, FsEntryKind, FsInfoResponse, FsRoot, ListDirResult } from '@protocol'
 import { fsBrowserApi } from '../fs-browser-api'
 
 export type FsViewMode = 'table' | 'list' | 'icons' | 'tree'
@@ -152,6 +152,77 @@ const buildMatcher = (pattern: string): ((name: string) => boolean) => {
 // semantics as the flat list's quick filter.
 export const fsNameMatches = (name: string, pattern: string): boolean => buildMatcher(pattern)(name)
 
+// FB-diag (2026-07-22): client-side trail for the "opening a folder sticks on the hourglass" bug.
+// Logs to the JS console AND, when a listing is slow, beacons the loopback fs server so the line lands
+// in server/var/fs-browser.log next to the server's own — one correlated timeline the next time it
+// hangs. Pure instrumentation; best-effort; never throws into the UI.
+const FS_DIAG_SLOW_MS = 4000
+
+const fsClientLog = (message: string): void => {
+  // The workspace has no ESLint and the owner already watches this panel's JS console — plain console
+  // is the intended channel.
+  console.log(`[fs-browser] ${message}`)
+}
+
+const fsClientBeacon = (baseUrl: string | null, message: string): void => {
+  if (baseUrl === null) {
+    return
+  }
+  try {
+    const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+    void fetch(`${base}/fs/clientlog?msg=${encodeURIComponent(message)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      keepalive: true,
+    }).catch(() => undefined)
+  } catch {
+    // best-effort — a beacon must never affect the UI.
+  }
+}
+
+// FB-diag fix (2026-07-22): bound every folder-listing round-trip. Without a timeout a transport-level
+// stall — a preflighted request lost in the WebView2 network stack that never reaches the server —
+// leaves the fetch (and the hourglass) pending forever. Abort after FS_REQUEST_TIMEOUT_MS and retry
+// ONCE on a fresh connection (a new AbortController = a new socket, which is what «Обновить» does by
+// hand); a second timeout surfaces as a normal error so the caller clears the spinner and shows a
+// message instead of spinning indefinitely.
+const FS_REQUEST_TIMEOUT_MS = 10000
+
+const listDirWithTimeout = async (
+  base: string,
+  provider: string,
+  path: string,
+  showHidden: boolean,
+): Promise<ListDirResult> => {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const controller = new AbortController()
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, FS_REQUEST_TIMEOUT_MS)
+    try {
+      return await fsBrowserApi.listDir(base, provider, path, { showHidden }, controller.signal)
+    } catch (err) {
+      lastError = err
+      if (timedOut) {
+        fsClientLog(`listDir attempt ${attempt} TIMEOUT (${FS_REQUEST_TIMEOUT_MS}ms) path=${JSON.stringify(path)}`)
+        fsClientBeacon(base, `listDir attempt ${attempt} TIMEOUT path=${JSON.stringify(path)}`)
+        if (attempt === 1) {
+          continue // retry once — a fresh connection usually clears a stale-socket stall
+        }
+        throw new Error('Folder listing timed out — press Refresh to retry')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  // Unreachable — the loop always returns, continues, or throws — but satisfies the return type.
+  throw lastError
+}
+
 export const useFsBrowserStore = defineStore('fs-browser', () => {
   const info = ref<FsInfoResponse | null>(null)
   const providerId = ref<string>(DEFAULT_PROVIDER)
@@ -288,29 +359,45 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
   async function openDir(path: string): Promise<boolean> {
     const base = baseUrl.value
     if (base === null) {
+      fsClientLog(`openDir SKIP (no base url) path=${JSON.stringify(path)}`)
       return false
     }
     const token = ++openToken
     loading.value = true
     error.value = null
+    const startedAt = Date.now()
+    fsClientLog(`openDir START token=${token} path=${JSON.stringify(path)}`)
+    // The whole point: if this listing is still outstanding after a few seconds, say so in the console
+    // AND beacon the server, so the hang is captured on BOTH sides of the wire. The hourglass shows for
+    // exactly as long as store.loading stays true — i.e. exactly while this fetch has not settled.
+    const slow = setTimeout(() => {
+      const waited = Date.now() - startedAt
+      fsClientLog(`openDir STILL PENDING token=${token} path=${JSON.stringify(path)} after ${waited}ms`)
+      fsClientBeacon(base, `openDir STILL PENDING token=${token} path=${JSON.stringify(path)} after ${waited}ms`)
+    }, FS_DIAG_SLOW_MS)
     try {
-      const result = await fsBrowserApi.listDir(base, providerId.value, path, { showHidden: showHidden.value })
+      const result = await listDirWithTimeout(base, providerId.value, path, showHidden.value)
       if (token !== openToken) {
+        fsClientLog(`openDir SUPERSEDED token=${token} current=${openToken} path=${JSON.stringify(path)} ms=${Date.now() - startedAt}`)
         return false
       }
       currentPath.value = result.path
       parentPath.value = result.parent
       entries.value = [...result.entries]
       rememberDir(result.path) // FB5.3: the current folder is restored after a page refresh.
+      fsClientLog(`openDir OK token=${token} path=${JSON.stringify(result.path)} entries=${result.entries.length} ms=${Date.now() - startedAt}`)
       return true
     } catch (err) {
       if (token !== openToken) {
+        fsClientLog(`openDir SUPERSEDED (after error) token=${token} current=${openToken} path=${JSON.stringify(path)}`)
         return false
       }
       error.value = err instanceof Error ? err.message : 'Failed to list directory'
       entries.value = []
+      fsClientLog(`openDir ERROR token=${token} path=${JSON.stringify(path)} error=${JSON.stringify(error.value)} ms=${Date.now() - startedAt}`)
       return false
     } finally {
+      clearTimeout(slow)
       if (token === openToken) {
         loading.value = false
       }
@@ -324,8 +411,24 @@ export const useFsBrowserStore = defineStore('fs-browser', () => {
     if (base === null) {
       return []
     }
-    const result = await fsBrowserApi.listDir(base, providerId.value, path, { showHidden: showHidden.value })
-    return [...result.entries]
+    // Tree-mode lazy-load / reveal: there is no store.loading spinner here, but a stuck stat() hangs
+    // the tree node just the same — so give it the same slow watchdog + server beacon.
+    const startedAt = Date.now()
+    const slow = setTimeout(() => {
+      const waited = Date.now() - startedAt
+      fsClientLog(`listChildren STILL PENDING path=${JSON.stringify(path)} after ${waited}ms`)
+      fsClientBeacon(base, `listChildren STILL PENDING path=${JSON.stringify(path)} after ${waited}ms`)
+    }, FS_DIAG_SLOW_MS)
+    try {
+      const result = await listDirWithTimeout(base, providerId.value, path, showHidden.value)
+      const took = Date.now() - startedAt
+      if (took >= FS_DIAG_SLOW_MS) {
+        fsClientLog(`listChildren SLOW path=${JSON.stringify(path)} entries=${result.entries.length} ms=${took}`)
+      }
+      return [...result.entries]
+    } finally {
+      clearTimeout(slow)
+    }
   }
 
   // FB5.3: persist the last-visited folder (best-effort). Called on every successful openDir and on
