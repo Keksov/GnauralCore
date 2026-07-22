@@ -1010,221 +1010,9 @@
       </aside>
     </transition>
 
-    <!-- GT3.12 (GT-D18): non-modal live point inspector — NO backdrop (owner req. 26: the tracks
-         stay fully interactive so the user can click other vertices to inspect them). Floats as a
-         small panel instead of docking to an edge, so it doesn't block the whole stack.
-         GT3.15 (owner req. 30): auto-switches to a TABLE when 2+ vertices are multi-selected. -->
-    <transition name="gtrack-point-inspector">
-      <aside
-        v-if="inspectorMode !== 'none'"
-        ref="inspectorEl"
-        class="tracks-panel__point-inspector"
-        :class="{ 'tracks-panel__point-inspector--table': inspectorMode === 'table' }"
-        :style="inspectorStyle"
-        role="dialog"
-        aria-modal="false"
-        :aria-label="t('audio.gtrackPointDialog')"
-      >
-        <!-- GT3.21 (owner req. 41): the title bar is a drag handle — move the inspector anywhere. -->
-        <div class="audio-page__spectrogram-settings-header">
-          <div
-            class="audio-page__spectrogram-settings-title tracks-panel__inspector-drag"
-            @pointerdown="onInspectorDragStart"
-            @pointermove="onInspectorDragMove"
-            @pointerup="onInspectorDragEnd"
-            @pointercancel="onInspectorDragEnd"
-          >
-            <template v-if="inspectorMode === 'table'">
-              {{ t('audio.gtrackMultiSelected', { count: gtracks.multiSelection.value.size }) }}
-            </template>
-            <template v-else>
-              {{ t('audio.gtrackPointDialog') }}<span v-if="pointDialogVoiceName"> — {{ pointDialogVoiceName }}</span>
-            </template>
-          </div>
-          <!-- GT10.8 (owner req. 52): undo/redo right in the inspector (model history has all steps). -->
-          <q-btn
-            flat round dense icon="undo" :disable="!gtracks.canUndo.value"
-            :aria-label="t('audio.gtrackUndo')"
-            @click="undoWithFocus()"
-          >
-            <app-tooltip>{{ t('audio.gtrackUndo') }}</app-tooltip>
-          </q-btn>
-          <q-btn
-            flat round dense icon="redo" :disable="!gtracks.canRedo.value"
-            :aria-label="t('audio.gtrackRedo')"
-            @click="redoWithFocus()"
-          >
-            <app-tooltip>{{ t('audio.gtrackRedo') }}</app-tooltip>
-          </q-btn>
-          <q-btn
-            flat round dense icon="close" :aria-label="t('audio.spectrogramSettingsClose')"
-            @click="closeInspector"
-          />
-        </div>
-
-        <!-- Table mode (owner req. 30): view + edit VALUE fields (not time — see GT-D16 note in
-             the composable) across every multi-selected vertex, plus a bulk-delete action. -->
-        <template v-if="inspectorMode === 'table'">
-          <!-- GT10.22 (owner req. 71): Ctrl/Alt+Arrow big-step is handled in the window keydown
-               (handleTracksKeyDown); data-step-field + data-step-row on each <td> identify the cell. -->
-          <div class="audio-page__spectrogram-settings-body tracks-panel__multi-table-wrap">
-            <q-markup-table dense flat dark class="tracks-panel__multi-table">
-              <thead>
-                <tr>
-                  <th class="tracks-panel__col-chk"></th>
-                  <th class="tracks-panel__col-num tracks-panel__col-idx">#</th>
-                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointTime') }}</th>
-                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBase') }}</th>
-                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointBeat') }}</th>
-                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointVolL') }}</th>
-                  <th class="tracks-panel__col-num">{{ t('audio.gtrackPointVolR') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- GT10.41 (owner req.): points grouped by voice under a collapsible header. -->
-                <template v-for="group in groupedMultiForm" :key="group.voiceId">
-                  <tr class="tracks-panel__group-row" @click="toggleGroup(group.voiceId)">
-                    <td colspan="7">
-                      <q-icon :name="collapsedGroups.has(group.voiceId) ? 'chevron_right' : 'expand_more'" size="18px" />
-                      {{ group.name }} <span class="text-grey">({{ group.rows.length }})</span>
-                    </td>
-                  </tr>
-                  <template v-if="!collapsedGroups.has(group.voiceId)">
-                    <tr v-for="row in group.rows" :key="`${row.voiceId}:${row.pointIndex}`">
-                      <td class="tracks-panel__col-chk"><q-checkbox v-model="row.checked" dense /></td>
-                      <!-- GT10.43 (owner req.): the point's ordinal (index) within its voice. -->
-                      <td class="tracks-panel__col-num tracks-panel__col-idx text-grey">{{ row.pointIndex }}</td>
-                      <!-- GT10.40: time is read-only in the table (crossover reindexing would desync keys). -->
-                      <td class="tracks-panel__col-num">{{ row.timeSec }}</td>
-                      <td class="tracks-panel__col-num" data-step-field="baseFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                        <q-input
-                          v-model.number="row.baseFreq" dense borderless type="number" input-class="text-right" :step="fieldStep('0.1')" min="0"
-                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                        />
-                      </td>
-                      <td class="tracks-panel__col-num" data-step-field="beatFreq" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                        <q-input
-                          v-model.number="row.beatFreq" dense borderless type="number" input-class="text-right" :step="fieldStep('0.1')" min="0"
-                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                        />
-                      </td>
-                      <td class="tracks-panel__col-num" data-step-field="volL" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                        <q-input
-                          v-model.number="row.volL" dense borderless type="number" input-class="text-right" :step="fieldStep('0.01')" min="0" max="1"
-                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                        />
-                      </td>
-                      <td class="tracks-panel__col-num" data-step-field="volR" :data-step-row="`${row.voiceId}:${row.pointIndex}`">
-                        <q-input
-                          v-model.number="row.volR" dense borderless type="number" input-class="text-right" :step="fieldStep('0.01')" min="0" max="1"
-                          @blur="maybeAutosaveMultiRow(row)" @keyup.enter="maybeAutosaveMultiRow(row)"
-                        />
-                      </td>
-                    </tr>
-                  </template>
-                </template>
-              </tbody>
-            </q-markup-table>
-            <q-checkbox
-              :model-value="gtracks.pointAutosave.value" dense
-              :label="t('audio.gtrackAutosave')"
-              @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
-            />
-          </div>
-          <q-separator />
-          <div class="tracks-panel__point-inspector-actions">
-            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeleteSelected')" :disable="!multiForm.some((r) => r.checked)" @click="removeCheckedRows" />
-            <q-space />
-            <q-btn
-              v-if="!gtracks.pointAutosave.value"
-              dense unelevated no-caps color="primary"
-              :label="t('audio.spectrogramZoomApply')"
-              @click="applyAllMultiRows"
-            />
-          </div>
-        </template>
-
-        <!-- Single-point mode (GT3.3/GT3.12): unchanged. -->
-        <template v-else>
-          <!-- GT10.22 (owner req. 71): Ctrl/Alt+Arrow big-step is handled in the window keydown
-               (handleTracksKeyDown). Each field is tagged data-step-field (on a native display:contents
-               span) so the handler can find the focused field. -->
-          <div class="audio-page__spectrogram-settings-body q-gutter-sm">
-            <!-- data-step-field lives on a native display:contents span (layout unchanged) so
-                 closest() reliably finds it from the input regardless of QInput attr handling. -->
-            <span data-step-field="timeSec" style="display: contents">
-              <q-input
-                v-model.number="pointForm.timeSec" dense outlined type="number" :step="fieldStep('0.01')" min="0"
-                :label="t('audio.gtrackPointTime')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-              />
-            </span>
-            <span data-step-field="baseFreq" style="display: contents">
-              <q-input
-                v-model.number="pointForm.baseFreq" dense outlined type="number" :step="fieldStep('0.1')" min="0"
-                :label="t('audio.gtrackPointBase')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-              />
-            </span>
-            <span data-step-field="beatFreq" style="display: contents">
-              <q-input
-                v-model.number="pointForm.beatFreq" dense outlined type="number" :step="fieldStep('0.1')" min="0"
-                :label="t('audio.gtrackPointBeat')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-              />
-            </span>
-            <!-- GT3.11 (owner req. 22): plain flex gap — q-col-gutter's negative margins made
-                 these overlap the beat-frequency field inside a q-gutter parent. -->
-            <div class="tracks-panel__vol-row">
-              <span data-step-field="volL" style="display: contents">
-                <q-input
-                  v-model.number="pointForm.volL" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
-                  :label="t('audio.gtrackPointVolL')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-                />
-              </span>
-              <span data-step-field="volR" style="display: contents">
-                <q-input
-                  v-model.number="pointForm.volR" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
-                  :label="t('audio.gtrackPointVolR')" @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-                />
-              </span>
-            </div>
-            <!-- Derived controls (GT-D6): editing them maps back onto volL/volR. -->
-            <!-- GT10.37 (owner 2026-07-12): Volume is a numeric field with steppers (was a slider). -->
-            <q-input
-              :model-value="Number(pointFormVolume.toFixed(3))" dense outlined type="number" :step="fieldStep('0.01')" min="0" max="1"
-              :label="t('audio.gtrackMode_volume')"
-              @update:model-value="(v) => setPointFormVolume(Number(v) || 0)"
-              @blur="maybeAutosave" @keyup.enter="maybeAutosave"
-            />
-            <template v-if="!pointDialogVoiceMono">
-              <div class="text-caption text-grey">{{ t('audio.gtrackMode_balance') }}: {{ pointFormBalance.toFixed(2) }}</div>
-              <!-- GT10.38 (owner 2026-07-12): horizontal padding so the thumb doesn't overflow the dialog. -->
-              <div class="tracks-panel__balance-slider">
-                <q-slider
-                  :model-value="pointFormBalance" :min="-1" :max="1" :step="0.01" dense
-                  @update:model-value="(v) => setPointFormBalance(v ?? 0)" @change="maybeAutosave"
-                />
-              </div>
-            </template>
-            <q-checkbox
-              :model-value="gtracks.pointAutosave.value" dense
-              :label="t('audio.gtrackAutosave')"
-              @update:model-value="(v) => gtracks.setPointAutosave(v === true)"
-            />
-          </div>
-          <q-separator />
-          <div class="tracks-panel__point-inspector-actions">
-            <q-btn dense flat no-caps color="negative" icon="delete" :label="t('audio.gtrackDeletePoint')" @click="deleteCurrentPointFromDialog" />
-            <q-btn dense flat no-caps icon="add" :label="t('audio.gtrackAddPointRight')" :disable="!pointDialogHasNext" @click="addPointToRight" />
-            <q-space />
-            <q-btn
-              v-if="!gtracks.pointAutosave.value"
-              dense unelevated no-caps color="primary"
-              :label="t('audio.spectrogramZoomApply')"
-              @click="applyPointDialog"
-            />
-          </div>
-        </template>
-      </aside>
-    </transition>
+    <!-- PI2.4 (point-inspector-panel, PI-D4): the bespoke non-modal <aside> point inspector was
+         removed — «Параметры точки» is now the AudioPage-hosted PanelWindow (PointInspectorDialog),
+         dockable/floating with the standard chrome; its toolbar toggle sits in the header above. -->
 
     <!-- SS1.1 (SS-D1): the "Параметры" fixed flyout that used to live here is now a PanelWindow
          (@panel) hosted by AudioPage — dockable/floating, and it survives tab switches. Its toolbar
@@ -1449,38 +1237,18 @@ function fixDiagnostic(d: GTrackDiagnostic): void {
 // PI1.1 (point-inspector-panel): the inspector's model/form state + logic now lives in a shared
 // singleton composable (use-point-inspector.ts) so the AudioPage-hosted PanelWindow and this tab share
 // ONE instance (PI-D5). We re-expose its members under the same names the template/handlers already use.
-// What stays HERE: the $q/i18n preparse confirm, the thin open/add-point event wrappers, and the
-// title-bar drag (removed in PI2.4 once PanelWindow owns the chrome).
-const inspector = usePointInspector()
+// What stays HERE: the $q/i18n preparse confirm and the thin open/add-point event wrappers. PI2.4
+// removed the bespoke <aside> + its title-bar drag; the panel chrome is PanelWindow's now, so we keep
+// only the inspector members the window key handlers + open wrappers still touch.
 const {
-  pointForm,
-  multiForm,
-  collapsedGroups,
-  altBigStep,
-  pointDialogVoiceName,
-  pointDialogVoiceMono,
-  pointDialogHasNext,
-  pointFormVolume,
-  pointFormBalance,
   inspectorMode,
-  groupedMultiForm,
+  altBigStep,
   setTarget,
   closeInspector,
-  setPointFormVolume,
-  setPointFormBalance,
-  applyPointDialog,
-  maybeAutosave,
   undoWithFocus,
   redoWithFocus,
-  deleteCurrentPointFromDialog,
-  addPointToRight,
-  toggleGroup,
-  maybeAutosaveMultiRow,
-  removeCheckedRows,
-  applyAllMultiRows,
-  fieldStep,
   applyFieldBigStep,
-} = inspector
+} = usePointInspector()
 
 // GT3.7: a generated (preparse) voice is locked — offer to fix it instead of opening the editor (its
 // points can't be edited until baked into concrete entries). The confirm needs Quasar+i18n, so the gate
@@ -1490,6 +1258,8 @@ function openPointDialog(laneId: number, p: GTrackPointRef): void {
     promptFixPreparse(p.voiceId)
     return
   }
+  // PI-D7: a point click (or a just-inserted node) auto-opens the panel if the user had it closed.
+  pointInspectorPanel.open = true
   setTarget(laneId, p)
 }
 // GT3.7 (owner req. 11 / R6): fixing bakes the generator's expansion into concrete points and loses the
@@ -1514,50 +1284,6 @@ function onAddPoint(laneId: number, e: GTrackAddPoint): void {
   const sel = gtracks.selection.value
   if (sel !== null) openPointDialog(laneId, { voiceId: sel.voiceId, pointIndex: sel.pointIndex })
 }
-
-// GT3.21 (owner req. 41): drag the point inspector around by its title bar. Position is stored in the
-// viewport frame and clamped to it; it resets to the default corner each time the inspector closes.
-// (PI-D4: this whole drag mechanism is removed in PI2.4 once PanelWindow owns the chrome — kept here
-// only while the bespoke <aside> still renders.)
-const inspectorEl = ref<HTMLElement | null>(null)
-const inspectorPos = ref<{ left: number; top: number } | null>(null)
-const inspectorStyle = computed(() =>
-  inspectorPos.value === null
-    ? undefined
-    : { left: `${inspectorPos.value.left}px`, top: `${inspectorPos.value.top}px`, right: 'auto' },
-)
-let inspectorDrag: { px: number; py: number; left: number; top: number } | null = null
-function onInspectorDragStart(event: PointerEvent): void {
-  const el = inspectorEl.value
-  if (event.button !== 0 || el === null) return
-  // GT10.30: the inspector is position:fixed now, so drag in viewport coordinates (getBoundingClientRect).
-  const r = el.getBoundingClientRect()
-  inspectorDrag = { px: event.clientX, py: event.clientY, left: r.left, top: r.top }
-  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  event.preventDefault()
-}
-function onInspectorDragMove(event: PointerEvent): void {
-  if (inspectorDrag === null) return
-  const el = inspectorEl.value
-  const root = rootEl.value
-  if (el === null || root === null) return
-  // GT10.30: clamp to the editor's on-screen frame (viewport rect), matching the fixed pinning.
-  const frame = root.getBoundingClientRect()
-  const left = inspectorDrag.left + (event.clientX - inspectorDrag.px)
-  const top = inspectorDrag.top + (event.clientY - inspectorDrag.py)
-  inspectorPos.value = {
-    left: Math.max(frame.left, Math.min(left, frame.right - el.offsetWidth)),
-    top: Math.max(frame.top, Math.min(top, frame.bottom - el.offsetHeight)),
-  }
-}
-function onInspectorDragEnd(event: PointerEvent): void {
-  if (inspectorDrag === null) return
-  inspectorDrag = null
-  try { (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId) } catch { /* ignore */ }
-}
-// GT3.21: reset the dragged inspector to its default corner whenever it closes, so a stored position
-// can't strand it off-screen after a layout change.
-watch(inspectorMode, (mode) => { if (mode === 'none') inspectorPos.value = null })
 
 // Same fallback palette as GTrackView so the panel dots match the lane curves.
 const VOICE_FALLBACK_COLORS = ['#67e8f9', '#fbbf24', '#a3be8c', '#f472b6', '#c084fc', '#f87171']
@@ -3314,110 +3040,6 @@ onBeforeUnmount(() => {
   min-width: 96px;
 }
 
-/* GT3.11: volume L/R side by side without q-col-gutter's negative margins (req. 22). */
-.tracks-panel__vol-row {
-  display: flex;
-  gap: 8px;
-}
-
-.tracks-panel__vol-row > * {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-/* GT3.12 (GT-D18): non-modal point inspector — a small floating panel (NOT edge-docked, so it
-   doesn't cover the whole stack) with no backdrop element at all, so the tracks underneath stay
-   fully clickable (owner req. 26). */
-.tracks-panel__point-inspector {
-  background: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 6px;
-  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  /* GT10.30 (owner req. 79): pinned to the editor's on-screen frame (see GT10.27's --tp-* vars) so
-     the dialog is not covered by the sticky header/toolbar and does not scroll away. Dragging sets
-     inline left/top (viewport coords) which override the default corner. */
-  position: fixed;
-  top: calc(var(--tp-top, 0px) + 12px);
-  right: calc(var(--tp-right, 0px) + 12px);
-  max-height: calc(100vh - var(--tp-top, 0px) - var(--tp-bottom, 0px) - 24px);
-  width: 300px;
-  z-index: 45;
-}
-
-.gtrack-point-inspector-enter-active,
-.gtrack-point-inspector-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.gtrack-point-inspector-enter-from,
-.gtrack-point-inspector-leave-to {
-  opacity: 0;
-  transform: translateY(-12px);
-}
-
-.tracks-panel__point-inspector-actions {
-  align-items: center;
-  display: flex;
-  gap: 4px;
-  padding: 8px;
-}
-
-/* GT10.38 (owner 2026-07-12): inset the balance slider so its thumb at the extremes stays inside
-   the dialog (otherwise it overflows and triggers a horizontal scrollbar). */
-.tracks-panel__balance-slider {
-  padding: 0 10px;
-}
-
-/* GT3.21 (owner req. 41): the inspector title bar is a drag handle (grows to fill the bar). */
-.tracks-panel__inspector-drag {
-  cursor: move;
-  flex: 1 1 auto;
-  touch-action: none;
-  user-select: none;
-}
-
-/* GT3.15: table mode is wider (needs room for 5 columns) than the single-point form. */
-.tracks-panel__point-inspector--table {
-  /* GT10.9 (owner req. 53): grow to fit the table — no horizontal scrollbar. */
-  max-width: calc(100vw - 48px);
-  min-width: 420px;
-  width: max-content;
-}
-
-.tracks-panel__multi-table-wrap {
-  max-height: 260px;
-  overflow: auto;
-}
-
-.tracks-panel__multi-table :deep(.q-field__control) {
-  height: 32px;
-}
-
-.tracks-panel__multi-table th {
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.tracks-panel__multi-table td {
-  min-width: 64px;
-  padding: 2px 6px;
-}
-
-/* GT10.23 (owner req. 72): numeric headers + values are both right-aligned so the columns line up
-   with their headers. The checkbox column is narrow. */
-.tracks-panel__multi-table th.tracks-panel__col-num,
-.tracks-panel__multi-table td.tracks-panel__col-num {
-  text-align: right;
-}
-.tracks-panel__multi-table th.tracks-panel__col-chk,
-.tracks-panel__multi-table td.tracks-panel__col-chk {
-  min-width: 0;
-  width: 28px;
-  text-align: center;
-}
 /* GT10.20 (owner req. 69): clickable colour circle that opens the colour picker. */
 .tracks-panel__color-swatch {
   border: 2px solid rgba(255, 255, 255, 0.5);
@@ -3436,24 +3058,4 @@ onBeforeUnmount(() => {
   padding: 2px;
 }
 
-/* GT10.43 (owner req.): the ordinal (#) column is narrow. */
-.tracks-panel__multi-table th.tracks-panel__col-idx,
-.tracks-panel__multi-table td.tracks-panel__col-idx {
-  min-width: 0;
-  width: 36px;
-}
-
-/* GT10.41 (owner req.): collapsible per-voice group header row. */
-.tracks-panel__group-row {
-  cursor: pointer;
-  user-select: none;
-}
-.tracks-panel__group-row td {
-  background: rgba(148, 163, 184, 0.12);
-  font-weight: 600;
-  padding: 4px 6px;
-}
-.tracks-panel__group-row:hover td {
-  background: rgba(148, 163, 184, 0.2);
-}
 </style>
