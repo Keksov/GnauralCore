@@ -671,6 +671,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   let undoLogLastSentHead: string | null = null
   let undoLogDeltasSinceSnapshot = 0
   let undoLogReady = false // adoption/migration finished for the current file
+  // OB3.4: a fork cut synced positions — the abandoned tail becomes a listed branch once the
+  // next append moves main past it; the flag tells the append handler to refresh the list then.
+  let undoLogForkPending = false
   let lastBuiltScheduleData: GnauralScheduleData | null = null
   const UNDO_LOG_SNAPSHOT_EVERY = 50 // VL-D5: an anchor snapshot every K deltas without a save
 
@@ -689,6 +692,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     undoLogLastSentHead = null
     undoLogDeltasSinceSnapshot = 0
     undoLogReady = false
+    undoLogForkPending = false
     lastBuiltScheduleData = data
     deepUndoRows.value = []
     deepUndoHasMore.value = false
@@ -757,6 +761,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const steps = m.historySteps
     let prefix = 0
     while (prefix < prevSteps.length && prefix < steps.length && prevSteps[prefix]!.id === steps[prefix]!.id) prefix += 1
+    if (undoLogPositions.length > prefix + 1) {
+      undoLogForkPending = true // synced commits above the fork are about to become a branch
+    }
     undoLogPositions.length = Math.min(undoLogPositions.length, prefix + 1)
 
     const batch: ProjectUndoLogCommitInput[] = []
@@ -985,7 +992,16 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // A cut batch (409) means the chain diverged under us (another tab): drop the queue and
   // re-anchor on the server main tip — the next baseline/save snapshot re-roots cleanly.
   setUndoLogAppendResultHandler((_projectId, result) => {
-    if (result.rejectedFrom === null) return
+    if (result.rejectedFrom === null) {
+      // OB3.4 (req 5): the fork's abandoned tail is a branch only once main moved past it — the
+      // first CONFIRMED append after a fork invalidates the list, and the panel (bottom section
+      // open or the inline toggle on) refetches it live.
+      if (undoLogForkPending) {
+        undoLogForkPending = false
+        undoBranchesLoaded.value = false
+      }
+      return
+    }
     console.warn(`[undo-log] append rejected at ${result.rejectedFrom} (chain diverged?) — pending discarded, main tip re-synced`)
     const key = filePath.value
     if (key !== null) discardPendingUndoLogFor(key)
