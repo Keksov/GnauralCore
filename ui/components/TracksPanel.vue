@@ -104,6 +104,19 @@
                duplicated gestures already available: Select = the default (plain drag moves a vertex),
                Add = Ctrl+click a curve, Delete = the Delete/Backspace hotkey on the selection. -->
           <!-- SF27: waveform colour/scale moved to a per-track gear (see each track). -->
+          <!-- PI2.3 (point-inspector-panel): «Параметры точки» toggle — the AudioPage-hosted @panel.
+               PI-D7: user-controlled open, decoupled from the selection; only in the gnaural editor. -->
+          <q-btn
+            v-if="audio.displayMode === 'gnaural'"
+            dense flat round size="sm"
+            icon="tune"
+            :color="pointInspectorPanel.open ? 'primary' : undefined"
+            :aria-label="t('audio.gtrackPointDialog')"
+            :aria-expanded="pointInspectorPanel.open"
+            @click="pointInspectorPanel.open = !pointInspectorPanel.open"
+          >
+            <app-tooltip>{{ t('audio.gtrackPointDialog') }}</app-tooltip>
+          </q-btn>
           <!-- UG3.1 (undo-global-journal): «Журнал операций» toggle — the AudioPage-hosted @panel
                with the undo action log (two-step rollback). Only meaningful for a gnaural editor. -->
           <q-btn
@@ -1244,6 +1257,7 @@ import TrackStatusBar from './TrackStatusBar.vue'
 import { autoPickFormat, TIME_FORMATS, type TimeFormat } from '../composables/time-format'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import { useUndoJournalPanelState } from '../stores/undo-journal-panel'
+import { usePointInspectorPanelState } from '../stores/point-inspector-panel'
 import { useOverallSpectrumOverridesStore } from '../stores/overall-spectrum-overrides'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useOverallGraphs } from '../composables/use-overall-graphs'
@@ -1392,6 +1406,9 @@ const showGtracks = computed(() => audio.displayMode === 'gnaural' && gtracks.vi
 const tracksListPanel = useTracksListPanelState()
 // UG3.1: «Журнал операций» — the same AudioPage-hosted pattern; the toolbar button only toggles.
 const undoJournalPanel = useUndoJournalPanelState()
+// PI2.3 (point-inspector-panel): the «Параметры точки» panel is AudioPage-hosted; this toggle
+// (PI-D7: user-controlled, decoupled from the selection) flips its shared open state.
+const pointInspectorPanel = usePointInspectorPanelState()
 
 // GT9.2 (owner req. 42, GT-D21): schedule-problems (lint) panel. Diagnostics are live from the
 // composable (re-linted on every edit). Clicking one navigates to the offending point.

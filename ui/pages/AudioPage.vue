@@ -151,6 +151,13 @@
         />
       </Teleport>
 
+      <!-- PI2.3 (point-inspector-panel): «Параметры точки» — the same dock-wrap. It talks to the
+           shared use-point-inspector singleton directly (nothing to plumb); its toolbar toggle
+           lives in the Треки tab header. Detach off in Phase 2 (PI-D2). -->
+      <Teleport to="body" :disabled="!pointInspectorFloating">
+        <PointInspectorDialog v-if="pointInspectorPanel.open" />
+      </Teleport>
+
       <!-- SS1.1 (SS-D1): «Параметры» — same wrap again. It needs nothing from this page: the panel
            talks to the global spectrogram Pinia store directly, so there is no state to plumb. -->
       <Teleport to="body" :disabled="!spectrumSettingsFloating">
@@ -295,6 +302,8 @@ import { useAudioStore } from '../stores/audio'
 import { useFileOpenPanelState } from '../stores/file-open-panel'
 import { useTracksListPanelState } from '../stores/track-list-panel'
 import TrackListDialog from '../components/TrackListDialog.vue'
+import { usePointInspectorPanelState } from '../stores/point-inspector-panel'
+import PointInspectorDialog from '../components/PointInspectorDialog.vue'
 import { useSpectrumSettingsPanelState } from '../stores/spectrum-settings-panel'
 import { useLaneSpectrumPanelState } from '../stores/lane-spectrum-panel'
 import SpectrumSettingsDialog from '../components/SpectrumSettingsDialog.vue'
@@ -411,6 +420,10 @@ const fsFloating = computed<boolean>(() => filePanel.mode === 'floating')
 // FULL editor height and persists across tabs (its toggle button lives in the Треки tab header).
 const tracksListPanel = useTracksListPanelState()
 const tracksListFloating = computed<boolean>(() => tracksListPanel.mode === 'floating')
+// PI2.3 (point-inspector-panel): «Параметры точки» joins the same dock-wrap (full editor height,
+// shared dock, survives tab switches — TracksPanel, where its toggle lives, is destroyed per switch).
+const pointInspectorPanel = usePointInspectorPanelState()
+const pointInspectorFloating = computed<boolean>(() => pointInspectorPanel.mode === 'floating')
 // SS1.1 (SS-D1): «Параметры» joins the same dock-wrap for the same reasons — full editor height,
 // one dock shared with the other two, and survival across tab switches (the q-tab-panels have no
 // keep-alive, so TracksPanel — where its toolbar button lives — is destroyed on every switch).
@@ -428,7 +441,8 @@ const dockWrapClass = computed<string>(() => {
     tracksListPanel.mode === 'top' || tracksListPanel.mode === 'bottom' ||
     spectrumSettingsPanel.mode === 'top' || spectrumSettingsPanel.mode === 'bottom' ||
     laneSpectrumPanel.mode === 'top' || laneSpectrumPanel.mode === 'bottom' ||
-    undoJournalPanel.mode === 'top' || undoJournalPanel.mode === 'bottom'
+    undoJournalPanel.mode === 'top' || undoJournalPanel.mode === 'bottom' ||
+    pointInspectorPanel.mode === 'top' || pointInspectorPanel.mode === 'bottom'
   return anyVertical ? 'audio-page__dock-wrap--col' : 'audio-page__dock-wrap--row'
 })
 
