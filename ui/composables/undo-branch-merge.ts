@@ -51,6 +51,14 @@ export interface BranchMergePlan {
 
 export type MergeChoice = 'ours' | 'theirs'
 
+/** The lanes' reconstructed plan — handed to the conflict dialog and back into apply (BM2.2).
+ *  oursSig pins the live state the plan was computed against (staleness guard). */
+export interface PlannedBranchMerge {
+  readonly tip: string
+  readonly plan: BranchMergePlan
+  readonly oursSig: string
+}
+
 /** M5 precondition: a graft-rooted branch has no fork parent — there is no base to merge from. */
 export const canMergeBranch = (aBranch: Pick<ProjectUndoLogBranch, 'forkParent'>): 'ok' | 'no-base' => {
   return aBranch.forkParent === null ? 'no-base' : 'ok'

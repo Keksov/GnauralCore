@@ -81,22 +81,28 @@
               <q-item-label caption>{{ branchSubtitle(item.group.branch) }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
-                <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
-                <q-popup-proxy>
-                  <q-banner dense class="undo-journal-panel__branch-confirm">
-                    {{ t('audio.undoBranchDeleteConfirm', { n: item.group.branch.exclusiveCommits }) }}
-                    <template #action>
-                      <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
-                      <q-btn
-                        v-close-popup dense flat no-caps color="negative"
-                        :label="t('audio.undoBranchDelete')"
-                        @click="deleteBranch(item.group.branch.tip)"
-                      />
-                    </template>
-                  </q-banner>
-                </q-popup-proxy>
-              </q-btn>
+              <div class="row no-wrap items-center">
+                <!-- BM2.2 (BM-D5): three-way merge of the branch into the current line. -->
+                <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.undoBranchMerge')" @click.stop="startBranchMerge(item.group.branch.tip)">
+                  <app-tooltip>{{ t('audio.undoBranchMerge') }}</app-tooltip>
+                </q-btn>
+                <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
+                  <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
+                  <q-popup-proxy>
+                    <q-banner dense class="undo-journal-panel__branch-confirm">
+                      {{ t('audio.undoBranchDeleteConfirm', { n: item.group.branch.exclusiveCommits }) }}
+                      <template #action>
+                        <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
+                        <q-btn
+                          v-close-popup dense flat no-caps color="negative"
+                          :label="t('audio.undoBranchDelete')"
+                          @click="deleteBranch(item.group.branch.tip)"
+                        />
+                      </template>
+                    </q-banner>
+                  </q-popup-proxy>
+                </q-btn>
+              </div>
             </q-item-section>
           </q-item>
           <template v-if="expandedBranchTip === item.group.branch.tip">
@@ -244,22 +250,28 @@
               <q-item-label caption>{{ branchSubtitle(group.branch) }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
-                <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
-                <q-popup-proxy>
-                  <q-banner dense class="undo-journal-panel__branch-confirm">
-                    {{ t('audio.undoBranchDeleteConfirm', { n: group.branch.exclusiveCommits }) }}
-                    <template #action>
-                      <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
-                      <q-btn
-                        v-close-popup dense flat no-caps color="negative"
-                        :label="t('audio.undoBranchDelete')"
-                        @click="deleteBranch(group.branch.tip)"
-                      />
-                    </template>
-                  </q-banner>
-                </q-popup-proxy>
-              </q-btn>
+              <div class="row no-wrap items-center">
+                <!-- BM2.2 (BM-D5): three-way merge of the branch into the current line. -->
+                <q-btn dense flat round size="sm" icon="call_merge" :aria-label="t('audio.undoBranchMerge')" @click.stop="startBranchMerge(group.branch.tip)">
+                  <app-tooltip>{{ t('audio.undoBranchMerge') }}</app-tooltip>
+                </q-btn>
+                <q-btn dense flat round size="sm" icon="delete_outline" :aria-label="t('audio.undoBranchDelete')" @click.stop>
+                  <app-tooltip>{{ t('audio.undoBranchDelete') }}</app-tooltip>
+                  <q-popup-proxy>
+                    <q-banner dense class="undo-journal-panel__branch-confirm">
+                      {{ t('audio.undoBranchDeleteConfirm', { n: group.branch.exclusiveCommits }) }}
+                      <template #action>
+                        <q-btn v-close-popup dense flat no-caps :label="t('audio.undoBranchDeleteCancel')" />
+                        <q-btn
+                          v-close-popup dense flat no-caps color="negative"
+                          :label="t('audio.undoBranchDelete')"
+                          @click="deleteBranch(group.branch.tip)"
+                        />
+                      </template>
+                    </q-banner>
+                  </q-popup-proxy>
+                </q-btn>
+              </div>
             </q-item-section>
           </q-item>
           <template v-if="expandedBranchTip === group.branch.tip">
@@ -305,6 +317,33 @@
         </template>
       </q-list>
     </q-expansion-item>
+    <!-- BM2.2 (req 4): merge-conflict resolution — «моя версия / из ветки» per conflict. -->
+    <q-dialog v-model="mergeDialogOpen">
+      <q-card class="undo-journal-panel__merge-dialog">
+        <q-card-section class="text-subtitle2">{{ t('audio.undoBranchMergeConflictsTitle') }}</q-card-section>
+        <q-separator />
+        <q-card-section class="undo-journal-panel__merge-list">
+          <div
+            v-for="c in pendingMerge?.plan.conflicts ?? []"
+            :key="mergeConflictKey(c)"
+            class="undo-journal-panel__merge-conflict"
+          >
+            <div class="text-weight-medium">{{ mergeConflictTitle(c) }}</div>
+            <q-option-group
+              v-model="mergeChoices[mergeConflictKey(c)]"
+              :options="conflictOptions(c)"
+              type="radio"
+              dense
+            />
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right">
+          <q-btn v-close-popup dense flat no-caps :label="t('audio.cancel')" @click="pendingMerge = null" />
+          <q-btn dense unelevated no-caps color="primary" :label="t('audio.undoBranchMergeApply')" @click="confirmMergeChoices" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
     <q-separator />
     <div class="undo-journal-panel__actions">
       <!-- UG3.2 (req 7/8): clearing forgets history only — the schedule state is untouched. -->
@@ -386,6 +425,7 @@ import AppTooltip from '@tooltip/AppTooltip.vue'
 import type { ProjectUndoLogBranch } from '@protocol'
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
 import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange } from '../composables/gtrack-model'
+import { mergeConflictKey, type MergeChoice, type MergeConflict, type PlannedBranchMerge } from '../composables/undo-branch-merge'
 
 const { t } = useI18n()
 const gtracks = useSharedGtrackLanes()
@@ -398,6 +438,7 @@ const KIND_ICONS: Record<string, string> = {
   'fix-preparse': 'build',
   'lint-fix': 'healing',
   'checkout': 'history',
+  'merge': 'call_merge',
   'snapshot': 'photo_camera',
   'meta': 'archive',
 }
@@ -748,6 +789,84 @@ function branchSubtitle(branch: ProjectUndoLogBranch): string {
   return t('audio.undoBranchSubtitle', { steps: branch.commits, snapshots: branch.snapshots })
 }
 
+// BM2.2 (BM-D5): the merge flow. Clean plans apply immediately; conflicts open the dialog with
+// «из ветки» preselected (the user just asked to merge the branch); apply is ONE kind='merge'
+// transaction — Ctrl-Z rolls the whole merge back, the branch stays in the list.
+const mergeDialogOpen = ref(false)
+const pendingMerge = ref<PlannedBranchMerge | null>(null)
+const mergeChoices = ref<Record<string, MergeChoice>>({})
+
+async function startBranchMerge(tip: string): Promise<void> {
+  const planned = await gtracks.planUndoBranchMergeFor(tip)
+  if (planned === 'no-base') {
+    Notify.create({ type: 'warning', message: t('audio.undoBranchMergeNoBase') })
+    return
+  }
+  if (planned === 'failed') {
+    Notify.create({ type: 'negative', message: t('audio.undoBranchMergeFailed') })
+    return
+  }
+  if (planned.plan.conflicts.length === 0) {
+    finishMerge(planned, new Map())
+    return
+  }
+  const defaults: Record<string, MergeChoice> = {}
+  for (const c of planned.plan.conflicts) defaults[mergeConflictKey(c)] = 'theirs'
+  mergeChoices.value = defaults
+  pendingMerge.value = planned
+  mergeDialogOpen.value = true
+}
+
+function confirmMergeChoices(): void {
+  const planned = pendingMerge.value
+  if (planned === null) return
+  mergeDialogOpen.value = false
+  finishMerge(planned, new Map(Object.entries(mergeChoices.value) as [string, MergeChoice][]))
+}
+
+function finishMerge(planned: PlannedBranchMerge, choices: ReadonlyMap<string, MergeChoice>): void {
+  const result = gtracks.applyUndoBranchMergeFor(planned, choices)
+  pendingMerge.value = null
+  if (result === 'stale') {
+    Notify.create({ type: 'warning', message: t('audio.undoBranchMergeStale') })
+  } else if (result === 'nothing') {
+    Notify.create({ type: 'info', message: t('audio.undoBranchMergeNothing') })
+  } else if (result === 'failed') {
+    Notify.create({ type: 'negative', message: t('audio.undoBranchMergeFailed') })
+  } else {
+    Notify.create({ type: 'positive', message: t('audio.undoBranchMerged', { n: result.applied }) })
+    if (planned.plan.lockedVoiceIds.length > 0) {
+      Notify.create({ type: 'warning', message: t('audio.undoBranchMergeLocked') })
+    }
+  }
+}
+
+function mergeVariantLabel(point: GTrackPoint | null): string {
+  if (point === null) return t('audio.undoBranchMergePointAbsent')
+  return `t ${fmt(point.timeSec)} · ${t('audio.undoField_baseFreq')} ${fmt(point.baseFreq)}`
+    + ` · ${t('audio.undoField_beatFreqHalf')} ${fmt(point.beatFreqHalf * 2)}`
+    + ` · L ${fmt(point.volL)} R ${fmt(point.volR)}`
+}
+
+function mergeConflictTitle(c: MergeConflict): string {
+  return c.kind === 'voice'
+    ? t('audio.undoBranchMergeVoiceConflict', { name: c.voiceName, ours: c.oursPoints.length, theirs: c.theirsPoints.length })
+    : t('audio.undoBranchMergePointConflict', { name: c.voiceName, time: fmt((c.ours ?? c.theirs ?? c.base)!.timeSec) })
+}
+
+function conflictOptions(c: MergeConflict): { label: string; value: MergeChoice }[] {
+  if (c.kind === 'voice') {
+    return [
+      { label: t('audio.undoBranchMergeMine'), value: 'ours' },
+      { label: t('audio.undoBranchMergeTheirs'), value: 'theirs' },
+    ]
+  }
+  return [
+    { label: `${t('audio.undoBranchMergeMine')}: ${mergeVariantLabel(c.ours)}`, value: 'ours' },
+    { label: `${t('audio.undoBranchMergeTheirs')}: ${mergeVariantLabel(c.theirs)}`, value: 'theirs' },
+  ]
+}
+
 async function deleteBranch(tip: string): Promise<void> {
   const outcome = await gtracks.deleteUndoBranch(tip)
   if (outcome === 'ok') {
@@ -893,6 +1012,23 @@ function clearBeforeSelection(): void {
 
 .undo-journal-panel__branch-confirm {
   max-width: 300px;
+}
+
+/* BM2.2: the merge-conflict dialog. */
+.undo-journal-panel__merge-dialog {
+  min-width: 380px;
+  max-width: 560px;
+}
+
+.undo-journal-panel__merge-list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.undo-journal-panel__merge-conflict + .undo-journal-panel__merge-conflict {
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 .undo-journal-panel__tag-menu {

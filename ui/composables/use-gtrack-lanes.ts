@@ -30,6 +30,7 @@ import {
   writeProjectSectionFor,
 } from './use-project'
 import { commitToStep, planUndoLogAdoption, snapshotSig, stepToCommitInput } from './undo-log-adoption'
+import { canMergeBranch, planBranchMerge, resolveBranchMerge, type MergeChoice, type PlannedBranchMerge } from './undo-branch-merge'
 
 /** VL5.1 (undo-versioned-log): a pre-window history row for the panel — a commit older than the
  *  in-memory undo window, living only in the log. Delta rows carry the mapped step (tooltips). */
@@ -946,14 +947,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
   }
 
-  /** Reconstruct the state of `cid` (snapshot anchor + redo) and apply it as a checkout edit. */
-  async function checkoutUndoCommit(cid: string): Promise<'ok' | 'no-snapshot' | 'mismatch' | 'failed'> {
-    const key = filePath.value
-    const live = model.value
-    if (key === null || live === null || !undoLogReady || live.inTransaction) return 'failed'
-
+  /** BM2.2: rebuild the schedule state AT a log commit (snapshot anchor + redo of the deltas
+   *  above it) — the shared reconstruction behind checkout (VL5.1) and merge (BM-D5). */
+  async function reconstructLogStateAt(key: string, cid: string): Promise<GTrackModel | 'no-snapshot' | 'failed'> {
     const chain = await readProjectUndoLogChainFor(key, { from: cid, untilType: 'snapshot', limit: 300 })
-    if (chain === null || key !== filePath.value || live !== model.value) return 'failed'
+    if (chain === null || key !== filePath.value) return 'failed'
     const anchor = chain.commits[chain.commits.length - 1]
     const anchorSig = anchor === undefined ? null : snapshotSig(anchor)
     if (anchor === undefined || anchorSig === null) return 'no-snapshot'
@@ -983,6 +981,23 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         if (!temp.redo()) return 'failed'
       }
     }
+    return temp
+  }
+
+  /** Id-free content projection — live and reconstructed states may differ only in point ids. */
+  function pointsContent(points: readonly GTrackPoint[]): string {
+    return JSON.stringify(points.map((p) => [p.timeSec, p.baseFreq, p.beatFreqHalf, p.volL, p.volR]))
+  }
+
+  /** Reconstruct the state of `cid` (snapshot anchor + redo) and apply it as a checkout edit. */
+  async function checkoutUndoCommit(cid: string): Promise<'ok' | 'no-snapshot' | 'mismatch' | 'failed'> {
+    const key = filePath.value
+    const live = model.value
+    if (key === null || live === null || !undoLogReady || live.inTransaction) return 'failed'
+
+    const temp = await reconstructLogStateAt(key, cid)
+    if (key !== filePath.value || live !== model.value) return 'failed'
+    if (temp === 'no-snapshot' || temp === 'failed') return temp
 
     // Voice-composition gate (UC-D6: voices are never added/removed by edits) + preparse locks.
     const targetVoices = new Map(temp.schedule.voices.map((v) => [v.id, v]))
@@ -991,7 +1006,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     for (const liveVoice of live.schedule.voices) {
       const targetVoice = targetVoices.get(liveVoice.id)
       if (targetVoice === undefined) return 'mismatch'
-      if (JSON.stringify(liveVoice.points) !== JSON.stringify(targetVoice.points)) {
+      if (pointsContent(liveVoice.points) !== pointsContent(targetVoice.points)) {
         if (!live.isVoiceEditable(liveVoice.id)) return 'mismatch'
         changed.push({ id: liveVoice.id, points: [...targetVoice.points] })
       }
@@ -1004,6 +1019,56 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     syncSchedule()
     refreshEditState() // the normal diff queues the checkout delta into the log
     return 'ok'
+  }
+
+  /** BM2.2 (BM-D5/M5): reconstruct base (fork parent) + theirs (branch tip) and compute the pure
+   *  three-way plan. The caller shows the conflict dialog when plan.conflicts is non-empty. */
+  async function planUndoBranchMergeFor(tip: string): Promise<PlannedBranchMerge | 'no-base' | 'failed'> {
+    const key = filePath.value
+    const live = model.value
+    if (key === null || live === null || !undoLogReady || live.inTransaction) return 'failed'
+    const branch = undoBranches.value.find((b) => b.tip === tip)
+    if (branch === undefined) return 'failed'
+    if (canMergeBranch(branch) === 'no-base') return 'no-base'
+
+    const baseState = await reconstructLogStateAt(key, branch.forkParent!)
+    if (key !== filePath.value || live !== model.value) return 'failed'
+    if (baseState === 'no-snapshot') return 'no-base' // M5: no anchor below the fork
+    if (baseState === 'failed') return 'failed'
+    const theirsState = await reconstructLogStateAt(key, tip)
+    if (key !== filePath.value || live !== model.value) return 'failed'
+    if (theirsState === 'no-snapshot') return 'no-base'
+    if (theirsState === 'failed') return 'failed'
+
+    return {
+      tip,
+      plan: planBranchMerge(baseState.schedule, live.schedule, theirsState.schedule),
+      oursSig: live.currentSignature,
+    }
+  }
+
+  /** BM2.2 (M3): apply the resolved merge as ONE kind='merge' transaction — undoable by Ctrl-Z,
+   *  the branch itself stays untouched (append-only log). */
+  function applyUndoBranchMergeFor(
+    planned: PlannedBranchMerge,
+    choices: ReadonlyMap<string, MergeChoice>,
+  ): { applied: number } | 'stale' | 'nothing' | 'failed' {
+    const live = model.value
+    if (live === null || live.inTransaction) return 'failed'
+    if (live.currentSignature !== planned.oursSig) return 'stale'
+    const resolved = resolveBranchMerge(live.schedule, planned.plan, choices)
+    if (resolved.length === 0) return 'nothing'
+    try {
+      live.edit(() => {
+        for (const v of resolved) live.replaceVoicePoints(v.voiceId, v.points)
+      }, 'merge')
+    } catch (error) {
+      console.warn('[undo-log] branch merge failed:', error instanceof Error ? error.message : error)
+      return 'failed'
+    }
+    syncSchedule()
+    refreshEditState() // the normal diff queues the merge commit into the log
+    return { applied: resolved.length }
   }
 
   /** VL-D9: tags are named refs; a tagged commit (and its chain) survives GC. */
@@ -2042,6 +2107,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     loadUndoBranches,
     loadUndoBranchSteps,
     deleteUndoBranch,
+    planUndoBranchMergeFor,
+    applyUndoBranchMergeFor,
     pointDragMode,
     setPointDragMode,
     baseScaleMode,
