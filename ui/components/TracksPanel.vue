@@ -1242,12 +1242,10 @@ function fixDiagnostic(d: GTrackDiagnostic): void {
 // only the inspector members the window key handlers + open wrappers still touch.
 const {
   inspectorMode,
-  altBigStep,
   setTarget,
   closeInspector,
   undoWithFocus,
   redoWithFocus,
-  applyFieldBigStep,
 } = usePointInspector()
 
 // GT3.7: a generated (preparse) voice is locked — offer to fix it instead of opening the editor (its
@@ -2484,7 +2482,6 @@ function isHotkeyLetter(event: KeyboardEvent, letter: string): boolean {
 }
 
 function handleTracksKeyDown(event: KeyboardEvent): void {
-  altBigStep.value = event.altKey // GT10.22: keep the spinner big-step in sync with the Alt key
   // GT3.9: Escape closes the voice panel first, then the settings overlay.
   if (event.key === 'Escape' && tracksListPanel.open) {
     event.preventDefault()
@@ -2526,18 +2523,8 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
     redoWithFocus()
     return
   }
-  // GT10.22 (owner req. 71, owner 2026-07-12): Alt+Arrow = big step (±1) on a focused numeric field.
-  // BEFORE the typing guard (focus is inside the input) — the window keydown reliably carries the
-  // modifier, unlike the QInput @keydown / a wrapper capture listener, which didn't fire the step.
-  // (Alt+click on the native spinner is handled separately via the altBigStep `step` toggle.)
-  if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-    const fieldEl = (document.activeElement as HTMLElement | null)?.closest('[data-step-field]') as HTMLElement | null
-    if (fieldEl !== null) {
-      event.preventDefault()
-      applyFieldBigStep(fieldEl, event.key === 'ArrowUp' ? 1 : -1)
-      return
-    }
-  }
+  // GT10.22: Alt+Arrow big-step now lives in PointInspectorView (its own window listener) so it works
+  // in the detached child too (PI3.2); the host no longer handles inspector-field steps.
 
   if (shouldIgnoreHotkey(event)) {
     return
@@ -2611,22 +2598,13 @@ watch(anyOverlayOpen, (open) => {
   }
 })
 
-// GT10.22: track the Alt key so the spinner big-step (`fieldStep`) follows it; reset on blur so a
-// missed keyup (e.g. Alt+Tab away) can't leave the fields stuck on step 1.
-function syncAltBigStep(event: KeyboardEvent): void { altBigStep.value = event.altKey }
-function clearAltBigStep(): void { altBigStep.value = false }
-
 onMounted(() => {
   window.addEventListener('keydown', handleTracksKeyDown)
-  window.addEventListener('keyup', syncAltBigStep)
-  window.addEventListener('blur', clearAltBigStep)
   void openMetaAnalysis(audio.displayFilePath)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleTracksKeyDown)
-  window.removeEventListener('keyup', syncAltBigStep)
-  window.removeEventListener('blur', clearAltBigStep)
   window.removeEventListener('resize', measureOverlayFrame)
   window.removeEventListener('scroll', measureOverlayFrame, true)
   if (newLaneTimer !== null) clearTimeout(newLaneTimer)

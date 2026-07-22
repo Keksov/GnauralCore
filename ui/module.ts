@@ -54,5 +54,15 @@ export const gnauralModule = {
       component: () => import('./components/LaneSpectrumSettingsRemote.vue'),
       events: ['action'],
     },
+    // PI3.2 (point-inspector-panel): «Параметры точки» detached content is the remote adapter — it
+    // renders the parent-pushed snapshot and bridges each gesture back as one serializable 'action'
+    // (no child-side gtracks/composable, PW-D11). PointInspectorDialog applies it to the singletons.
+    {
+      id: 'point-inspector',
+      titleKey: 'audio.gtrackPointDialog',
+      icon: 'tune',
+      component: () => import('./components/PointInspectorRemote.vue'),
+      events: ['action'],
+    },
   ],
 } as const

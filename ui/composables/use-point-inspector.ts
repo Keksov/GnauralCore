@@ -14,6 +14,7 @@
 import { computed, effectScope, reactive, ref, watch } from 'vue'
 import { useSharedGtrackLanes, type GTrackPointRef } from './use-gtrack-lanes'
 import { ctrlStepValue } from './gtrack-render'
+import type { PointFormValues, PointRowValues } from './point-inspector-model'
 
 export interface PointInspectorTarget {
   laneId: number
@@ -369,6 +370,38 @@ function buildPointInspector() {
     )
   }
 
+  // PI3.2 (point-inspector-panel): value-taking commit methods invoked by applyPointInspectorAction —
+  // the same authoritative applier used by the in-window adapter and the detached-window parent. The
+  // view holds the input buffer now; these take explicit committed values (beat = full, GT-D6).
+  function toValuePatch(v: { baseFreq: number; beatFreq: number; volL: number; volR: number }) {
+    return {
+      baseFreq: Math.max(0, Number(v.baseFreq) || 0),
+      beatFreqHalf: Math.max(0, Number(v.beatFreq) || 0) / 2,
+      volL: Math.max(0, Math.min(1, Number(v.volL) || 0)),
+      volR: Math.max(0, Math.min(1, Number(v.volR) || 0)),
+    }
+  }
+  function commitForm(values: PointFormValues): void {
+    const tgt = pointDialogTarget.value
+    if (tgt === null) return
+    gtracks.applyPointEdit(
+      { voiceId: tgt.voiceId, pointIndex: tgt.pointIndex },
+      { timeSec: Math.max(0, Number(values.timeSec) || 0), ...toValuePatch(values) },
+    )
+  }
+  function setAutosave(on: boolean): void {
+    gtracks.setPointAutosave(on)
+  }
+  function commitRow(voiceId: number, pointIndex: number, values: PointRowValues): void {
+    gtracks.setPointValues({ voiceId, pointIndex }, toValuePatch(values))
+  }
+  function commitAllRows(rowsIn: readonly { readonly voiceId: number; readonly pointIndex: number; readonly values: PointRowValues }[]): void {
+    gtracks.setMultiplePointValues(rowsIn.map((r) => ({ ref: { voiceId: r.voiceId, pointIndex: r.pointIndex }, patch: toValuePatch(r.values) })))
+  }
+  function removeChecked(refs: readonly { readonly voiceId: number; readonly pointIndex: number }[]): void {
+    gtracks.removePointsBulk(refs.map((r) => ({ voiceId: r.voiceId, pointIndex: r.pointIndex })))
+  }
+
   return {
     // state
     pointDialogTarget,
@@ -406,6 +439,12 @@ function buildPointInspector() {
     // shared keyboard big-step
     fieldStep,
     applyFieldBigStep,
+    // PI3.2: value-taking commit methods for the remote-control applier
+    commitForm,
+    setAutosave,
+    commitRow,
+    commitAllRows,
+    removeChecked,
   }
 }
 
