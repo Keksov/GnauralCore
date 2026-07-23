@@ -15,6 +15,7 @@
 // top-level object reference, so a shallowRef can track it).
 
 import type { GnauralScheduleData, GnauralScheduleEntry, GnauralScheduleVoice } from '@protocol'
+import { perfLogVerbose, perfNow, scheduleSize } from './perf-log'
 
 /** A single editable vertex-point of a voice's schedule curve. */
 export interface GTrackPoint {
@@ -233,8 +234,9 @@ export function pointBalance(p: GTrackPoint): number {
 /** BM-D3 (id-invariance): signatures are computed over an id-less projection whose JSON is
  *  byte-identical to the pre-id serialization — existing snapshot anchors and file-derived
  *  signatures keep converging. The explicit 5-field rebuild also pins the key order. */
-function signature(schedule: GTrackSchedule): string {
-  return JSON.stringify({
+function signature(schedule: GTrackSchedule, tag = 'signature'): string {
+  const start = perfNow()
+  const result = JSON.stringify({
     ...schedule,
     voices: schedule.voices.map((v) => ({
       ...v,
@@ -247,6 +249,8 @@ function signature(schedule: GTrackSchedule): string {
       })),
     })),
   })
+  perfLogVerbose(`signature[${tag}]`, start, scheduleSize(schedule))
+  return result
 }
 
 /** UC-D1/UC-D2 (undo-command-log): one undo STEP = the changed-voice deltas of a transaction. The
@@ -376,7 +380,7 @@ function applyPointsDeltaSide(points: readonly GTrackPoint[], deltas: readonly G
 /** UG2.1: signature of raw dump content as the editor would model it — directly comparable with a
  *  model's savedSignature/currentSignature (the same scheduleToEditable path). */
 export function scheduleContentSignature(data: GnauralScheduleData, preparseIds: Iterable<number>): string {
-  return signature(scheduleToEditable(data, new Set(preparseIds)))
+  return signature(scheduleToEditable(data, new Set(preparseIds)), 'scheduleContentSignature')
 }
 
 /** UG3.2b (undo-global-journal, req 12): a human-oriented diff of one step — WHICH points changed
@@ -564,7 +568,7 @@ export class GTrackModel {
 
   public constructor(data: GnauralScheduleData, preparseVoiceIds?: Iterable<number>, history?: GTrackHistory) {
     this.current = scheduleToEditable(data, new Set(preparseVoiceIds ?? []))
-    this.savedSig = signature(this.current)
+    this.savedSig = signature(this.current, 'ctor')
     this.history = history ?? createGTrackHistory()
     // A carried-over container is trusted (same file, same session); only the cursor is clamped.
     this.history.cursor = Math.max(0, Math.min(this.history.cursor, this.history.steps.length))
@@ -606,7 +610,7 @@ export class GTrackModel {
 
   /** UG2.1: signature of the current (possibly edited) state. */
   public get currentSignature(): string {
-    return signature(this.current)
+    return signature(this.current, 'currentSignature')
   }
 
   public get inTransaction(): boolean {
@@ -614,7 +618,7 @@ export class GTrackModel {
   }
 
   private recomputeDirty(): void {
-    this.dirtyFlag = signature(this.current) !== this.savedSig
+    this.dirtyFlag = signature(this.current, 'recomputeDirty') !== this.savedSig
   }
 
   private findVoice(voiceId: number): GTrackVoice {
@@ -652,9 +656,13 @@ export class GTrackModel {
    *  the kind declared at beginEdit, a label from the changed voices' names, and a timestamp. */
   public commitEdit(): void {
     if (this.txnBefore === null) throw new Error('gtrack: no open transaction')
+    const perfStart = perfNow()
     const before = this.txnBefore
     this.txnBefore = null
-    if (signature(before) === signature(this.current)) return
+    if (signature(before, 'commitEdit:before') === signature(this.current, 'commitEdit:after')) {
+      perfLogVerbose(`commitEdit[${this.txnKind}] (no-op)`, perfStart, scheduleSize(this.current))
+      return
+    }
     const afterById = new Map(this.current.voices.map((v) => [v.id, v]))
     const deltas: GTrackStepVoiceDelta[] = []
     for (const bv of before.voices) {
@@ -672,7 +680,10 @@ export class GTrackModel {
         if (points.length > 0) deltas.push({ voiceId: bv.id, description: av.description, points })
       }
     }
-    if (deltas.length === 0) return // signatures differed only in schedule metadata? nothing per-voice
+    if (deltas.length === 0) {
+      perfLogVerbose(`commitEdit[${this.txnKind}] (metadata-only, no delta)`, perfStart, scheduleSize(this.current))
+      return // signatures differed only in schedule metadata? nothing per-voice
+    }
     const atMs = Date.now()
     this.history.steps.length = this.history.cursor // drop the redo tail
     // UG3.2c: if the saved state's position was inside the dropped tail, it left the log.
@@ -691,6 +702,7 @@ export class GTrackModel {
     })
     this.history.cursor = this.history.steps.length
     this.recomputeDirty()
+    perfLogVerbose(`commitEdit[${this.txnKind}]`, perfStart, { ...scheduleSize(this.current), deltaVoices: deltas.length })
   }
 
   /** Abort the open transaction, restoring the pre-transaction state. */
@@ -979,6 +991,7 @@ export class GTrackModel {
    *  steps (before the cursor) and `maxEntries` redo steps (after it); the exported cursor is the
    *  number of kept undo steps. */
   public exportUndoJournal(maxEntries = 50): GTrackUndoJournal {
+    const perfStart = perfNow()
     const undoKeep = Math.min(this.history.cursor, maxEntries)
     const redoKeep = Math.min(this.history.steps.length - this.history.cursor, maxEntries)
     const start = this.history.cursor - undoKeep
@@ -986,13 +999,15 @@ export class GTrackModel {
     // restart can adopt through the saved file even if this session ends with unsaved edits.
     const baseCursor = this.savedCursor - start
     const baseInWindow = this.savedCursor >= 0 && baseCursor >= 0 && baseCursor <= undoKeep + redoKeep
-    return {
+    const journal: GTrackUndoJournal = {
       version: 3,
-      currentSig: signature(this.current),
+      currentSig: signature(this.current, 'exportUndoJournal'),
       ...(baseInWindow ? { baseSig: this.savedSig, baseCursor } : {}),
       cursor: undoKeep,
       steps: this.history.steps.slice(start, this.history.cursor + redoKeep),
     }
+    perfLogVerbose('exportUndoJournal', perfStart, { steps: journal.steps.length })
+    return journal
   }
 
   /** Adopt a persisted journal — only a v3 journal (UC-D5/UG-D3: v1 snapshot and v2 metadata-less
@@ -1006,7 +1021,7 @@ export class GTrackModel {
       console.warn(`[undo-diag] adopt refused: journal version ${journal.version} (want 3; older journals are discarded per UG-D3)`)
       return false
     }
-    const sig = signature(this.current)
+    const sig = signature(this.current, 'adoptUndoJournal')
     if (journal.currentSig === sig) {
       this.history.steps.length = 0
       this.history.steps.push(...journal.steps.map(normalizeStepPointIds))
@@ -1042,7 +1057,7 @@ export class GTrackModel {
 
   /** Mark the current state as the saved baseline (clears the dirty flag). */
   public markSaved(): void {
-    this.savedSig = signature(this.current)
+    this.savedSig = signature(this.current, 'markSaved')
     this.savedCursor = this.history.cursor // UG3.2c: the saved state now lives at this position
     this.dirtyFlag = false
   }
@@ -1055,7 +1070,10 @@ export class GTrackModel {
   /** BM-D2: the snapshot-payload serialization — same shape plus the optional point-id fields, so
    *  an adoption from this snapshot continues the SAME point identities across a restart. */
   public toScheduleWithIds(): GnauralScheduleData {
-    return editableToSchedule(this.current, true)
+    const perfStart = perfNow()
+    const result = editableToSchedule(this.current, true)
+    perfLogVerbose('toScheduleWithIds', perfStart, scheduleSize(this.current))
+    return result
   }
 
   /** BM-D2/BM1.3: positionally copy point ids from a previous model's schedule after a rebuild
@@ -1064,6 +1082,7 @@ export class GTrackModel {
    *  Pure bookkeeping — ids are signature-invisible. */
   public adoptPointIdsFrom(previous: GTrackSchedule): void {
     if (this.txnBefore !== null) return
+    const perfStart = perfNow()
     const prevById = new Map(previous.voices.map((v) => [v.id, v]))
     this.current = {
       ...this.current,
@@ -1080,6 +1099,7 @@ export class GTrackModel {
         return changed ? { ...v, points } : v
       }),
     }
+    perfLogVerbose('adoptPointIdsFrom', perfStart, scheduleSize(this.current))
   }
 
   /** BM-D2/BM1.3: adopt the point ids carried by an id-annotated reference schedule (the adoption
@@ -1089,8 +1109,12 @@ export class GTrackModel {
    *  change. Returns false when the reference does not match or carries no ids. */
   public rebasePointIds(reference: GnauralScheduleData): boolean {
     if (this.txnBefore !== null) return false
+    const perfStart = perfNow()
     const preparseIds = this.current.voices.filter((v) => v.preparse).map((v) => v.id)
-    if (scheduleContentSignature(reference, preparseIds) !== signature(this.current)) return false
+    if (scheduleContentSignature(reference, preparseIds) !== signature(this.current, 'rebasePointIds')) {
+      perfLogVerbose('rebasePointIds (sig mismatch)', perfStart, scheduleSize(this.current))
+      return false
+    }
 
     const refById = new Map(reference.voices.map((v) => [v.id, v]))
     let rebased = false
@@ -1114,6 +1138,7 @@ export class GTrackModel {
     if (rebased) {
       this.current = { ...this.current, voices }
     }
+    perfLogVerbose('rebasePointIds', perfStart, { ...scheduleSize(this.current), rebased: String(rebased) })
     return true
   }
 }

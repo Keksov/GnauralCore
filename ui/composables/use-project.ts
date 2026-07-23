@@ -129,14 +129,11 @@ async function sendUndoLogBatch(projectId: string): Promise<void> {
   await flight
 }
 
-/** Awaitable drain of the pending batch — the mid-history save snapshot must not race the
- *  deltas it chains onto (VL5.2 round 2). */
-export async function flushProjectUndoLogFor(path: string): Promise<void> {
-  const project = await getProjectForPath(path)
-  if (project === null) {
-    return
-  }
-  const state = pendingUndoLog.get(project.id)
+/** Awaitable drain of the pending commits batch, by id — shared by flushProjectUndoLogFor (the
+ *  mid-history save path, VL5.2 round 2) and the refs queue below (undo-log-perf investigation
+ *  2026-07-22 round 3: the refs PUT must not race the commits POST it points at). */
+async function flushPendingUndoLogCommits(projectId: string): Promise<void> {
+  const state = pendingUndoLog.get(projectId)
   if (state === undefined) {
     return
   }
@@ -147,7 +144,17 @@ export async function flushProjectUndoLogFor(path: string): Promise<void> {
   if (state.inFlightPromise !== null) {
     await state.inFlightPromise.catch(() => undefined)
   }
-  await sendUndoLogBatch(project.id)
+  await sendUndoLogBatch(projectId)
+}
+
+/** Awaitable drain of the pending batch — the mid-history save snapshot must not race the
+ *  deltas it chains onto (VL5.2 round 2). */
+export async function flushProjectUndoLogFor(path: string): Promise<void> {
+  const project = await getProjectForPath(path)
+  if (project === null) {
+    return
+  }
+  await flushPendingUndoLogCommits(project.id)
 }
 
 function scheduleUndoLogSend(projectId: string): void {
@@ -224,9 +231,20 @@ export function queueProjectUndoLogRefsFor(path: string, patch: UndoLogRefsPatch
       patch: merged,
       timer: setTimeout(() => {
         pendingUndoLogRefs.delete(project.id)
-        void projectApi.putUndoLogRefs({ id: project.id, ...merged }).catch((error: unknown) => {
-          console.warn('[use-project] putUndoLogRefs failed:', error instanceof Error ? error.message : error)
-        })
+        void (async () => {
+          // undo-log-perf investigation (2026-07-22 round 3, owner report — rapid edits during the
+          // slowdown repro): this timer and the commits batch's own timer are separate debounces
+          // reset by the same edit stream, so they fire within the same tick of each other — head
+          // could name a cid the commits POST hadn't landed yet, and the server correctly 404'd it
+          // ("Unknown commit"), confirmed live. Draining the commits queue first guarantees the cid
+          // this patch points at is already persisted before the PUT goes out.
+          await flushPendingUndoLogCommits(project.id)
+          try {
+            await projectApi.putUndoLogRefs({ id: project.id, ...merged })
+          } catch (error) {
+            console.warn('[use-project] putUndoLogRefs failed:', error instanceof Error ? error.message : error)
+          }
+        })()
       }, UNDO_PUT_DEBOUNCE_MS),
     })
   })

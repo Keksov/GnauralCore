@@ -3,7 +3,7 @@
 // mode). Config (which voices, which mode, order, hidden) persists per file. Kept in a composable
 // so AudioPage only renders + delegates.
 
-import { computed, effectScope, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, effectScope, nextTick, ref, shallowRef, watch, type Ref } from 'vue'
 
 import type { GnauralScheduleData, ProjectUndoLogBranch, ProjectUndoLogCommit, ProjectUndoLogCommitInput, ProjectUndoLogGcPolicy } from '@protocol'
 
@@ -31,6 +31,7 @@ import {
 } from './use-project'
 import { commitToStep, planUndoLogAdoption, snapshotSig, stepToCommitInput } from './undo-log-adoption'
 import { canMergeBranch, planBranchMerge, resolveBranchMerge, type MergeChoice, type PlannedBranchMerge } from './undo-branch-merge'
+import { perfLog, perfLogVerbose, perfNow, scheduleSize, visibilityInfo } from './perf-log'
 
 /** VL5.1 (undo-versioned-log): a pre-window history row for the panel — a commit older than the
  *  in-memory undo window, living only in the log. Delta rows carry the mapped step (tooltips). */
@@ -266,9 +267,17 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const loopCount = computed(() => Math.max(1, Math.floor(schedule.value?.loopCount ?? 1)))
   const fullDurationSec = computed(() => durationSec.value * loopCount.value)
   // GT9.1/GT9.2 (owner req. 42): live schedule lint — re-runs on every edit (scheduleRef changes).
-  const diagnostics = computed<GTrackDiagnostic[]>(() =>
-    scheduleRef.value === null ? [] : lintSchedule(scheduleRef.value),
-  )
+  // undo-log perf investigation (2026-07-22): <TracksPanel> patch grows unboundedly across a long
+  // edit session while render/points/voices stay flat — this computed's output is rendered directly
+  // inline in TracksPanel's own template (badge count + v-for), so an unbounded diagnostics COUNT
+  // (not lintSchedule's own cost, which is O(points) and should stay flat) is the leading suspect.
+  const diagnostics = computed<GTrackDiagnostic[]>(() => {
+    if (scheduleRef.value === null) return []
+    const perfStart = perfNow()
+    const result = lintSchedule(scheduleRef.value)
+    perfLog('lintSchedule', perfStart, { ...scheduleSize(scheduleRef.value), diagnostics: result.length })
+    return result
+  })
 
   // GT3.1/3.2: point-edit mode + selection (ephemeral). Declared before the immediate schedule
   // watch (which clears the selection) to avoid a temporal-dead-zone reference.
@@ -289,18 +298,40 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const hiddenLanes = computed<ResolvedGTrackLane[]>(() =>
     lanes.value.filter((lane) => lane.hidden || lane.modes.length === 0).map((lane) => resolveLane(lane)),
   )
+  // undo-log perf investigation (2026-07-22): resolveLane reads voiceById (-> voices.value, a fresh
+  // reference on EVERY edit via syncSchedule), so visibleLanes/hiddenLanes silently depended on the
+  // schedule too — every single point edit rebuilt fresh ResolvedGTrackLane objects for ALL lanes,
+  // not just the one containing the edited voice. Confirmed live: <TracksPanel> patch cost ~500-770ms
+  // per edit with no named sub-measure (the cost was TracksPanel's OWN re-render of every lane, not
+  // delegated to a child). lane objects and an UNTOUCHED voice's reference both stay stable across an
+  // edit (commitEdit only replaces the specific voice(s) that changed — structural sharing), so a
+  // lane whose own config and resolved voice list are unchanged can reuse its previous result wholesale.
+  const laneCache = new Map<number, {
+    readonly lane: GTrackLane
+    readonly voiceRefs: readonly (GTrackVoice | undefined)[]
+    readonly laneHeight: number
+    readonly resolved: ResolvedGTrackLane
+  }>()
   function resolveLane(lane: GTrackLane): ResolvedGTrackLane {
+    const voiceRefs = lane.voiceIds.map(voiceById)
+    const cached = laneCache.get(lane.id)
+    if (
+      cached !== undefined && cached.lane === lane && cached.laneHeight === laneHeight.value
+      && cached.voiceRefs.length === voiceRefs.length && cached.voiceRefs.every((v, i) => v === voiceRefs[i])
+    ) {
+      return cached.resolved
+    }
     // Canonical GTRACK_MODES order — the stack renders top-to-bottom in this order regardless of
     // the order the checkboxes were ticked in.
     const modes = GTRACK_MODES.filter((m) => lane.modes.includes(m))
     const modeHeights: Partial<Record<GTrackMode, number>> = {}
     for (const m of modes) modeHeights[m] = clampHeight(lane.modeHeights?.[m] ?? lane.curveHeight ?? laneHeight.value)
-    return {
+    const resolved: ResolvedGTrackLane = {
       id: lane.id,
       modes,
       modeHeights,
       voiceIds: lane.voiceIds,
-      voices: lane.voiceIds.map(voiceById).filter((v): v is GTrackVoice => v !== undefined),
+      voices: voiceRefs.filter((v): v is GTrackVoice => v !== undefined),
       soloMode: lane.soloMode ?? 'off',
       soloInline: lane.soloInline ?? false,
       // amber default — distinct from the voice-curve palette so the wave stays visible (req 48)
@@ -316,6 +347,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       soloWaveHeight: clampHeight(lane.soloWaveHeight ?? Math.round(laneHeight.value * 0.7)),
       soloSpectrumHeight: clampHeight(lane.soloSpectrumHeight ?? Math.round(laneHeight.value * 0.9)),
     }
+    laneCache.set(lane.id, { lane, voiceRefs, laneHeight: laneHeight.value, resolved })
+    return resolved
   }
 
   // --- persistence ---
@@ -521,7 +554,19 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       // VL5.2 fix: adopt from MAIN, not head — main moves atomically with every append, while
       // head is a debounced ref that can lag (races its own append; a save snapshot is a CHILD
       // of the last delta, so a stale head's ancestor walk missed it → «журнал пуст»).
-      readProjectUndoLogChainFor(key, { from: 'main', limit: 300 }),
+      // undo-log-perf investigation (2026-07-22, owner report — ForestMeditation lost its journal
+      // on reopen): a hardcoded limit:300 silently capped this to the newest 300 commits.
+      // planUndoLogAdoption needs whichever snapshot's sig matches the freshly-loaded (possibly
+      // never re-saved) file — for a from-scratch project that is the bootstrap ROOT snapshot,
+      // commit #1, parent null. Past 300 commits that root falls outside the window and no match
+      // is found (confirmed live: 531 commits on disk, all intact). First tried untilType:
+      // 'snapshot' instead — wrong fix: that stops at the NEAREST snapshot walking back from main
+      // (here, 4 commits from the tip), not the one that actually matches; since the file is
+      // never re-saved, the only candidate is the root at the FAR end, so the fetch must walk the
+      // whole chain, not stop at the first snapshot it meets. No limit: the log is already
+      // GC-bounded by the owner's own undo-journal settings (VL-D6), so this is bounded by
+      // whatever they've configured, not an arbitrary guess.
+      readProjectUndoLogChainFor(key, { from: 'main' }),
     ])
     if (reqId !== projectRestoreReqId || key !== filePath.value) return
 
@@ -587,7 +632,24 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
           }
           refreshEditState(false)
         } else if (plan === null) {
-          console.warn('[undo-diag] undo-log adoption refused: no snapshot matches the loaded file (external edit?) — the log itself is intact')
+          // undo-log-perf investigation (2026-07-22): the limit:300 fix needs live confirmation it
+          // actually found the right anchor this time — print what got fetched and how close each
+          // candidate snapshot's sig came, instead of guessing from a second silent refusal.
+          const sig = m.currentSignature
+          const snapshots = undoChain.commits.filter((c) => c.type === 'snapshot')
+          const detail = snapshots
+            .map((c) => {
+              const s = snapshotSig(c) ?? ''
+              let i = 0
+              while (i < s.length && i < sig.length && s[i] === sig[i]) i += 1
+              return `${c.cid}(seq=${c.seq},len=${s.length},diffAt=${i})`
+            })
+            .join(', ')
+          console.warn(
+            '[undo-diag] undo-log adoption refused: no snapshot matches the loaded file (external edit?) — the log itself is intact '
+            + `(fetched ${undoChain.commits.length} commits, hasMore=${undoChain.hasMore}, currentSig len=${sig.length}, `
+            + `snapshots checked: ${detail === '' ? 'none' : detail})`,
+          )
         }
       }
       undoLogReady = ready
@@ -643,6 +705,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // as the undo-journal persist hook. The model rebuild (and journal adoption itself) pass false —
   // persisting there would overwrite the stored journal with an empty baseline before it is adopted.
   function refreshEditState(persistJournal = true): void {
+    const perfStart = perfNow()
     const m = model.value
     const prevSteps = undoSteps.value
     dirty.value = m?.isDirty ?? false
@@ -650,11 +713,18 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     canRedo.value = m?.canRedo ?? false
     undoSteps.value = m === null ? [] : [...m.historySteps] // UG3.1: new ref -> panel re-renders
     undoCursor.value = m?.historyCursor ?? 0
+    const journalStart = perfNow()
     refreshPersistedIds(computePersistedJournal()) // UG4.1b: keep the doomed marking fresh
+    perfLogVerbose('refreshEditState:computePersistedJournal', journalStart)
     // VL4.2: the hook that used to write the whole v3 journal now diffs the history against the
     // synced position map and queues the increment. The persistJournal=false paths (rebuild,
     // adoption) set the map themselves — a diff there would mis-parent the chain.
-    if (persistJournal && m !== null) syncUndoLog(m, prevSteps)
+    if (persistJournal && m !== null) {
+      const syncStart = perfNow()
+      syncUndoLog(m, prevSteps)
+      perfLogVerbose('refreshEditState:syncUndoLog', syncStart)
+    }
+    perfLogVerbose('refreshEditState', perfStart, m === null ? {} : scheduleSize(m.schedule))
   }
 
   // UG4.1 (req 5) + VL-D6: the bounds come from the settings dialog; the default is «хранить
@@ -794,6 +864,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function syncUndoLog(m: UndoLogModelView, prevSteps: readonly GTrackUndoStep[]): void {
     const key = filePath.value
     if (key === null || !undoLogReady || undoJournalSettings.value.clearOnClose) return
+    const perfStart = perfNow()
 
     const steps = m.historySteps
     let prefix = 0
@@ -842,6 +913,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       undoLogLastSentHead = head
       queueProjectUndoLogRefsFor(key, { head })
     }
+    perfLogVerbose('syncUndoLog', perfStart, { queued: batch.length })
   }
 
   // --- deep history + checkout + tags (VL5.1) -------------------------------------------------
@@ -885,6 +957,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   async function loadUndoBranches(): Promise<void> {
     const key = filePath.value
     if (key === null || !undoLogReady || undoBranchesLoading.value) return
+    const perfStart = perfNow()
     undoBranchesLoading.value = true
     try {
       const branches = await readProjectUndoLogBranchesFor(key)
@@ -892,6 +965,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
       undoBranches.value = branches ?? []
       undoBranchesLoaded.value = true
       undoBranchRowsByTip.value = new Map()
+      perfLog('loadUndoBranches', perfStart, { branches: undoBranches.value.length })
     } finally {
       undoBranchesLoading.value = false
     }
@@ -1436,7 +1510,17 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return sel !== null && sel.laneId === id ? { voiceId: sel.voiceId, pointIndex: sel.pointIndex } : null
   }
   function selectPoint(laneId: number, point: GTrackPointRef | null): void {
+    const perfStart = perfNow()
     selection.value = point === null ? null : { laneId, voiceId: point.voiceId, pointIndex: point.pointIndex }
+    perfLog('selectPoint (sync)', perfStart)
+    // Splits "a simple click feels slow" into its 3 possible causes: JS above (sync), Vue
+    // reactivity + component re-render (nextTick), or the canvas redraw/browser paint (rAF x2).
+    // visibilityInfo is attached because a backgrounded/unfocused tab throttles rAF (and to a
+    // lesser extent nextTick) almost to zero — a huge number here can be that, not real cost.
+    void nextTick(() => perfLog('selectPoint -> nextTick (Vue re-render done)', perfStart, visibilityInfo()))
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => requestAnimationFrame(() => perfLog('selectPoint -> paint', perfStart, visibilityInfo())))
+    }
   }
   function clearSelection(): void {
     selection.value = null
@@ -1495,6 +1579,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   ): boolean {
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    const perfStart = perfNow()
     try {
       m.edit(() => m.setPointFields(ref_.voiceId, ref_.pointIndex, patch), 'point-edit')
     } catch {
@@ -1502,6 +1587,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
     syncSchedule()
     refreshEditState()
+    perfLog('setPointValues', perfStart, scheduleSize(m.schedule))
     return true
   }
   /**
@@ -1514,6 +1600,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   ): boolean {
     const m = model.value
     if (m === null || edits.length === 0) return false
+    const perfStart = perfNow()
     try {
       m.edit(() => {
         for (const { ref: ref_, patch } of edits) {
@@ -1526,12 +1613,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
     syncSchedule()
     refreshEditState()
+    perfLog('setMultiplePointValues', perfStart, { ...scheduleSize(m.schedule), edits: edits.length })
     return true
   }
   /** GT10.9 (owner req. 54): bulk-delete the GIVEN refs as ONE undo unit (table checkboxes). */
   function removePointsBulk(refs: readonly GTrackPointRef[]): void {
     const m = model.value
     if (m === null || refs.length === 0) return
+    const perfStart = perfNow()
     const byVoice = new Map<number, number[]>()
     for (const r of refs) {
       const arr = byVoice.get(r.voiceId) ?? []
@@ -1551,12 +1640,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     clearMultiSelection()
     syncSchedule()
     refreshEditState()
+    perfLog('removePointsBulk', perfStart, { ...scheduleSize(m.schedule), refs: refs.length })
   }
 
   /** GT3.15: bulk-delete every point in the multi-selection as ONE undo unit. */
   function removeMultiSelection(): void {
     const m = model.value
     if (m === null || multiSelection.value.size === 0) return
+    const perfStart = perfNow()
     const byVoice = new Map<number, number[]>()
     for (const { voiceId, pointIndex } of multiSelectionPoints.value) {
       const arr = byVoice.get(voiceId) ?? []
@@ -1576,6 +1667,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     clearMultiSelection()
     syncSchedule()
     refreshEditState()
+    perfLog('removeMultiSelection', perfStart, scheduleSize(m.schedule))
   }
   /**
    * GT3.15: keep the multi-selection's "voiceId:pointIndex" keys valid across array-shifting edits
@@ -1776,6 +1868,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     void laneId // kept for API symmetry with GTrackSelection; not needed to locate the point
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    const perfStart = perfNow()
     try {
       m.edit(() => m.removePoint(ref_.voiceId, ref_.pointIndex), 'point-remove')
     } catch {
@@ -1788,6 +1881,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     reindexMultiSelectionAfterRemoval(ref_.voiceId, ref_.pointIndex)
     syncSchedule()
     refreshEditState()
+    perfLog('deletePointAt', perfStart, scheduleSize(m.schedule))
     return true
   }
 
@@ -1849,9 +1943,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function endPointDrag(): void {
     const m = model.value
     if (m === null || !m.inTransaction) return
+    const perfStart = perfNow()
     m.commitEdit()
     syncSchedule()
     refreshEditState()
+    perfLog('endPointDrag', perfStart, scheduleSize(m.schedule))
   }
   function cancelPointDrag(): void {
     const m = model.value
@@ -1897,6 +1993,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   ): boolean {
     const m = model.value
     if (m === null || !m.isVoiceEditable(ref_.voiceId)) return false
+    const perfStart = perfNow()
     try {
       m.edit(() => {
         const ni = m.movePointCrossing(ref_.voiceId, ref_.pointIndex, patch.timeSec)
@@ -1917,12 +2014,14 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
     syncSchedule()
     refreshEditState()
+    perfLog('applyPointEdit', perfStart, scheduleSize(m.schedule))
     return true
   }
   /** GT3.6: insert an interpolated point at timeSec and select it. False when not possible. */
   function insertPointAt(laneId: number, voiceId: number, timeSec: number): boolean {
     const m = model.value
     if (m === null || !m.isVoiceEditable(voiceId)) return false
+    const perfStart = perfNow()
     try {
       let idx = -1
       m.edit(() => { idx = m.insertPoint(voiceId, timeSec) }, 'point-insert')
@@ -1933,6 +2032,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     }
     syncSchedule()
     refreshEditState()
+    perfLog('insertPointAt', perfStart, scheduleSize(m.schedule))
     return true
   }
   /** GT3.6: remove the currently selected point (Delete key). False when blocked (min 2 points). */
@@ -1940,6 +2040,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     const sel = selection.value
     const m = model.value
     if (sel === null || m === null || !m.isVoiceEditable(sel.voiceId)) return false
+    const perfStart = perfNow()
     try {
       m.edit(() => m.removePoint(sel.voiceId, sel.pointIndex), 'point-remove')
     } catch {
@@ -1949,6 +2050,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     selection.value = null
     syncSchedule()
     refreshEditState()
+    perfLog('removeSelectedPoint', perfStart, scheduleSize(m.schedule))
     return true
   }
 

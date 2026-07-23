@@ -19,6 +19,7 @@ import type {
   ProjectUndoLogRefsRequest,
   ProjectUndoLogRefsResponse,
 } from '@protocol'
+import { perfLog, perfNow } from './composables/perf-log'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null
@@ -37,6 +38,7 @@ function parseJsonText(text: string, errorMessage: string): unknown {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const perfStart = perfNow()
   const response = await fetch(path, {
     ...init,
     headers: {
@@ -46,6 +48,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   const text = await response.text()
+  perfLog(`fetch ${init?.method ?? 'GET'} ${path}`, perfStart, { status: response.status, resBytes: text.length })
   const payload = parseJsonText(text, `Invalid JSON response from ${path}`)
 
   if (!response.ok) {
@@ -132,14 +135,22 @@ export const projectApi = {
     signal?: AbortSignal,
     keepalive = false,
   ): Promise<ProjectUndoLogAppendResponse> {
+    const perfStart = perfNow()
+    const body = JSON.stringify(request)
     const response = await fetch('/api/projects/undo-log/append', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(request),
+      body,
       keepalive,
       signal,
     })
     const text = await response.text()
+    perfLog('appendUndoLog', perfStart, {
+      commits: request.commits.length,
+      reqBytes: body.length,
+      status: response.status,
+      resBytes: text.length,
+    })
     const payload = parseJsonText(text, 'Invalid JSON response from /api/projects/undo-log/append')
 
     if (!response.ok && response.status !== 409) {

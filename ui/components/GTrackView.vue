@@ -108,6 +108,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppTooltip from '@tooltip/AppTooltip.vue'
+import { PERF_LOG_ENABLED, perfLog, perfNow, trackMount, trackUnmount } from '../composables/perf-log'
 
 import { pointBalance, pointBeatFreq, pointVolume, type GTrackPoint, type GTrackVoice } from '../composables/gtrack-model'
 import {
@@ -359,11 +360,14 @@ function plotWidthPx(canvas: HTMLCanvasElement): number {
   return Math.max(1, Math.floor(canvas.clientWidth) - AXIS_MARGIN.left - AXIS_MARGIN.right)
 }
 
+let drawCallCount = 0
 function draw(): void {
   const canvas = canvasEl.value
   if (canvas === null) return
   const ctx = canvas.getContext('2d')
   if (ctx === null) return
+  const perfStart = perfNow()
+  drawCallCount += 1
 
   const cssW = Math.max(1, Math.floor(canvas.clientWidth))
   const cssH = Math.max(1, Math.floor(canvas.clientHeight))
@@ -624,6 +628,7 @@ function draw(): void {
 
   // Playhead is drawn on the overlay canvas (drawPlayhead), not here.
   drawAxes(ctx, plotX, plotY, plotW, plotH)
+  perfLog(`GTrackView[${props.mode}] draw`, perfStart, { calls: drawCallCount, voices: props.voices.length })
 }
 
 // The playhead, on its own transparent canvas above the body. Redrawn on playback / view / resize
@@ -706,8 +711,29 @@ function drawAxes(
   if (props.showTimeAxisTop) drawRuler(plotY, -1, 'bottom')
 }
 
+let scheduleDrawRequestCount = 0
+let scheduleDrawCoalescedCount = 0
+// undo-log perf investigation (2026-07-22): the previous cancel-then-reschedule pattern
+// (cancelAnimationFrame + requestAnimationFrame on every call) resets the frame's arrival time on
+// every single request — if requests keep arriving faster than the browser gets a turn to run the
+// pending frame (pointer events can outpace the display's refresh rate), the draw is perpetually
+// postponed and NEVER fires. Confirmed live: GTrackView[volume]'s executed count froze while
+// requested/coalesced kept climbing for 30+ consecutive calls. Fixed by only ever having AT MOST one
+// frame in flight — a request while one is already pending is a no-op (draw() reads live state
+// anyway, so the already-scheduled frame paints the latest data regardless of how many redundant
+// requests arrived meanwhile), which guarantees a frame within ~1 tick of the first request in a
+// burst instead of being pushed out indefinitely.
 function scheduleDraw(): void {
-  if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
+  scheduleDrawRequestCount += 1
+  const alreadyPending = renderFrameId !== 0
+  if (alreadyPending) scheduleDrawCoalescedCount += 1
+  if (PERF_LOG_ENABLED && scheduleDrawRequestCount % 5 === 0) {
+    console.info(
+      `[gtrack-perf] GTrackView[${props.mode}] scheduleDraw: requested=${scheduleDrawRequestCount} `
+      + `coalesced=${scheduleDrawCoalescedCount} executed=${drawCallCount}`,
+    )
+  }
+  if (alreadyPending) return // a frame is already pending — it will draw the latest state when it fires
   renderFrameId = requestAnimationFrame(() => {
     renderFrameId = 0
     draw()
@@ -715,7 +741,7 @@ function scheduleDraw(): void {
 }
 
 function scheduleDrawPlayhead(): void {
-  if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
+  if (overlayFrameId !== 0) return // a frame is already pending — see scheduleDraw
   overlayFrameId = requestAnimationFrame(() => {
     overlayFrameId = 0
     drawPlayhead()
@@ -1283,6 +1309,7 @@ watch(() => props.showBeatBand, () => scheduleDraw())
 watch(() => props.showBalanceBand, () => scheduleDraw())
 
 onMounted(() => {
+  trackMount(`GTrackView[${props.mode}]`)
   if (typeof ResizeObserver !== 'undefined' && canvasEl.value !== null) {
     resizeObserver = new ResizeObserver(() => scheduleDrawAll())
     resizeObserver.observe(canvasEl.value)
@@ -1294,6 +1321,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  trackUnmount(`GTrackView[${props.mode}]`)
   if (renderFrameId !== 0) cancelAnimationFrame(renderFrameId)
   if (overlayFrameId !== 0) cancelAnimationFrame(overlayFrameId)
   resizeObserver?.disconnect()
