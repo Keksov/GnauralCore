@@ -35,20 +35,33 @@
     >
       {{ t('audio.undoJournalEmpty') }}
     </div>
-    <q-list v-else dense class="undo-journal-panel__list">
-      <template
-        v-for="(item, ii) in displayItems"
-        :key="item.kind === 'row' ? item.row.key : item.kind === 'branch' ? `inline-${item.group.branch.tip}` : `${item.kind}-${ii}`"
-      >
+    <!-- undo-log perf investigation (2026-07-22): this list is append-only and only ever grows
+         (196+ commits observed live) — a plain q-list rendered ALL of it as real DOM nodes, so
+         even a per-row-cheap update (v-memo) still had to walk the WHOLE history on every single
+         edit. That base cost (200-300ms at ~200 rows) was just below the rate of rapid successive
+         edits, so renders queued up and compounded into multi-second stalls (confirmed live: fast
+         right after opening, then degrading — the classic signature of a backlog, not of data
+         growth per se). q-virtual-scroll renders only the visible slice, making the per-edit cost
+         O(visible rows) instead of O(total history) regardless of how long the journal gets. -->
+    <q-virtual-scroll
+      v-else
+      ref="journalVirtualScroll"
+      :items="renderedDisplayItems"
+      :virtual-scroll-item-size="56"
+      class="undo-journal-panel__list"
+      v-slot="{ item, index: ii }"
+    >
         <!-- UG4.1b (req 13, вариант а): the watershed line — everything on the DOOMED side of it
              will not survive closing the file under the current auto-clean settings. The doomed
              side depends on the sort order (req 14): oldest-first -> above, newest-first -> below. -->
-        <div v-if="item.kind === 'divider'" class="undo-journal-panel__doomed-divider">
+        <div v-if="item.kind === 'divider'" :key="`divider-${ii}`" class="undo-journal-panel__doomed-divider">
           {{ t(sortNewestFirst ? 'audio.undoJournalDoomedBelow' : 'audio.undoJournalDoomedAbove') }}
         </div>
         <!-- VL5.1: pre-window history pager. -->
         <q-item
           v-else-if="item.kind === 'load-more'"
+          :key="`load-more-${ii}`"
+          dense
           clickable
           class="undo-journal-panel__load-more"
           :disable="gtracks.deepUndoLoading.value"
@@ -62,9 +75,11 @@
         </q-item>
         <!-- OB-D7 (req 5): inline mode — the branch block joins the stream at its birth time,
              expanding accordion-style right inside the journal. One display item = one block, so
-             the newest-first reverse moves it whole and never tears the accordion apart. -->
-        <template v-else-if="item.kind === 'branch'">
-          <q-item clickable class="undo-journal-panel__branch-head" @click="toggleBranch(item.group.branch.tip)">
+             the newest-first reverse moves it whole and never tears the accordion apart. A single
+             wrapping div gives q-virtual-scroll one root to measure (the block's height varies
+             with expand state, which virtual-scroll re-measures on its own). -->
+        <div v-else-if="item.kind === 'branch'" :key="`inline-${item.group.branch.tip}`">
+          <q-item dense clickable class="undo-journal-panel__branch-head" @click="toggleBranch(item.group.branch.tip)">
             <q-item-section avatar class="undo-journal-panel__icon">
               <q-icon :name="expandedBranchTip === item.group.branch.tip ? 'expand_more' : 'chevron_right'" size="18px" />
             </q-item-section>
@@ -118,7 +133,7 @@
               :active="pendingDeepCid === row.deepCid"
               active-class="undo-journal-panel__row--pending"
               class="undo-journal-panel__row--deep undo-journal-panel__branch-step"
-              @click="selectDeepRow(row.deepCid!)"
+              @click="openRowActions(row, $event)"
             >
               <q-item-section avatar class="undo-journal-panel__icon">
                 <q-icon :name="row.icon" size="18px" />
@@ -140,9 +155,17 @@
               </q-item-section>
             </q-item>
           </template>
-        </template>
+        </div>
       <q-item
         v-else
+        :key="item.row.key"
+        v-memo="[
+          item.row, pendingTarget, pendingDeepCid,
+          item.row.deepCid === null && item.row.cursor > gtracks.undoCursor.value,
+          item.row.deepCid === null && item.row.cursor === gtracks.undoCursor.value,
+          hoveredRowKey === item.row.key,
+        ]"
+        dense
         clickable
         :active="item.row.deepCid !== null ? pendingDeepCid === item.row.deepCid : pendingTarget === item.row.cursor"
         active-class="undo-journal-panel__row--pending"
@@ -151,7 +174,9 @@
           'undo-journal-panel__row--doomed': item.row.doomed,
           'undo-journal-panel__row--deep': item.row.deepCid !== null,
         }"
-        @click="item.row.deepCid !== null ? selectDeepRow(item.row.deepCid) : selectRow(item.row.cursor)"
+        @click="openRowActions(item.row, $event)"
+        @mouseenter="hoveredRowKey = item.row.key"
+        @mouseleave="hoveredRowKey = null"
       >
         <q-item-section avatar class="undo-journal-panel__icon">
           <q-icon :name="item.row.icon" size="18px" />
@@ -178,8 +203,20 @@
         </q-item-section>
         <!-- UG3.2b/rev2 (req 12): hover shows a rectangular per-point diff block. Each change type
              has its own format: a was/became table for edits and moves, a value table for added and
-             removed points (owner 2026-07-20: «под каждый тип действия — свой формат»). -->
-        <app-tooltip v-if="item.row.changes.length > 0" max-width="480px">
+             removed points (owner 2026-07-20: «под каждый тип действия — свой формат»).
+             undo-log-perf investigation (2026-07-23, round 5): mounted ONLY for the hovered row.
+             app-tooltip renders a real <q-tooltip> — a full Quasar component with anchor logic, a
+             portal, parent-element listeners and observers — so an always-present one per row made
+             every visible row cost 10-20ms to patch (measured: <QItem> patch entries), which is
+             what kept <QList> patch climbing no matter how the list data was cached or debounced.
+             model-value + no-parent-event because a tooltip mounted while the pointer is ALREADY
+             inside the row would never receive the mouseenter its own hover handling waits for. -->
+        <app-tooltip
+          v-if="item.row.changes.length > 0 && hoveredRowKey === item.row.key"
+          max-width="480px"
+          :model-value="true"
+          no-parent-event
+        >
           <div v-for="(c, ci) in item.row.changes" :key="ci" class="undo-journal-panel__tip-change">
             <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
             <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
@@ -209,8 +246,7 @@
           </div>
         </app-tooltip>
       </q-item>
-      </template>
-    </q-list>
+    </q-virtual-scroll>
     <q-separator />
     <!-- undo-orphan-branches (OB-D1/OB-D2/OB-D3): abandoned lines of the log — flat tips, lazy
          (summaries on first open, a branch's steps on expand). Selecting a step reuses the
@@ -287,7 +323,7 @@
               :active="pendingDeepCid === row.deepCid"
               active-class="undo-journal-panel__row--pending"
               class="undo-journal-panel__row--deep undo-journal-panel__branch-step"
-              @click="selectDeepRow(row.deepCid!)"
+              @click="openRowActions(row, $event)"
             >
               <q-item-section avatar class="undo-journal-panel__icon">
                 <q-icon :name="row.icon" size="18px" />
@@ -317,6 +353,137 @@
         </template>
       </q-list>
     </q-expansion-item>
+    <!-- undo-journal-row-actions RA1.2 (owner 2026-07-23): «при клике по записи показывать диалог
+         возможных действий с этой записью». RA-D1 — это ДОПОЛНЕНИЕ: нижняя панель продолжает
+         работать как раньше. RA-D4 — новой бизнес-логики нет, все действия зовут те же функции,
+         что и панель. RA-D6 — ОДНА всплывающая панель на весь журнал (не по одной на строку):
+         рендерится только когда открыта, поэтому стоимость строки журнала не меняется вовсе.
+         RA-D8 (приёмка RA1.7) — это QMenu, а не QDialog: диалог Quasar всегда центрируется по
+         экрану, а владелец просил открывать «рядом с текущей записью», поэтому попап привязан
+         к DOM-элементу строки (:target) — тот же контрол, что уже несёт меню меток этой панели. -->
+    <q-menu
+      v-model="rowActionsOpen"
+      :target="rowActionsAnchor ?? false"
+      no-parent-event
+      anchor="center right"
+      self="center left"
+      :offset="[8, 0]"
+      max-height="80vh"
+      class="undo-journal-panel__row-actions"
+    >
+      <div class="undo-journal-panel__row-actions-head">
+        <q-icon v-if="rowActionsRow !== null" :name="rowActionsRow.icon" size="18px" />
+        <span class="text-weight-medium">{{ rowActionsRow?.title ?? t('audio.undoRowActionsTitle') }}</span>
+        <span v-if="rowActionsRow !== null && rowActionsRow.subtitle !== ''" class="text-grey ellipsis">
+          {{ rowActionsRow.subtitle }}
+        </span>
+        <q-space />
+        <span v-if="rowActionsRow !== null && rowActionsRow.time !== ''" class="undo-journal-panel__time">
+          {{ rowActionsRow.time }}
+        </span>
+      </div>
+      <!-- RA-D7 (уточнено owner на приёмке RA1.7): изменения идут СРАЗУ после заголовка записи и
+           показываются целиком — без сворачивания и без собственного скролла. Источник тот же уже
+           посчитанный row.changes, ничего не пересчитывается; вертикальный скролл, если он вообще
+           понадобится, лежит на самом меню (max-height). -->
+      <template v-if="rowActionsChanges.length > 0">
+        <q-separator />
+        <div class="undo-journal-panel__row-actions-diff">
+          <div class="undo-journal-panel__row-actions-caption text-grey">{{ t('audio.undoRowActionsChanges') }}</div>
+          <div v-for="(c, ci) in rowActionsChanges" :key="ci" class="undo-journal-panel__tip-change">
+            <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
+            <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>{{ t('audio.undoTipWas') }}</th>
+                  <th>{{ t('audio.undoTipBecame') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="f in c.fields" :key="f.field">
+                  <td class="undo-journal-panel__tip-name">{{ fieldShort(f.field) }}</td>
+                  <td class="undo-journal-panel__tip-num">{{ fmtField(f.field, f.before) }}</td>
+                  <td class="undo-journal-panel__tip-num undo-journal-panel__tip-num--after">{{ fmtField(f.field, f.after) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <table v-else class="undo-journal-panel__tip-table">
+              <tbody>
+                <tr v-for="[name, value] in pointRows(c.point)" :key="name">
+                  <td class="undo-journal-panel__tip-name">{{ name }}</td>
+                  <td class="undo-journal-panel__tip-num">{{ value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+      <q-separator />
+      <!-- Порядок пунктов задан владельцем на приёмке RA1.7: «Метки» — последний пункт. -->
+      <q-list dense>
+        <!-- RA-D5: недоступные действия остаются видимыми в disabled-виде; пояснение «почему» —
+             нативным title на ОБЁРТКЕ, т.к. на disabled-кнопке тултип показаться не может
+             (AGENTS.md, стандартное исключение 2). -->
+        <div :title="rowActionsCanApply ? undefined : t('audio.undoRowActionsApplyAtCursor')">
+          <q-item clickable :disable="!rowActionsCanApply" @click="rowActionsApply">
+            <q-item-section avatar class="undo-journal-panel__icon">
+              <q-icon name="history" size="18px" />
+            </q-item-section>
+            <q-item-section>{{ t('audio.undoRowActionsApply') }}</q-item-section>
+          </q-item>
+        </div>
+        <div :title="rowActionsCanClearBefore ? undefined : t('audio.undoRowActionsClearBeforeUnavailable')">
+          <q-item clickable :disable="!rowActionsCanClearBefore" @click="rowActionsClearBefore">
+            <q-item-section avatar class="undo-journal-panel__icon">
+              <q-icon name="delete_sweep" size="18px" />
+            </q-item-section>
+            <q-item-section>{{ t('audio.undoRowActionsClearBefore') }}</q-item-section>
+          </q-item>
+        </div>
+        <div :title="rowActionsCanTag ? undefined : t('audio.undoRowActionsTagsUnavailable')">
+          <q-expansion-item
+            dense
+            icon="sell"
+            :label="t('audio.undoRowActionsTags')"
+            :disable="!rowActionsCanTag"
+          >
+            <q-list dense class="undo-journal-panel__tag-menu">
+              <q-item v-for="tag in selectedCidTags" :key="tag" dense>
+                <q-item-section>{{ tag }}</q-item-section>
+                <q-item-section side>
+                  <q-btn dense flat round size="xs" icon="close" @click="gtracks.deleteUndoTag(tag)" />
+                </q-item-section>
+              </q-item>
+              <q-item dense>
+                <q-item-section>
+                  <q-input
+                    v-model="newTagName"
+                    dense
+                    :placeholder="t('audio.undoJournalTagName')"
+                    @keyup.enter="addTag"
+                  />
+                </q-item-section>
+                <q-item-section side>
+                  <q-btn
+                    dense flat no-caps
+                    :label="t('audio.undoJournalTagAdd')"
+                    :disable="newTagName.trim() === ''"
+                    @click="addTag"
+                  />
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-expansion-item>
+        </div>
+      </q-list>
+      <!-- Футер с «Закрыть» (owner 2026-07-23). QMenu закрывается и по клику вне, и по Esc, но
+           владелец просил явную кнопку — v-close-popup закрывает ближайший попап. -->
+      <q-separator />
+      <div class="undo-journal-panel__row-actions-footer">
+        <q-btn v-close-popup dense flat no-caps :label="t('audio.undoRowActionsClose')" />
+      </div>
+    </q-menu>
     <!-- BM2.2 (req 4): merge-conflict resolution — «моя версия / из ветки» per conflict. -->
     <q-dialog v-model="mergeDialogOpen">
       <q-card class="undo-journal-panel__merge-dialog">
@@ -417,15 +584,16 @@
 // singleton directly (nothing to plumb — same pattern as the spectrum-settings panel). A row click
 // only SELECTS (highlight); the state rolls back exclusively via «Применить» (rollbackToCursor for
 // window rows, checkoutUndoCommit for deep ones — VL5.1, undo-versioned-log).
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Dialog, Notify } from 'quasar'
 import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import type { ProjectUndoLogBranch } from '@protocol'
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
-import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange } from '../composables/gtrack-model'
+import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange, type GTrackUndoStep } from '../composables/gtrack-model'
 import { mergeConflictKey, type MergeChoice, type MergeConflict, type PlannedBranchMerge } from '../composables/undo-branch-merge'
+import { perfLog, perfNow } from '../composables/perf-log'
 
 const { t } = useI18n()
 const gtracks = useSharedGtrackLanes()
@@ -510,7 +678,24 @@ const tagsByCid = computed<Map<string, string[]>>(() => {
   return out
 })
 
+// undo-log perf investigation (2026-07-22): confirmed live — this computed used to rebuild every
+// row (including a fresh `changes` array via describeStepChanges) on every single edit, even for
+// the 50+ older steps whose underlying data never changed. Vue's v-for keeps the DOM node (the key
+// matches) but still re-patches each <q-item> because the ROW OBJECT and its `changes`/`tags`
+// arrays are new references every time, so prop-equality can't short-circuit — <QList> patch was
+// measured at 1000-1200ms (matching a ~50-70 row journal, ~13-17ms/row). Fixed by caching each
+// row keyed by its step's OWN identity (existing GTrackUndoStep objects are never mutated in place —
+// commitEdit only ever pushes new ones — so an unchanged step is still the SAME reference) and
+// reusing the previous row wholesale when nothing that feeds it changed.
+const EMPTY_TAGS: string[] = []
+function tagsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a === b || (a.length === b.length && a.every((v, i) => v === b[i]))
+}
+const rowCache = new Map<string, { readonly step: GTrackUndoStep; readonly row: JournalRow }>()
 const rows = computed<JournalRow[]>(() => {
+  const perfStart = perfNow()
+  let cacheHits = 0
+  let cacheMisses = 0
   const kept = gtracks.persistedUndoStepIds.value
   const byCid = tagsByCid.value
   const initialCid = gtracks.undoLogCidAt(0)
@@ -525,12 +710,25 @@ const rows = computed<JournalRow[]>(() => {
     atMs: 0,
     changes: [],
     doomed: false,
-    tags: initialCid === null ? [] : byCid.get(initialCid) ?? [],
+    tags: initialCid === null ? EMPTY_TAGS : byCid.get(initialCid) ?? EMPTY_TAGS,
   }]
+  const seen = new Set<string>()
   gtracks.undoSteps.value.forEach((step, i) => {
-    out.push({
+    seen.add(step.id)
+    const cursor = i + 1
+    const doomed = !kept.has(step.id)
+    const tags = byCid.get(step.id) ?? EMPTY_TAGS
+    const cached = rowCache.get(step.id)
+    if (cached !== undefined && cached.step === step && cached.row.cursor === cursor
+      && cached.row.doomed === doomed && tagsEqual(cached.row.tags, tags)) {
+      cacheHits += 1
+      out.push(cached.row)
+      return
+    }
+    cacheMisses += 1
+    const row: JournalRow = {
       key: step.id,
-      cursor: i + 1,
+      cursor,
       deepCid: null,
       icon: KIND_ICONS[step.kind] ?? 'edit',
       title: kindLabel(step.kind),
@@ -538,10 +736,17 @@ const rows = computed<JournalRow[]>(() => {
       time: formatTime(step.atMs),
       atMs: step.atMs,
       changes: describeStepChanges(step, 8),
-      doomed: !kept.has(step.id),
-      tags: byCid.get(step.id) ?? [],
-    })
+      doomed,
+      tags,
+    }
+    rowCache.set(step.id, { step, row })
+    out.push(row)
   })
+  for (const key of rowCache.keys()) if (!seen.has(key)) rowCache.delete(key)
+  // undo-log-perf investigation (2026-07-23, round 4 — debounced reset() didn't help): confirm
+  // rather than assume the row cache is doing its job and this computed's own JS cost is cheap —
+  // if misses climb with total step count instead of staying ~1/edit, the cache isn't hitting.
+  perfLog('rows', perfStart, { total: out.length, hits: cacheHits, misses: cacheMisses })
   return out
 })
 
@@ -616,6 +821,7 @@ type DisplayItem =
   | { readonly kind: 'load-more' }
   | { readonly kind: 'branch'; readonly group: BranchGroup } // OB-D7: one block = one item
 const displayItems = computed<DisplayItem[]>(() => {
+  const perfStart = perfNow()
   const chronological: DisplayItem[] = []
   if (showDeepLoad.value) chronological.push({ kind: 'load-more' })
 
@@ -656,26 +862,116 @@ const displayItems = computed<DisplayItem[]>(() => {
     chronological.push({ kind: 'branch', group: pendingBranches[nextBranch]! })
     nextBranch += 1
   }
-  return sortNewestFirst.value ? [...chronological].reverse() : chronological
+  const result = sortNewestFirst.value ? [...chronological].reverse() : chronological
+  // undo-log-perf investigation (2026-07-23, round 4): isolate the pure-JS rebuild+reverse cost
+  // (expected sub-ms even at hundreds of items) from whatever Vue/QVirtualScroll does with the
+  // result — if THIS number stays tiny while <QList> patch keeps climbing, the array rebuild
+  // itself is cleared as a suspect and the cost is downstream, in rendering the array's items.
+  perfLog('displayItems', perfStart, {
+    total: result.length,
+    branches: inlineBranches.value ? branchGroups.value.length : 0,
+    expandedBranchRows: expandedBranchTip.value === null
+      ? 0
+      : (branchGroups.value.find((g) => g.branch.tip === expandedBranchTip.value)?.rows?.length ?? -1),
+  })
+  return result
 })
 
 // req 8: pending selection (highlight only). Reset whenever the log itself changes shape (a new
 // edit truncated the redo tail, a file switch rebuilt the history) so a stale target can't apply.
 const pendingTarget = ref<number | null>(null)
 const pendingDeepCid = ref<string | null>(null)
+// undo-log-perf (2026-07-23): which row's diff tooltip is actually mounted — see the template.
+const hoveredRowKey = ref<string | null>(null)
 watch(() => gtracks.undoSteps.value, () => {
   pendingTarget.value = null
   pendingDeepCid.value = null
 })
 
-function selectRow(cursor: number): void {
-  pendingDeepCid.value = null
-  pendingTarget.value = cursor === pendingTarget.value ? null : cursor
+// undo-journal-row-actions RA1.2 (owner 2026-07-23, «при клике по записи показывать диалог
+// возможных действий»). Selecting is no longer a TOGGLE (RA-D2): a second click used to clear the
+// selection, which with a dialog would leave the user looking at actions for a row that «Применить»
+// no longer has a target for. The click always selects its own row, so the dialog and the bottom
+// action bar are guaranteed to act on the same entry.
+function selectRowForActions(row: JournalRow): void {
+  if (row.deepCid !== null) {
+    pendingTarget.value = null
+    pendingDeepCid.value = row.deepCid
+  } else {
+    pendingDeepCid.value = null
+    pendingTarget.value = row.cursor
+  }
 }
 
-function selectDeepRow(cid: string): void {
-  pendingTarget.value = null
-  pendingDeepCid.value = cid === pendingDeepCid.value ? null : cid
+// RA-D6: ONE dialog per panel, never one per row. The undo-log-perf investigation (closed
+// 2026-07-23) established that an always-present app-tooltip per row cost 10-20ms PER ROW across
+// ~70 rendered rows and was the journal's main slowdown — so the rows themselves gain no new
+// component here, only a click handler.
+const rowActionsOpen = ref(false)
+const rowActionsRow = shallowRef<JournalRow | null>(null)
+// RA-D8 (owner 2026-07-23, приёмка RA1.7): the popup opens NEXT TO its row, not centred on screen.
+// QDialog cannot do that — it always centres its card — so the control is a QMenu anchored to the
+// clicked row element (the same control the tag menu of this panel already uses). Vue patches the
+// row in place on selection change (same :key), so this element reference stays live.
+const rowActionsAnchor = shallowRef<HTMLElement | null>(null)
+
+// `Event`, not `MouseEvent`: QItem types its @click payload as the base Event, and currentTarget —
+// the only thing needed here — is declared on it, so widening beats casting.
+async function openRowActions(row: JournalRow, event: Event): Promise<void> {
+  // Toggle is OURS, not QMenu's (see no-parent-event in the template). Owner bug 2026-07-23: a
+  // third click on the same row did nothing. Root cause read out of Quasar's source — use-anchor.js
+  // binds its own `click -> toggle` on the anchor element, so two controllers fought over one
+  // visibility state: our handler set it true, then QMenu's toggle flipped it straight back off.
+  // Clicking a DIFFERENT row appeared to «fix» it only because the anchor listener was still bound
+  // to the previous row. click-outside.js ignores clicks inside the anchor, so with QMenu's own
+  // listener off, this handler is the single controller and the sequence is deterministic.
+  const sameRow = rowActionsOpen.value && rowActionsRow.value?.key === row.key
+  rowActionsOpen.value = false
+  if (sameRow) return // second click on the same row closes, third opens again
+
+  selectRowForActions(row)
+  rowActionsRow.value = row
+  rowActionsAnchor.value = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  // Re-anchoring while the popup is still shown can leave it positioned against the old row;
+  // closing first and reopening after the DOM settles keeps the move clean.
+  await nextTick()
+  rowActionsOpen.value = true
+}
+
+/** «Применить» is pointless on the row that IS the current position (same gate as the bottom bar). */
+const rowActionsCanApply = computed<boolean>(() => {
+  const row = rowActionsRow.value
+  if (row === null) return false
+  return row.deepCid !== null || row.cursor !== gtracks.undoCursor.value
+})
+
+/** Clearing older history walks the in-memory window, so it needs a window row above position 0. */
+const rowActionsCanClearBefore = computed<boolean>(() => {
+  const row = rowActionsRow.value
+  return row !== null && row.deepCid === null && row.cursor > 0
+})
+
+/** Tagging needs the row's server-side commit — absent until the log has synced this step. */
+const rowActionsCanTag = computed<boolean>(() => selectedCid.value !== null)
+
+const rowActionsChanges = computed<readonly GTrackStepPointChange[]>(() => rowActionsRow.value?.changes ?? [])
+
+async function rowActionsApply(): Promise<void> {
+  rowActionsOpen.value = false
+  await applyRollback()
+}
+
+function rowActionsClearBefore(): void {
+  if (!rowActionsCanClearBefore.value) return
+  Dialog.create({
+    title: t('audio.undoRowActionsClearBefore'),
+    message: t('audio.undoRowActionsClearBeforeConfirm'),
+    ok: { label: t('audio.undoJournalClearAllYes'), color: 'negative', flat: true, noCaps: true },
+    cancel: { label: t('audio.undoJournalClearAllNo'), flat: true, noCaps: true },
+  }).onOk(() => {
+    rowActionsOpen.value = false
+    clearBeforeSelection()
+  })
 }
 
 // VL-D9: the commit cid behind the current selection (window rows map through the position/step
@@ -757,6 +1053,50 @@ const branchGroups = computed<BranchGroup[]>(() => {
       })),
     }
   })
+})
+
+// undo-log perf investigation (2026-07-22): q-virtual-scroll caches each row's MEASURED height by
+// array INDEX, on the assumption a given index always holds the same logical row. Newest-first
+// prepends the new row at index 0 on every edit, shifting every existing row's index by one — the
+// cached heights then describe the WRONG rows, compounding the (already-approximate) size estimate
+// error until scrolling snaps to correct it (owner repro: "impossible to scroll to the bottom, list
+// jumps, scrollbar resets to top"). Declared after branchGroups: displayItems's computed reads
+// branchGroups.value, and watch()'s source getter runs synchronously at creation time to collect
+// dependencies — placed any earlier, that synchronous run hits branchGroups before its own `const`
+// has executed (TDZ ReferenceError, confirmed live: broke the whole panel on open).
+//
+// round 2 (owner: slowed down again): resetting on every length change paid Quasar's full
+// cache-rebuild-plus-forced-reflow cost on every single edit. Debouncing JUST the reset() call
+// (round 3) didn't fix it either — confirmed live via rows/displayItems timing (sub-ms, ~100%
+// cache hits) plus a qitems tally showing the count of >10ms <QItem> patches climbing from a
+// handful to 15+ over a rapid-edit session: reset() only repairs the height CACHE after the fact,
+// it never stops every visible row's CONTENT from genuinely differing from last render — THAT's
+// what Vue is correctly (if expensively) reacting to on every edit, cache or no cache.
+//
+// round 4: the only way to stop paying for a per-edit index shift is to stop FEEDING the shift to
+// q-virtual-scroll on every edit. renderedDisplayItems is a debounced view of displayItems: the
+// first edit after a quiet spell updates it immediately (a single edit still feels instant), but
+// further edits within the same burst are absorbed WITHOUT touching the prop q-virtual-scroll
+// sees — Vue does zero list re-render work for them — and the burst's accumulated change (and a
+// cache reset, now worth its cost because it's amortized over the whole burst instead of paid per
+// edit) lands once, shortly after the user stops.
+const journalVirtualScroll = ref<{ reset: () => void } | null>(null)
+const renderedDisplayItems = shallowRef<DisplayItem[]>(displayItems.value)
+const JOURNAL_RENDER_DEBOUNCE_MS = 400
+let journalRenderTimer: ReturnType<typeof setTimeout> | null = null
+watch(displayItems, (next) => {
+  if (journalRenderTimer === null) {
+    renderedDisplayItems.value = next // leading edge: a single/occasional edit shows immediately
+  }
+  if (journalRenderTimer !== null) clearTimeout(journalRenderTimer)
+  journalRenderTimer = setTimeout(() => {
+    journalRenderTimer = null
+    renderedDisplayItems.value = displayItems.value
+    journalVirtualScroll.value?.reset()
+  }, JOURNAL_RENDER_DEBOUNCE_MS)
+})
+onBeforeUnmount(() => {
+  if (journalRenderTimer !== null) clearTimeout(journalRenderTimer)
 })
 
 /** OB-D7: inner rows follow the list sort — newest-first keeps the tip on top. */
@@ -1034,6 +1374,44 @@ function clearBeforeSelection(): void {
 .undo-journal-panel__tag-menu {
   min-width: 200px;
   padding: 4px;
+}
+
+/* undo-journal-row-actions RA1.2 + RA-D8: the per-entry actions popup, anchored to its row. */
+.undo-journal-panel__row-actions {
+  max-width: 560px;
+  min-width: 320px;
+}
+
+.undo-journal-panel__row-actions-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 16px;
+}
+
+/* RA-D7 (уточнено на приёмке RA1.7): the diff is shown in FULL — no inner scroll box of its own.
+   The popup as a whole carries max-height, so an extreme entry still cannot outgrow the viewport. */
+.undo-journal-panel__row-actions-diff {
+  padding: 6px 16px 10px;
+}
+
+.undo-journal-panel__row-actions-caption {
+  font-size: 11px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.undo-journal-panel__row-actions-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+}
+
+/* The tip-change separator is authored for the dark tooltip plate; inside the popup it sits on the
+   themed surface, so it needs a neutral rule that works on both. */
+.undo-journal-panel__row-actions-diff .undo-journal-panel__tip-change + .undo-journal-panel__tip-change {
+  border-top: 1px solid rgba(128, 128, 128, 0.35);
 }
 
 /* UG4.1b (вариант а): the watershed line — rows above it are not persisted. */
