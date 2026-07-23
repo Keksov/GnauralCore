@@ -293,6 +293,7 @@
                 @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
                 @add-point="(e: GTrackAddPoint) => onAddPoint(lane.id, e)"
                 @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
+                @range-multi-select="(p: GTrackPointRef) => gtracks.rangeMultiSelect(p.voiceId, p.pointIndex)"
               />
             </div>
             <!-- GT11.7 (owner 2026-07-14): each gtrack graph has its OWN resize handle + height. -->

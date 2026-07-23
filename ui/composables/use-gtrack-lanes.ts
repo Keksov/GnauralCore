@@ -11,7 +11,7 @@ import { audioApi } from '../audio-api'
 import { useAudioStore } from '../stores/audio'
 import { GTrackModel, clampPointTime, createGTrackHistory, normalizeScheduleData, scheduleContentSignature, trimUndoJournal, type GTrackPoint, type GTrackSchedule, type GTrackUndoJournal, type GTrackUndoStep, type GTrackVoice } from './gtrack-model'
 import { useUndoJournalSettings } from './use-undo-journal-settings'
-import { GTRACK_MODES, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
+import { GTRACK_MODES, pointValue, valuePatchForMode, type GTrackBaseScale, type GTrackMode } from './gtrack-render'
 import { findPreparseVoiceIds, patchGnauralXml } from './gtrack-xml'
 import { applyEndClickFix, applyLoopClickFix, lintSchedule, type GTrackDiagnostic } from './gtrack-lint'
 import { mergeStoredSettings, type SpectrogramSettings } from './spectrogram-settings'
@@ -1498,6 +1498,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   function selectPoint(laneId: number, point: GTrackPointRef | null): void {
     const perfStart = perfNow()
     selection.value = point === null ? null : { laneId, voiceId: point.voiceId, pointIndex: point.pointIndex }
+    // MSR-D1: a single vertex click is the anchor for a subsequent Shift+click range.
+    multiAnchor.value = point === null ? null : { voiceId: point.voiceId, pointIndex: point.pointIndex }
     perfLog('selectPoint (sync)', perfStart)
     // Splits "a simple click feels slow" into its 3 possible causes: JS above (sync), Vue
     // reactivity + component re-render (nextTick), or the canvas redraw/browser paint (rAF x2).
@@ -1519,6 +1521,11 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   // does not edit time (time edits use crossover reindexing, which would desync these keys — the
   // single-point inspector still edits time for one point at a time).
   const multiSelection = ref<Set<string>>(new Set())
+  // MSR-D1 (owner 2026-07-23): the anchor for a Shift+click RANGE select — the last point selected
+  // singly (selectPoint) or toggled by a Ctrl+click (toggleMultiSelect). A Shift-range does NOT move
+  // it, so repeated Shift+clicks extend from the same origin. Per-voice: a range is only defined
+  // within one voice's index order (MSR-D2).
+  const multiAnchor = ref<{ voiceId: number; pointIndex: number } | null>(null)
   function multiSelectionKey(voiceId: number, pointIndex: number): string {
     return `${voiceId}:${pointIndex}`
   }
@@ -1538,9 +1545,37 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     if (next.has(key)) next.delete(key)
     else next.add(key)
     multiSelection.value = next
+    // MSR-D1: this is now the "last selected" point — a following Shift+click ranges from here.
+    multiAnchor.value = { voiceId, pointIndex }
+  }
+  /**
+   * MSR-D1 (owner 2026-07-23, req 1): Shift+click a vertex selects the inclusive range of points
+   * between the anchor (last singly/Ctrl-selected point) and this one, UNION-ed with what is already
+   * accumulated. Range is per-voice (MSR-D2): a Shift+click in a different voice than the anchor just
+   * adds that one point and re-anchors there. The anchor is NOT moved by a range select, so repeated
+   * Shift+clicks extend from the same origin.
+   */
+  function rangeMultiSelect(voiceId: number, pointIndex: number): void {
+    const anchor = multiAnchor.value ?? selection.value
+    if (anchor === null || anchor.voiceId !== voiceId) {
+      toggleMultiSelect(voiceId, pointIndex) // seeds + re-anchors here (MSR-D2)
+      return
+    }
+    const voice = voiceById(voiceId)
+    if (voice === undefined) return
+    const lo = Math.min(anchor.pointIndex, pointIndex)
+    const hi = Math.max(anchor.pointIndex, pointIndex)
+    const next = new Set(multiSelection.value)
+    // GT10.42: seed the current single selection so a lone click + Shift-click already opens the table.
+    const sel = selection.value
+    if (sel !== null) next.add(multiSelectionKey(sel.voiceId, sel.pointIndex))
+    for (let i = lo; i <= hi && i < voice.points.length; i++) next.add(multiSelectionKey(voiceId, i))
+    multiSelection.value = next
+    // anchor intentionally left in place — see the doc comment.
   }
   function clearMultiSelection(): void {
     multiSelection.value = new Set()
+    multiAnchor.value = null
   }
   /** The multi-selection resolved to live point data (drops entries whose point no longer exists). */
   const multiSelectionPoints = computed(() => {
@@ -1871,10 +1906,70 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return true
   }
 
+  // MSR-D3 (owner 2026-07-23, req 2): a drag on a vertex that is part of a ≥2 multi-selection moves
+  // the WHOLE selection as a rigid block. Originals (time + the lane-mode value) are snapshotted on
+  // the first frame; the block then follows the grabbed vertex by a shared Δtime/Δvalue.
+  let groupDragOrigins: Map<string, { voiceId: number; pointIndex: number; timeSec: number; value: number }> | null = null
+  let groupDragAnchorKey: string | null = null
+  function resetGroupDrag(): void {
+    groupDragOrigins = null
+    groupDragAnchorKey = null
+  }
+  /**
+   * MSR-D3/D4: move every multi-selected point by the grabbed vertex's Δtime/Δvalue. Uses CLAMP
+   * semantics regardless of pointDragMode: Δtime is bounded so no selected point crosses a
+   * NON-selected neighbour, which keeps every array index — and thus the "voiceId:pointIndex" keys —
+   * stable through the whole drag. Value is applied per-point via valuePatchForMode (each point clamps
+   * to its mode's range independently). Runs inside the transaction opened by beginPointDrag.
+   */
+  function dragGroupBlock(m: NonNullable<typeof model.value>, ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
+    if (groupDragOrigins === null) {
+      groupDragOrigins = new Map()
+      for (const { voiceId, pointIndex, point } of multiSelectionPoints.value) {
+        groupDragOrigins.set(multiSelectionKey(voiceId, pointIndex), { voiceId, pointIndex, timeSec: point.timeSec, value: pointValue(point, mode) })
+      }
+      groupDragAnchorKey = multiSelectionKey(ref_.voiceId, ref_.pointIndex)
+    }
+    const anchor = groupDragAnchorKey !== null ? groupDragOrigins.get(groupDragAnchorKey) : undefined
+    if (anchor === undefined) return
+    const dv = modeValue - anchor.value
+    let minDt = Number.NEGATIVE_INFINITY
+    let maxDt = Number.POSITIVE_INFINITY
+    for (const o of groupDragOrigins.values()) {
+      const voice = m.schedule.voices.find((v) => v.id === o.voiceId)
+      if (voice === undefined) continue
+      minDt = Math.max(minDt, -o.timeSec) // floor every point's time at 0
+      const prev = o.pointIndex - 1
+      if (prev >= 0 && !multiSelection.value.has(multiSelectionKey(o.voiceId, prev))) {
+        minDt = Math.max(minDt, voice.points[prev]!.timeSec - o.timeSec)
+      }
+      const nextI = o.pointIndex + 1
+      if (nextI < voice.points.length && !multiSelection.value.has(multiSelectionKey(o.voiceId, nextI))) {
+        maxDt = Math.min(maxDt, voice.points[nextI]!.timeSec - o.timeSec)
+      }
+    }
+    if (minDt > maxDt) return // fully pinned this frame — leave the block where it is
+    const dt = Math.max(minDt, Math.min(maxDt, timeSec - anchor.timeSec))
+    for (const o of groupDragOrigins.values()) {
+      if (!m.isVoiceEditable(o.voiceId)) continue
+      const voice = m.schedule.voices.find((v) => v.id === o.voiceId)
+      const p = voice?.points[o.pointIndex]
+      if (voice === undefined || p === undefined) continue
+      const patch = valuePatchForMode(p, mode, o.value + dv, voice.mono)
+      m.setPointFields(o.voiceId, o.pointIndex, { timeSec: o.timeSec + dt, ...patch })
+    }
+    syncSchedule()
+  }
+
   /** Live-move the dragged vertex: time per the drag mode (clamp/crossover), value per the lane mode. */
   function dragPoint(ref_: GTrackPointRef, timeSec: number, modeValue: number, mode: GTrackMode): void {
     const m = model.value
     if (m === null || !m.inTransaction) return
+    // MSR-D3: group drag takes over when the grabbed vertex is part of a ≥2 multi-selection.
+    if (multiSelection.value.size >= 2 && multiSelection.value.has(multiSelectionKey(ref_.voiceId, ref_.pointIndex))) {
+      dragGroupBlock(m, ref_, timeSec, modeValue, mode)
+      return
+    }
     const voice = m.schedule.voices.find((v) => v.id === ref_.voiceId)
     const p = voice?.points[ref_.pointIndex]
     if (voice === undefined || p === undefined) return
@@ -1927,6 +2022,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     syncSchedule()
   }
   function endPointDrag(): void {
+    resetGroupDrag() // MSR-D3: end of the gesture — drop the block snapshot
     const m = model.value
     if (m === null || !m.inTransaction) return
     const perfStart = perfNow()
@@ -1936,6 +2032,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     perfLog('endPointDrag', perfStart, scheduleSize(m.schedule))
   }
   function cancelPointDrag(): void {
+    resetGroupDrag() // MSR-D3: gesture aborted — drop the block snapshot
     const m = model.value
     if (m === null || !m.inTransaction) return
     m.cancelEdit()
@@ -2205,6 +2302,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     multiSelection,
     isMultiSelected,
     toggleMultiSelect,
+    rangeMultiSelect,
     clearMultiSelection,
     multiSelectionPoints,
     setPointValues,

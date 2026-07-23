@@ -243,8 +243,10 @@ const emit = defineEmits<{
   (event: 'edit-point', point: GTrackPointRef): void
   /** GT3.6: double-click on a curve — add an interpolated point there. */
   (event: 'add-point', payload: { voiceId: number; timeSec: number }): void
-  /** GT3.15: Ctrl/Shift+click on a vertex — toggle it in the multi-selection. */
+  /** GT3.15: Ctrl+click on a vertex — toggle it in the multi-selection. */
   (event: 'toggle-multi-select', point: GTrackPointRef): void
+  /** MSR-D1: Shift+click on a vertex — select the range from the anchor to this point. */
+  (event: 'range-multi-select', point: GTrackPointRef): void
   /** GT10.10: a press-release with no movement — the drag transaction should be cancelled. */
   (event: 'drag-cancel'): void
 }>()
@@ -909,6 +911,13 @@ let dragMoved = false
 // gesture proves itself a real drag (the host clears the multi-selection on select-point, which
 // would wipe the very accumulation this gesture is building).
 let dragMultiSelect = false
+// MSR-D1 (MSG1.1): this modifier-press started under Shift — a press-release WITHOUT movement is a
+// RANGE select (anchor..this point), not the single-point toggle a Ctrl-press does.
+let dragRange = false
+// MSR-D3 (MSG2.1): the grabbed vertex is part of a ≥2 multi-selection, so a real drag moves the WHOLE
+// group. Suppresses the deferred select-point emit (which would clear the multi-selection this drag
+// must preserve — the same @select-point→clearMultiSelection trap as PM-D2).
+let dragGroup = false
 const DRAG_THRESHOLD_PX = 3
 // GT10.39-followup (owner 2026-07-12): a vertex drag makes the axis 'editable' too, so a Ctrl-drag
 // in NORMAL mode gets the same headroom as point-edit mode (drag a vertex past the data range).
@@ -927,10 +936,14 @@ let balanceDragStart: { x: number; y: number } | null = null
 let balanceDragMoved = false
 let balanceDragSign = 1
 
-function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef, aMultiSelect = false): void {
+function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef, aMultiSelect = false, aRange = false, aGroup = false): void {
   // PM1.1 (PM-D2): under a modifier the selection emit waits for the first real movement — see
   // dragMultiSelect above.
   dragMultiSelect = aMultiSelect
+  // MSR-D1: Shift press-release-without-movement means a range select on pointerup (see onPointerUp).
+  dragRange = aRange
+  // MSR-D3: a drag on an already-selected vertex moves the whole multi-selection (see onPointerMove).
+  dragGroup = aGroup
   if (!aMultiSelect) emit('select-point', hit)
   dragging.value = true
   dragRef = hit
@@ -985,7 +998,11 @@ function onPointerDown(aEvent: PointerEvent): void {
   if (aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) {
     const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
     if (hit !== null) {
-      beginVertexDrag(aEvent, hit, true)
+      // MSR-D1: Shift selects a range on release, Ctrl toggles a single point.
+      // MSR-D3: dragging a vertex that is already in a ≥2 multi-selection moves the whole group.
+      const inMulti = props.multiSelected?.has(`${hit.voiceId}:${hit.pointIndex}`) ?? false
+      const isGroup = inMulti && (props.multiSelected?.size ?? 0) >= 2
+      beginVertexDrag(aEvent, hit, true, aEvent.shiftKey, isGroup)
       return
     }
   }
@@ -1050,7 +1067,9 @@ function onPointerMove(aEvent: PointerEvent): void {
       // PM1.1 (PM-D2): the modifier press turned out to be a DRAG, not a multi-select click — select
       // the vertex now (the host resets the multi-selection here, which is the wanted behaviour for
       // a drag), so the inspector follows it exactly like an unmodified drag.
-      if (dragMultiSelect) {
+      // MSR-D4: ...but NOT for a group drag — emitting select-point would clear the very
+      // multi-selection the group move needs (the host's @select-point → clearMultiSelection).
+      if (dragMultiSelect && !dragGroup) {
         dragMultiSelect = false
         emit('select-point', dragRef)
       }
@@ -1112,9 +1131,12 @@ function onPointerUp(aEvent: PointerEvent): void {
   const ref_ = dragRef
   const clicked = !dragMoved
   const multiSelect = dragMultiSelect
+  const rangeSelect = dragRange
   dragRef = null
   dragStart = null
   dragMultiSelect = false
+  dragRange = false
+  dragGroup = false
   dragging.value = false
   try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
   if (clicked) {
@@ -1124,8 +1146,11 @@ function onPointerUp(aEvent: PointerEvent): void {
     // PM1.1 (PM-D1): ...unless the click carried Ctrl/Shift — then it accumulates the multi-selection
     // (the point mode's gesture, now on the plain graph). The unmodified click still opens the
     // inspector, so the dialog is not lost: a modified one used to open it too, redundantly.
-    if (multiSelect) emit('toggle-multi-select', ref_)
-    else emit('edit-point', ref_)
+    // MSR-D1: Shift selects the range anchor..this; Ctrl toggles just this point.
+    if (multiSelect) {
+      if (rangeSelect) emit('range-multi-select', ref_)
+      else emit('toggle-multi-select', ref_)
+    } else emit('edit-point', ref_)
     return
   }
   emit('drag-end')
