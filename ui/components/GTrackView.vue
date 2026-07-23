@@ -6,9 +6,9 @@
       role="img"
       :aria-label="t('audio.gtrackCanvasLabel')"
       :class="{
-        'gtrack-view__canvas--seekable': seekable || pointMode,
-        'gtrack-view__canvas--point': pointMode && hoverPoint !== null,
-        'gtrack-view__canvas--value-edge': pointMode && hoverEdge !== null,
+        'gtrack-view__canvas--seekable': seekable,
+        'gtrack-view__canvas--point': hoverPoint !== null,
+        'gtrack-view__canvas--value-edge': hoverEdge !== null,
       }"
       @wheel.prevent="onWheel"
       @click="onClick"
@@ -81,8 +81,8 @@
         <app-tooltip>{{ t('audio.gtrackRemoveLane') }}</app-tooltip>
       </q-btn>
     </div>
-    <!-- VS1.1: the point-mode toggle + settings gear moved OUT of the canvas into the track's
-         header bar (TracksPanel) — the header is visible even when the track is folded. -->
+    <!-- VS1.1: the lane's settings gear lives OUT of the canvas, in the track's header bar
+         (TracksPanel) — the header is visible even when the track is folded. -->
     <!-- GT3.13: hover-a-vertex tooltip (time + parameters). Hidden while actively dragging.
          TT2.3 (owner req. 1/3): the box, its teleport and its placement now belong to AppTooltip —
          this component only says WHERE the pointer is and WHAT to show. That is what moved the
@@ -139,8 +139,9 @@ import {
 // GT2.1 — a gtrack lane in the Audio stack (GT-D2). It draws one or more voices' schedule curves
 // under a display mode (Base / Beat / Volume / Stereo balance, GT-D6) over the SHARED time window
 // (provide/inject) so it zooms/pans frame-aligned with the waveform + spectrogram lanes.
-// GT3.1 — a point-edit mode: vertices become interactive (hover + click to select). Dragging /
-// add / remove / preparse-fix arrive in the later Phase-3 steps.
+// GT3.1 introduced a separate point-EDIT mode for vertex interaction; PM2.1 (owner 2026-07-23) removed
+// it — the plain graph is always interactive: hover + click a vertex to inspect it, Ctrl-drag to move
+// it, Ctrl/Shift-click to accumulate a multi-selection.
 
 /** A vertex reference within this lane. */
 export interface GTrackPointRef {
@@ -175,8 +176,6 @@ interface Props {
   seekable?: boolean
   showTimeAxisTop?: boolean
   showTimeAxisBottom?: boolean
-  /** GT3.1: when true, vertices are interactive (hover/select) and clicks don't seek. */
-  pointMode?: boolean
   /** GT3.1: the currently-selected vertex in THIS lane (null = none). */
   selection?: GTrackPointRef | null
   /** GT3.15: Ctrl/Shift-accumulated multi-selection, keyed "voiceId:pointIndex" (shared, spans lanes). */
@@ -211,7 +210,6 @@ const props = withDefaults(defineProps<Props>(), {
   seekable: false,
   showTimeAxisTop: false,
   showTimeAxisBottom: false,
-  pointMode: false,
   selection: null,
   multiSelected: null,
   accentColor: null,
@@ -309,9 +307,9 @@ const hasData = computed(() => props.durationSec > 0 && props.voices.length > 0)
 // GT3.7: true when any voice in this lane is a locked generator (preparse) voice.
 const hasPreparse = computed(() => props.voices.some((v) => v.preparse))
 // GT10.34-followup: the freq axes gain headroom so a vertex can be dragged past the current data
-// range (otherwise the max/min point sits on the edge and clamps to itself). Active in point-edit
-// mode OR during a normal-mode Ctrl-drag of a vertex (GT10.39-followup).
-const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, props.pointMode || dragging.value, props.mode === 'base' && props.showBeatBand, props.baseScaleMode))
+// range (otherwise the max/min point sits on the edge and clamps to itself). Active while a vertex is
+// being dragged (GT10.39-followup; PM2.1 dropped the point-edit mode, which also used to enable it).
+const autoAxis = computed(() => gtrackAxis(props.voices, props.mode, dragging.value, props.mode === 'base' && props.showBeatBand, props.baseScaleMode))
 
 // GT11.13 (owner 2026-07-15): the value (Y) view — a NORMALIZED [0,1] window over the auto-fit range
 // above, exactly the model SpectrogramView uses for its frequency band (freqView). {0,1} = the full
@@ -583,8 +581,9 @@ function draw(): void {
     }
     ctx.stroke()
     ctx.setLineDash([])
-    // Vertex dots. In point mode they grow and gain hover/selected highlights (GT3.1).
-    const baseR = props.pointMode ? 3.5 : 2
+    // Vertex dots (hover/selected/multi highlights below). PM2.1: the point-edit mode used to draw
+    // them at 3.5 px; with the mode gone the plain 2 px size is the only one.
+    const baseR = 2
     // GT10.34 (owner 2026-07-12): keep the whole dot inside the CANVAS. A value at/below the axis
     // min (a sub-1 Hz base freq, a constant voice on the bottom line, an out-of-range volume) would
     // otherwise draw the marker on (or beyond) the canvas edge and clip it in half. Clamp the dot's
@@ -594,7 +593,7 @@ function draw(): void {
     for (let i = 0; i < pts.length; i += 1) {
       const x = timeToX(pts[i]!.timeSec)
       const y = clampDotY(valueToY(pointValue(pts[i]!, props.mode)))
-      // GT3.17: hover ring shows regardless of point mode (anchors the always-on tooltip).
+      // GT3.17: the hover ring anchors the always-on tooltip.
       const isHover = hoverPoint.value?.voiceId === voice.id && hoverPoint.value?.pointIndex === i
       const isSelected = props.selection?.voiceId === voice.id && props.selection?.pointIndex === i
       // GT3.15: multi-selected vertices get their own amber ring, distinct from the single/hover ring.
@@ -905,6 +904,11 @@ let dragRef: GTrackPointRef | null = null
 // GT10.10 (owner req. 55): distinguish a CLICK (no movement -> open the dialog) from a DRAG.
 let dragStart: { x: number; y: number } | null = null
 let dragMoved = false
+// PM1.1 (PM-D1/PM-D2): this drag started under Ctrl/Shift, so a press-release WITHOUT movement is a
+// multi-select click, not "open the inspector" — and the select-point emit is deferred until the
+// gesture proves itself a real drag (the host clears the multi-selection on select-point, which
+// would wipe the very accumulation this gesture is building).
+let dragMultiSelect = false
 const DRAG_THRESHOLD_PX = 3
 // GT10.39-followup (owner 2026-07-12): a vertex drag makes the axis 'editable' too, so a Ctrl-drag
 // in NORMAL mode gets the same headroom as point-edit mode (drag a vertex past the data range).
@@ -923,8 +927,11 @@ let balanceDragStart: { x: number; y: number } | null = null
 let balanceDragMoved = false
 let balanceDragSign = 1
 
-function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef): void {
-  emit('select-point', hit)
+function beginVertexDrag(aEvent: PointerEvent, hit: GTrackPointRef, aMultiSelect = false): void {
+  // PM1.1 (PM-D2): under a modifier the selection emit waits for the first real movement — see
+  // dragMultiSelect above.
+  dragMultiSelect = aMultiSelect
+  if (!aMultiSelect) emit('select-point', hit)
   dragging.value = true
   dragRef = hit
   dragStart = { x: aEvent.offsetX, y: aEvent.offsetY }
@@ -969,68 +976,35 @@ function beginBalanceEdgeDrag(aEvent: PointerEvent, edge: BalanceEdgeRef): void 
 
 function onPointerDown(aEvent: PointerEvent): void {
   if (!hasData.value || aEvent.button !== 0) return
-  // GT10.10 (owner reqs 57-58): NORMAL mode + Ctrl — click a vertex to drag it, click a curve to
-  // add a node (one-off edits without entering point mode).
-  if (!props.pointMode) {
-    if (aEvent.ctrlKey || aEvent.metaKey) {
-      const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-      if (hit !== null) {
-        beginVertexDrag(aEvent, hit)
-        return
-      }
-      // GT11.4: Ctrl-drag a beat-band edge to resize the beat (base ± beat/2), like Ctrl-drag a vertex.
-      const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
-      if (beatEdge !== null) {
-        beginBeatEdgeDrag(aEvent, beatEdge)
-        return
-      }
-      // VB2.1: Ctrl-drag a balance-corridor edge to edit the balance (Volume mode), like the beat edge.
-      const balanceEdge = balanceEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
-      if (balanceEdge !== null) {
-        beginBalanceEdgeDrag(aEvent, balanceEdge)
-        return
-      }
-      const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
-      if (curve !== null) emit('add-point', curve)
-    }
-    return
-  }
-
-  // GT11.14 (owner 2026-07-15): the Select/Add/Delete tools are gone — point mode always behaves as
-  // Select (a plain drag moves a vertex). Add/Delete live on their keyboard/mouse gestures instead.
-  const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
-
-  // GT3.15 (owner req. 30): Ctrl/Shift+click on a vertex accumulates the multi-selection instead
-  // of selecting/dragging.
-  if ((aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) && hit !== null) {
-    emit('toggle-multi-select', hit)
-    return
-  }
-
-  if (hit === null) {
-    // GT11.14: Ctrl+click on a CURVE adds a node — now in point mode too, not just normal mode
-    // (GT10.10), so dropping the Add tool costs no workflow. A modifier-click never deselects.
-    if (aEvent.ctrlKey || aEvent.metaKey) {
-      const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
-      if (curve !== null) emit('add-point', curve)
+  // GT10.10 (owner reqs 57-58): Ctrl — click a vertex to drag it, click a curve to add a node.
+  // PM2.1 (owner 2026-07-23): with the point-edit mode gone this is the ONLY pointerdown path; an
+  // unmodified press is left to onClick (inspector on a vertex, playhead on empty space).
+  // PM1.1 (PM-D1/PM-D3): Ctrl OR Shift on a vertex enters the same drag, whose press-release-without-
+  // movement toggles the multi-selection (see onPointerUp) — that is the point mode's one real
+  // feature, now on the plain graph. Everything else (add node, band edges) stays on Ctrl.
+  if (aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) {
+    const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (hit !== null) {
+      beginVertexDrag(aEvent, hit, true)
       return
     }
-    // GT11.4: a plain drag of a beat-band edge resizes the beat, before deselecting.
+  }
+  if (aEvent.ctrlKey || aEvent.metaKey) {
+    // GT11.4: Ctrl-drag a beat-band edge to resize the beat (base ± beat/2), like Ctrl-drag a vertex.
     const beatEdge = beatEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
     if (beatEdge !== null) {
       beginBeatEdgeDrag(aEvent, beatEdge)
       return
     }
-    // VB2.1: a plain drag of a balance-corridor edge edits the balance, before deselecting.
+    // VB2.1: Ctrl-drag a balance-corridor edge to edit the balance (Volume mode), like the beat edge.
     const balanceEdge = balanceEdgeAtPixel(aEvent.offsetX, aEvent.offsetY)
     if (balanceEdge !== null) {
       beginBalanceEdgeDrag(aEvent, balanceEdge)
       return
     }
-    emit('select-point', null) // deselect on empty space
-    return
+    const curve = voiceCurveAtPixel(aEvent.offsetX, aEvent.offsetY)
+    if (curve !== null) emit('add-point', curve)
   }
-  beginVertexDrag(aEvent, hit)
 }
 
 function onPointerMove(aEvent: PointerEvent): void {
@@ -1073,6 +1047,13 @@ function onPointerMove(aEvent: PointerEvent): void {
     if (!dragMoved && dragStart !== null) {
       if (Math.hypot(aEvent.offsetX - dragStart.x, aEvent.offsetY - dragStart.y) < DRAG_THRESHOLD_PX) return
       dragMoved = true
+      // PM1.1 (PM-D2): the modifier press turned out to be a DRAG, not a multi-select click — select
+      // the vertex now (the host resets the multi-selection here, which is the wanted behaviour for
+      // a drag), so the inspector follows it exactly like an unmodified drag.
+      if (dragMultiSelect) {
+        dragMultiSelect = false
+        emit('select-point', dragRef)
+      }
     }
     const tv = cursorToTimeValue(aEvent.offsetX, aEvent.offsetY)
     if (tv !== null) emit('drag-move', { point: dragRef, timeSec: tv.timeSec, value: tv.value })
@@ -1130,15 +1111,21 @@ function onPointerUp(aEvent: PointerEvent): void {
   if (dragRef === null) return
   const ref_ = dragRef
   const clicked = !dragMoved
+  const multiSelect = dragMultiSelect
   dragRef = null
   dragStart = null
+  dragMultiSelect = false
   dragging.value = false
   try { (aEvent.currentTarget as HTMLElement).releasePointerCapture(aEvent.pointerId) } catch { /* ignore */ }
   if (clicked) {
     // GT10.10 (owner req. 55): a press-release without movement is a CLICK — cancel the (empty)
     // drag transaction and open the point dialog.
     emit('drag-cancel')
-    emit('edit-point', ref_)
+    // PM1.1 (PM-D1): ...unless the click carried Ctrl/Shift — then it accumulates the multi-selection
+    // (the point mode's gesture, now on the plain graph). The unmodified click still opens the
+    // inspector, so the dialog is not lost: a modified one used to open it too, redundantly.
+    if (multiSelect) emit('toggle-multi-select', ref_)
+    else emit('edit-point', ref_)
     return
   }
   emit('drag-end')
@@ -1176,11 +1163,11 @@ const hoverTooltip = computed<{ name: string; rows: TooltipRow[] } | null>(() =>
 })
 
 function onClick(aEvent: MouseEvent): void {
-  // GT3.1/3.2: in point mode, selection + drag (and the click-to-open dialog) are handled on
-  // pointerdown/up, so clicks here are inert.
-  if (props.pointMode) return
   // GT10.10: Ctrl-clicks are edit gestures (drag vertex / add node), never a seek.
-  if (aEvent.ctrlKey || aEvent.metaKey) return
+  // PM1.1 (PM-D1/PM-D3): Shift joins them — a Shift-click on a vertex has already toggled the
+  // multi-selection on pointerup, and the browser's trailing click must neither open the inspector on
+  // top of it nor (when a Shift-drag was released over empty space) jump the playhead there.
+  if (aEvent.ctrlKey || aEvent.metaKey || aEvent.shiftKey) return
   if (!hasData.value) return
   // GT10.25 (owner req. 74): in NORMAL mode a single click on a vertex opens its dialog.
   const hit = pointAtPixel(aEvent.offsetX, aEvent.offsetY)
@@ -1292,10 +1279,6 @@ watch(() => props.selection, (sel) => {
   if (dragRef !== null && sel !== null && sel.voiceId === dragRef.voiceId) {
     dragRef = { voiceId: sel.voiceId, pointIndex: sel.pointIndex }
   }
-  scheduleDraw()
-})
-watch(() => props.pointMode, () => {
-  // GT3.17: hover/tooltip are mode-independent now — just redraw (vertex dot size depends on mode).
   scheduleDraw()
 })
 watch(() => props.multiSelected, () => scheduleDraw())

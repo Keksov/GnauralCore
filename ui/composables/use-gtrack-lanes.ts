@@ -279,9 +279,8 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     return result
   })
 
-  // GT3.1/3.2: point-edit mode + selection (ephemeral). Declared before the immediate schedule
-  // watch (which clears the selection) to avoid a temporal-dead-zone reference.
-  const pointModeLanes = ref<Set<number>>(new Set())
+  // GT3.1/3.2: the selected vertex (ephemeral). Declared before the immediate schedule watch (which
+  // clears the selection) to avoid a temporal-dead-zone reference.
   const selection = ref<GTrackSelection | null>(null)
 
   function voiceById(id: number): GTrackVoice | undefined {
@@ -1488,22 +1487,9 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     persist()
   }
 
-  // --- GT3.1: point-edit mode + vertex selection (ephemeral; not persisted) ---
-  // GT10.5 (owner req. 49): point mode is GLOBAL — the toggle enables it on EVERY lane at once
-  // (pointModeLanes now holds a single sentinel; the per-lane API shape is kept for the callers).
-  function isLanePointMode(id: number): boolean {
-    void id
-    return pointModeLanes.value.size > 0
-  }
-  function toggleLanePointMode(id: number): void {
-    void id
-    if (pointModeLanes.value.size > 0) {
-      pointModeLanes.value = new Set()
-      selection.value = null // drop the selection when leaving point mode
-    } else {
-      pointModeLanes.value = new Set([-1])
-    }
-  }
+  // --- GT3.1: vertex selection (ephemeral; not persisted) ---
+  // PM2.1 (owner 2026-07-23): the point-edit mode (GT3.1, made global by GT10.5) is gone together with
+  // its per-lane API (isLanePointMode/toggleLanePointMode) — every lane is always interactive.
   /** The selected vertex within a given lane, or null (for passing to that lane's GTrackView). */
   function selectionForLane(id: number): GTrackPointRef | null {
     const sel = selection.value
@@ -2170,8 +2156,6 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   return {
     saving,
     saveEdits,
-    isLanePointMode,
-    toggleLanePointMode,
     selection,
     selectionForLane,
     selectPoint,

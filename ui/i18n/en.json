@@ -35,7 +35,6 @@
     "trackReorder": "Drag to reorder / swap L↔R",
     "gtrackCanvasLabel": "Gnaural track curves",
     "gtrackSettings": "Track settings",
-    "gtrackPointMode": "Point edit mode (select points)",
     "tracksListPanel": "Track list",
     "undoJournalPanel": "Operation log",
     "undoJournalEmpty": "No operations yet",

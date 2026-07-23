@@ -194,19 +194,11 @@
                 class="tracks-panel__gtrack-header-title"
                 :style="laneTitleStyle(lane)"
               >{{ gtrackLaneLabel(lane) }}</span>
-              <!-- VS1.1 (owner req. 1): point-mode + the settings gear moved here from the graph
-                   overlay (GTrackView) — the title's flex:1 pushes them to the right edge, matching
-                   the wave/spectrum group-header gears (WS1.2/SG3.2a). -->
-              <q-btn
-                dense flat round size="xs"
-                icon="edit_location_alt"
-                :color="gtracks.isLanePointMode(lane.id) ? 'primary' : undefined"
-                :aria-label="t('audio.gtrackPointMode')"
-                :aria-pressed="gtracks.isLanePointMode(lane.id)"
-                @click="gtracks.toggleLanePointMode(lane.id)"
-              >
-                <app-tooltip>{{ t('audio.gtrackPointMode') }}</app-tooltip>
-              </q-btn>
+              <!-- VS1.1 (owner req. 1): the settings gear moved here from the graph overlay
+                   (GTrackView) — the title's flex:1 pushes it to the right edge, matching the
+                   wave/spectrum group-header gears (WS1.2/SG3.2a). PM2.1 (owner 2026-07-23): the
+                   point-edit-mode toggle that used to sit next to it is gone — the graph is always
+                   editable (Ctrl-drag a vertex, Ctrl/Shift-click to multi-select). -->
               <q-btn
                 dense flat round size="xs"
                 class="tracks-panel__gtrack-header-gear"
@@ -275,7 +267,6 @@
                 :seekable="true"
                 :show-time-axis-top="gIndex === firstUnfoldedGIndex && mi === 0"
                 :show-time-axis-bottom="false"
-                :point-mode="gtracks.isLanePointMode(lane.id)"
                 :selection="gtracks.selectionForLane(lane.id)"
                 :multi-selected="gtracks.multiSelection.value"
                 :accent-color="laneAccentColor(lane)"
@@ -1213,7 +1204,8 @@ function navigateToDiagnostic(d: GTrackDiagnostic): void {
     $q.notify({ type: 'info', message: t('audio.gtrackProblemVoiceHidden') })
     return
   }
-  if (!gtracks.isLanePointMode(lane.id)) gtracks.toggleLanePointMode(lane.id)
+  // PM2.1 (PM-D6): navigating to a diagnostic used to switch the lane into the point-edit mode first;
+  // the mode is gone and vertices are always selectable, so it just selects the offending point.
   if (d.pointIndex !== null) {
     gtracks.selectPoint(lane.id, { voiceId: d.voiceId, pointIndex: d.pointIndex })
     gtracks.clearMultiSelection()
@@ -2510,7 +2502,7 @@ function handleTracksKeyDown(event: KeyboardEvent): void {
   }
   // GT3.2/GT10.24 (owner req. 73): undo/redo the gtrack edits (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or
   // Ctrl/Cmd+Y) — intercepted BEFORE the typing guard so Ctrl+Z undoes a just-added node even when
-  // focus landed on a button (a lane gear, the point-mode toggle) or an inspector field. Model undo
+  // focus landed on a button (a lane gear, the eye) or an inspector field. Model undo
   // is the editor's primary undo (field edits autosave into the same history).
   if ((event.ctrlKey || event.metaKey) && isHotkeyLetter(event, 'z')) {
     event.preventDefault()

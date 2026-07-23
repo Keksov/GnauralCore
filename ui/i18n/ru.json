@@ -35,7 +35,6 @@
     "trackReorder": "Перетащите, чтобы поменять местами L↔R",
     "gtrackCanvasLabel": "Кривые gnaural-трека",
     "gtrackSettings": "Настройки дорожки",
-    "gtrackPointMode": "Режим правки точек (выбор точек)",
     "tracksListPanel": "Список треков",
     "undoJournalPanel": "Журнал операций",
     "undoJournalEmpty": "Операций пока нет",
