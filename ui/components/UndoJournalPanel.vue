@@ -49,18 +49,18 @@
       :items="renderedDisplayItems"
       :virtual-scroll-item-size="56"
       class="undo-journal-panel__list"
-      v-slot="{ item, index: ii }"
+      v-slot="{ item }"
     >
         <!-- UG4.1b (req 13, вариант а): the watershed line — everything on the DOOMED side of it
              will not survive closing the file under the current auto-clean settings. The doomed
              side depends on the sort order (req 14): oldest-first -> above, newest-first -> below. -->
-        <div v-if="item.kind === 'divider'" :key="`divider-${ii}`" class="undo-journal-panel__doomed-divider">
+        <div v-if="item.kind === 'divider'" key="divider" class="undo-journal-panel__doomed-divider">
           {{ t(sortNewestFirst ? 'audio.undoJournalDoomedBelow' : 'audio.undoJournalDoomedAbove') }}
         </div>
         <!-- VL5.1: pre-window history pager. -->
         <q-item
           v-else-if="item.kind === 'load-more'"
-          :key="`load-more-${ii}`"
+          key="load-more"
           dense
           clickable
           class="undo-journal-panel__load-more"
@@ -77,9 +77,16 @@
              expanding accordion-style right inside the journal. One display item = one block, so
              the newest-first reverse moves it whole and never tears the accordion apart. A single
              wrapping div gives q-virtual-scroll one root to measure (the block's height varies
-             with expand state, which virtual-scroll re-measures on its own). -->
+             with expand state, which virtual-scroll re-measures on its own).
+             undo-journal-key-dup fix (owner 2026-07-24, «Duplicate keys found during update: 2»):
+             this block's <div> mixes an UNKEYED head q-item with a keyed conditional <template>.
+             Vue then keys the children positionally and the head collides with a compiler-assigned
+             branch key from a sibling block — surfacing as a numeric duplicate. Giving the head and
+             the loading spinner explicit per-tip keys makes the div's children uniformly keyed, so
+             the collision is gone (confirmed live: the warning disappeared, warnHandler stayed
+             silent). -->
         <div v-else-if="item.kind === 'branch'" :key="`inline-${item.group.branch.tip}`">
-          <q-item dense clickable class="undo-journal-panel__branch-head" @click="toggleBranch(item.group.branch.tip)">
+          <q-item :key="`bh-${item.group.branch.tip}`" dense clickable class="undo-journal-panel__branch-head" @click="toggleBranch(item.group.branch.tip)">
             <q-item-section avatar class="undo-journal-panel__icon">
               <q-icon :name="expandedBranchTip === item.group.branch.tip ? 'expand_more' : 'chevron_right'" size="18px" />
             </q-item-section>
@@ -121,7 +128,7 @@
             </q-item-section>
           </q-item>
           <template v-if="expandedBranchTip === item.group.branch.tip">
-            <q-item v-if="branchStepRows(item.group) === null" dense class="undo-journal-panel__branch-step">
+            <q-item v-if="branchStepRows(item.group) === null" :key="`bs-${item.group.branch.tip}`" dense class="undo-journal-panel__branch-step">
               <q-item-section avatar class="undo-journal-panel__icon">
                 <q-spinner size="14px" />
               </q-item-section>
@@ -787,7 +794,15 @@ const deepRows = computed<JournalRow[]>(() => {
   }))
 })
 
-const showDeepLoad = computed(() => !gtracks.deepUndoLoaded.value || gtracks.deepUndoHasMore.value)
+// undo-journal-earlier-history-gate EH1.2 (owner 2026-07-24): the «Ранняя история…» pager shows
+// ONLY when the log actually holds history older than the adopted window (deepUndoHasEarlier). It
+// used to show optimistically before any click, and a click then discovered there was nothing to
+// fetch and hid it — a pure no-op the owner rightly questioned. deepUndoHasEarlier gates that away;
+// the second clause keeps the pager visible across the paging cycle once real earlier history is
+// being loaded.
+const showDeepLoad = computed(() =>
+  gtracks.deepUndoHasEarlier.value && (!gtracks.deepUndoLoaded.value || gtracks.deepUndoHasMore.value),
+)
 
 // UG3.4 (req 14): sort by edit time — newest on top by DEFAULT; the choice is a persisted editor
 // preference like the other 'mindwave-*' keys.
@@ -1104,45 +1119,14 @@ const renderedDisplayItems = shallowRef<DisplayItem[]>(displayItems.value)
 const JOURNAL_RENDER_DEBOUNCE_MS = 400
 let journalRenderTimer: ReturnType<typeof setTimeout> | null = null
 
-// TEMP DIAGNOSTIC (owner 2026-07-24, "Duplicate keys found during update: 2" on open with the
-// journal panel open): the warning names <QList> (this virtual-scroll) but a numeric key can only
-// come from a compiler-assigned v-if branch key, which none of the string keys here explain. Dump
-// the exact keys the virtual-scroll slot emits — top-level plus each branch's inner step rows — so
-// the duplicate is read from live data instead of guessed. Remove once the key is identified.
-function auditJournalKeys(items: readonly DisplayItem[], where: string): void {
-  const top = items.map((it, i) => {
-    if (it.kind === 'row') return `${i}:row:${JSON.stringify(it.row.key)}[tags=${it.row.tags.join('|')}]`
-    if (it.kind === 'branch') {
-      const steps = it.group.rows === null
-        ? 'null'
-        : it.group.rows.map((r) => `${JSON.stringify(r.key)}[tags=${r.tags.join('|')}]`).join(', ')
-      const btags = it.group.branch.tags.join('|')
-      return `${i}:branch:inline-${it.group.branch.tip}[tags=${btags}]{${steps}}`
-    }
-    return `${i}:${it.kind}`
-  })
-  const seen = new Map<string, number>()
-  const dups: string[] = []
-  items.forEach((it, i) => {
-    const k = it.kind === 'row' ? it.row.key
-      : it.kind === 'branch' ? `inline-${it.group.branch.tip}`
-      : it.kind === 'divider' ? `divider-${i}` : `load-more-${i}`
-    if (seen.has(k)) dups.push(`${JSON.stringify(k)} @#${i} & #${seen.get(k)}`)
-    seen.set(k, i)
-  })
-  console.warn(`[undo-journal-keys] (${where}) n=${items.length} dups=[${dups.join(' ; ')}]`, top)
-}
-
 watch(displayItems, (next) => {
   if (journalRenderTimer === null) {
     renderedDisplayItems.value = next // leading edge: a single/occasional edit shows immediately
-    auditJournalKeys(next, 'leading')
   }
   if (journalRenderTimer !== null) clearTimeout(journalRenderTimer)
   journalRenderTimer = setTimeout(() => {
     journalRenderTimer = null
     renderedDisplayItems.value = displayItems.value
-    auditJournalKeys(displayItems.value, 'trailing')
     journalVirtualScroll.value?.reset()
   }, JOURNAL_RENDER_DEBOUNCE_MS)
 })

@@ -613,6 +613,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
         if (plan !== null && m.adoptUndoJournal(plan.journal)) {
           undoLogPositions = plan.positionCids
           synced = plan.journal.steps
+          // undo-journal-earlier-history-gate EH-D1: the «Ранняя история…» pager is worth showing
+          // only if a commit older than the adopted window exists in the log. undoChain.commits is
+          // newest-first, so its last element is the oldest fetched commit; a non-null parent means
+          // there is genuinely earlier history to page into. null (root / GC graft root) = nothing
+          // older — hide the pager instead of showing a click that just makes it vanish.
+          const oldestCommit = undoChain.commits[undoChain.commits.length - 1]
+          deepUndoHasEarlier.value = oldestCommit !== undefined && oldestCommit.parent !== null
           console.info(
             `[undo-diag] undo-log adopted: ${plan.journal.steps.length} steps, cursor ${plan.journal.cursor} (anchor ${plan.anchorCid})`,
           )
@@ -803,6 +810,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     deepUndoRows.value = []
     deepUndoHasMore.value = false
     deepUndoLoaded.value = false
+    deepUndoHasEarlier.value = false
     deepUndoNextFrom = null
     undoTags.value = {}
     undoBranches.value = []
@@ -924,6 +932,13 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
   const deepUndoHasMore = ref(false)
   const deepUndoLoaded = ref(false)
   const deepUndoLoading = ref(false)
+  // undo-journal-earlier-history-gate EH-D1 (owner 2026-07-24, «зачем "Ранняя история…", если клик
+  // её прячет»): whether the log holds any commit OLDER than the adopted window — i.e. whether the
+  // «Ранняя история…» pager has anything to fetch. Set from the oldest fetched commit's parent at
+  // adoption (parent === null = the window starts at the log root / a GC graft root, nothing older);
+  // false until then. undoLogPositions[0] cannot answer this: adoption overwrites it with position
+  // 0's own snapshot cid, so it is non-null even for a root-anchored window (EH-D1).
+  const deepUndoHasEarlier = ref(false)
   let deepUndoNextFrom: string | null = null
   const undoTags = shallowRef<Readonly<Record<string, string>>>({})
   const DEEP_UNDO_PAGE = 50
@@ -2276,6 +2291,7 @@ export function useGtrackLanes(schedule: Ref<GnauralScheduleData | null>, filePa
     deepUndoRows,
     deepUndoHasMore,
     deepUndoLoaded,
+    deepUndoHasEarlier,
     deepUndoLoading,
     loadDeepUndoHistory,
     checkoutUndoCommit,
