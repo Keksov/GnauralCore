@@ -52,6 +52,7 @@
     "undoTipPointChanged": "Точка #{n} · t {time} с",
     "undoTipPointAdded": "Добавлена точка #{n} · t {time} с",
     "undoTipPointRemoved": "Удалена точка #{n} · t {time} с",
+    "undoTipGroupPoints": "Затронуто точек: {n}",
     "undoTipWas": "Было",
     "undoTipBecame": "Стало",
     "undoField_timeSec": "Время, с",

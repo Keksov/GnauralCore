@@ -290,7 +290,7 @@
                 @drag-balance-move="(e: GTrackBalanceDragMove) => gtracks.dragPointBalance(e.point, e.balance)"
                 @drag-end="gtracks.endPointDrag()"
                 @drag-cancel="gtracks.cancelPointDrag()"
-                @edit-point="(p: GTrackPointRef) => openPointDialog(lane.id, p)"
+                @edit-point="(p: GTrackPointRef) => { gtracks.clearMultiSelection(); openPointDialog(lane.id, p) }"
                 @add-point="(e: GTrackAddPoint) => onAddPoint(lane.id, e)"
                 @toggle-multi-select="(p: GTrackPointRef) => gtracks.toggleMultiSelect(p.voiceId, p.pointIndex)"
                 @range-multi-select="(p: GTrackPointRef) => gtracks.rangeMultiSelect(p.voiceId, p.pointIndex)"

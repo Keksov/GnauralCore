@@ -458,6 +458,36 @@ export function describeStepChanges(step: GTrackUndoStep, maxChanges = 8): GTrac
   return out
 }
 
+/** MSR-D7 (owner 2026-07-24, req 4): the TOTAL number of points a step changed/added/removed, using
+ *  the exact same counting rules as describeStepChanges but WITHOUT allocating the per-point objects
+ *  or applying its display cap — so the journal can label a multi-point step "N points" instead of
+ *  listing (and truncating) them. */
+export function describeStepChangeCount(step: GTrackUndoStep): number {
+  let n = 0
+  for (const d of step.voices) {
+    if (isPointsDelta(d)) {
+      for (const pd of d.points) {
+        if (pd.before !== null && pd.after !== null) {
+          if (POINT_FIELDS.some((f) => pd.before![f] !== pd.after![f])) n += 1
+        } else if (pd.after !== null || pd.before !== null) {
+          n += 1
+        }
+      }
+      continue
+    }
+    const b = d.before.points
+    const a = d.after.points
+    if (b.length === a.length) {
+      for (let i = 0; i < a.length; i += 1) {
+        if (POINT_FIELDS.some((f) => b[i]![f] !== a[i]![f])) n += 1
+      }
+      continue
+    }
+    n += Math.abs(a.length - b.length)
+  }
+  return n
+}
+
 /** UG4.1 (req 5): bound a journal by age and byte size by dropping the OLDEST steps (steps are
  *  chronological, so trimming from the front keeps the chain contiguous). cursor/baseCursor shift
  *  accordingly; the base marker is dropped once its position leaves the window. Pure — `nowMs`

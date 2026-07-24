@@ -52,6 +52,7 @@
     "undoTipPointChanged": "Point #{n} · t {time} s",
     "undoTipPointAdded": "Point #{n} added · t {time} s",
     "undoTipPointRemoved": "Point #{n} removed · t {time} s",
+    "undoTipGroupPoints": "{n} points affected",
     "undoTipWas": "Was",
     "undoTipBecame": "Now",
     "undoField_timeSec": "Time, s",

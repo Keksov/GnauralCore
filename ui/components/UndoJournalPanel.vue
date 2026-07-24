@@ -217,7 +217,11 @@
           :model-value="true"
           no-parent-event
         >
-          <div v-for="(c, ci) in item.row.changes" :key="ci" class="undo-journal-panel__tip-change">
+          <!-- MSR-D7 (req 4): a step touching >1 point shows just the count, not per-point tables. -->
+          <div v-if="item.row.pointCount > 1" class="undo-journal-panel__tip-head">
+            {{ t('audio.undoTipGroupPoints', { n: item.row.pointCount }) }}
+          </div>
+          <div v-for="(c, ci) in (item.row.pointCount > 1 ? [] : item.row.changes)" :key="ci" class="undo-journal-panel__tip-change">
             <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
             <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
               <thead>
@@ -344,7 +348,11 @@
                 <span class="undo-journal-panel__time">{{ row.time }}</span>
               </q-item-section>
               <app-tooltip v-if="row.changes.length > 0" max-width="480px">
-                <div v-for="(c, ci) in row.changes" :key="ci" class="undo-journal-panel__tip-change">
+                <!-- MSR-D7 (req 4): >1 point -> count only. -->
+                <div v-if="row.pointCount > 1" class="undo-journal-panel__tip-head">
+                  {{ t('audio.undoTipGroupPoints', { n: row.pointCount }) }}
+                </div>
+                <div v-for="(c, ci) in (row.pointCount > 1 ? [] : row.changes)" :key="ci" class="undo-journal-panel__tip-change">
                   <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
                 </div>
               </app-tooltip>
@@ -390,7 +398,11 @@
         <q-separator />
         <div class="undo-journal-panel__row-actions-diff">
           <div class="undo-journal-panel__row-actions-caption text-grey">{{ t('audio.undoRowActionsChanges') }}</div>
-          <div v-for="(c, ci) in rowActionsChanges" :key="ci" class="undo-journal-panel__tip-change">
+          <!-- MSR-D7 (req 4): a >1-point step shows just the count, not per-point tables. -->
+          <div v-if="rowActionsPointCount > 1" class="undo-journal-panel__tip-head">
+            {{ t('audio.undoTipGroupPoints', { n: rowActionsPointCount }) }}
+          </div>
+          <div v-for="(c, ci) in (rowActionsPointCount > 1 ? [] : rowActionsChanges)" :key="ci" class="undo-journal-panel__tip-change">
             <div class="undo-journal-panel__tip-head">{{ tipHead(c) }}</div>
             <table v-if="c.change === 'changed'" class="undo-journal-panel__tip-table">
               <thead>
@@ -591,7 +603,7 @@ import AppTooltip from '@tooltip/AppTooltip.vue'
 
 import type { ProjectUndoLogBranch } from '@protocol'
 import { useSharedGtrackLanes } from '../composables/use-gtrack-lanes'
-import { describeStepChanges, type GTrackPoint, type GTrackStepPointChange, type GTrackUndoStep } from '../composables/gtrack-model'
+import { describeStepChanges, describeStepChangeCount, type GTrackPoint, type GTrackStepPointChange, type GTrackUndoStep } from '../composables/gtrack-model'
 import { mergeConflictKey, type MergeChoice, type MergeConflict, type PlannedBranchMerge } from '../composables/undo-branch-merge'
 import { perfLog, perfNow } from '../composables/perf-log'
 
@@ -633,6 +645,7 @@ interface JournalRow {
   time: string
   atMs: number // OB-D7: raw commit time — the inline branch blocks interleave by it (0 = initial)
   changes: GTrackStepPointChange[] // UG3.2b (req 12): the structured hover diff per point
+  pointCount: number // MSR-D7 (req 4): TOTAL points the step touched (uncapped); >1 => show a count summary
   doomed: boolean // UG4.1b (req 13): will NOT survive closing the file under the current settings
   tags: string[] // VL-D9: names of the tags pinned to this row's commit
 }
@@ -709,6 +722,7 @@ const rows = computed<JournalRow[]>(() => {
     time: '',
     atMs: 0,
     changes: [],
+    pointCount: 0,
     doomed: false,
     tags: initialCid === null ? EMPTY_TAGS : byCid.get(initialCid) ?? EMPTY_TAGS,
   }]
@@ -736,6 +750,7 @@ const rows = computed<JournalRow[]>(() => {
       time: formatTime(step.atMs),
       atMs: step.atMs,
       changes: describeStepChanges(step, 8),
+      pointCount: describeStepChangeCount(step),
       doomed,
       tags,
     }
@@ -766,6 +781,7 @@ const deepRows = computed<JournalRow[]>(() => {
     time: formatTime(row.atMs),
     atMs: row.atMs,
     changes: row.step === null ? [] : describeStepChanges(row.step, 8),
+    pointCount: row.step === null ? 0 : describeStepChangeCount(row.step),
     doomed: false,
     tags: byCid.get(row.cid) ?? [],
   }))
@@ -955,6 +971,8 @@ const rowActionsCanClearBefore = computed<boolean>(() => {
 const rowActionsCanTag = computed<boolean>(() => selectedCid.value !== null)
 
 const rowActionsChanges = computed<readonly GTrackStepPointChange[]>(() => rowActionsRow.value?.changes ?? [])
+// MSR-D7 (req 4): the subform, like the tooltips, collapses a >1-point step to a single count.
+const rowActionsPointCount = computed<number>(() => rowActionsRow.value?.pointCount ?? 0)
 
 async function rowActionsApply(): Promise<void> {
   rowActionsOpen.value = false
@@ -1048,6 +1066,7 @@ const branchGroups = computed<BranchGroup[]>(() => {
         time: formatTime(row.atMs),
         atMs: row.atMs,
         changes: row.step === null ? [] : describeStepChanges(row.step, 8),
+        pointCount: row.step === null ? 0 : describeStepChangeCount(row.step),
         doomed: false,
         tags: byCid.get(row.cid) ?? [],
       })),
@@ -1084,14 +1103,46 @@ const journalVirtualScroll = ref<{ reset: () => void } | null>(null)
 const renderedDisplayItems = shallowRef<DisplayItem[]>(displayItems.value)
 const JOURNAL_RENDER_DEBOUNCE_MS = 400
 let journalRenderTimer: ReturnType<typeof setTimeout> | null = null
+
+// TEMP DIAGNOSTIC (owner 2026-07-24, "Duplicate keys found during update: 2" on open with the
+// journal panel open): the warning names <QList> (this virtual-scroll) but a numeric key can only
+// come from a compiler-assigned v-if branch key, which none of the string keys here explain. Dump
+// the exact keys the virtual-scroll slot emits — top-level plus each branch's inner step rows — so
+// the duplicate is read from live data instead of guessed. Remove once the key is identified.
+function auditJournalKeys(items: readonly DisplayItem[], where: string): void {
+  const top = items.map((it, i) => {
+    if (it.kind === 'row') return `${i}:row:${JSON.stringify(it.row.key)}[tags=${it.row.tags.join('|')}]`
+    if (it.kind === 'branch') {
+      const steps = it.group.rows === null
+        ? 'null'
+        : it.group.rows.map((r) => `${JSON.stringify(r.key)}[tags=${r.tags.join('|')}]`).join(', ')
+      const btags = it.group.branch.tags.join('|')
+      return `${i}:branch:inline-${it.group.branch.tip}[tags=${btags}]{${steps}}`
+    }
+    return `${i}:${it.kind}`
+  })
+  const seen = new Map<string, number>()
+  const dups: string[] = []
+  items.forEach((it, i) => {
+    const k = it.kind === 'row' ? it.row.key
+      : it.kind === 'branch' ? `inline-${it.group.branch.tip}`
+      : it.kind === 'divider' ? `divider-${i}` : `load-more-${i}`
+    if (seen.has(k)) dups.push(`${JSON.stringify(k)} @#${i} & #${seen.get(k)}`)
+    seen.set(k, i)
+  })
+  console.warn(`[undo-journal-keys] (${where}) n=${items.length} dups=[${dups.join(' ; ')}]`, top)
+}
+
 watch(displayItems, (next) => {
   if (journalRenderTimer === null) {
     renderedDisplayItems.value = next // leading edge: a single/occasional edit shows immediately
+    auditJournalKeys(next, 'leading')
   }
   if (journalRenderTimer !== null) clearTimeout(journalRenderTimer)
   journalRenderTimer = setTimeout(() => {
     journalRenderTimer = null
     renderedDisplayItems.value = displayItems.value
+    auditJournalKeys(displayItems.value, 'trailing')
     journalVirtualScroll.value?.reset()
   }, JOURNAL_RENDER_DEBOUNCE_MS)
 })
